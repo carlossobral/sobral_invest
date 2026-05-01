@@ -1,0 +1,34 @@
+name: Atualizar Base
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # todo dia
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Instalar libs
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Rodar script
+        run: python gerar_base.py
+
+      - name: Commit e Push
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@bot.com"
+          git add base.json
+          git commit -m "update base" || echo "sem mudanças"
+          git push
