@@ -297,4 +297,21 @@ def health():
         "ultima_atualizacao": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
         "total_registros": len(df)
     }
+#parte 4
+from fastapi.responses import StreamingResponse
+import io
 
+@app.get("/export/csv")
+def export_csv():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para exportação."}
+
+    output = io.StringIO()
+    df.to_csv(output, index=False)
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=acoes.csv"}
+    )
