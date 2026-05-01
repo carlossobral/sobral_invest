@@ -4,4 +4,4 @@ fastapi
 uvicorn
 requests
 pandas
-sqlite3
+
