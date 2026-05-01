@@ -274,6 +274,19 @@ def ranking_liquidez():
         return {"error": "Nenhum dado disponível para Liquidez."}
     return df.sort_values(by="Liquidez", ascending=False).head(10).to_dict(orient="records")
 
+@app.get("/acao/{ticker}")
+def buscar_acao(ticker: str):
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível no banco."}
+    # Normaliza para maiúsculo
+    ticker = ticker.upper()
+    dados = df[df["Ticker"] == ticker]
+    if dados.empty:
+        return {"error": f"Ação {ticker} não encontrada."}
+    return dados.to_dict(orient="records")[0]
+
+
 @app.get("/health")
 def health():
     df = carregar_dados()
