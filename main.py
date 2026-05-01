@@ -42,9 +42,8 @@ TICKERS_FIXOS = [
     "USIM5","VALE3","VAMO3","VBBR3","VITT3","VIVA3","VIVR3","VIVT3","VLID3","VSTE3",
     "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
-##parte 2
+##PARTE2a
 def coletar_fundamentus(ticker):
-    # coleta simplificada do Fundamentus
     try:
         url = f"http://fundamentus.com.br/detalhes.php?papel={ticker}"
         r = requests.get(url, timeout=10)
@@ -100,7 +99,7 @@ def coletar_yfinance(ticker):
     except Exception as e:
         print(f"Erro yfinance {ticker}: {e}")
     return {}
-
+## parte2b
 def calcular_dividendos_historico(ticker, anos=6):
     try:
         yf_ticker = yf.Ticker(f"{ticker}.SA")
@@ -118,7 +117,6 @@ def calcular_dividendos_historico(ticker, anos=6):
             resultados[f"DY_{i}A"] = round(dy, 2)
             resultados[f"Div_{i}A"] = round(div_ano, 2)
 
-        # Últimos 12 meses
         ultimos_12m = dividends[dividends.index >= pd.Timestamp.today() - pd.DateOffset(years=1)].sum()
         preco_medio_12m = history[history.index >= pd.Timestamp.today() - pd.DateOffset(years=1)]["Close"].mean()
         dy_12m = (ultimos_12m / preco_medio_12m * 100) if preco_medio_12m > 0 else 0
@@ -129,6 +127,65 @@ def calcular_dividendos_historico(ticker, anos=6):
     except Exception as e:
         print(f"Erro dividendos histórico {ticker}: {e}")
         return {}
+
+def calcular_payout_historico(ticker, anos=6):
+    try:
+        yf_ticker = yf.Ticker(f"{ticker}.SA")
+        dividends = yf_ticker.dividends
+        financials = yf_ticker.financials.T
+
+        resultados = {}
+        ano_atual = pd.Timestamp.today().year
+
+        for i in range(1, anos+1):
+            ano = ano_atual - i
+            div_ano = dividends[dividends.index.year == ano].sum()
+            try:
+                net_income = financials.loc[str(ano)]["Net Income"]
+                shares_outstanding = yf_ticker.info.get("sharesOutstanding", 0)
+                lpa = net_income / shares_outstanding if shares_outstanding > 0 else 0
+            except:
+                lpa = 0
+            payout = (div_ano / lpa * 100) if lpa > 0 else 0
+            resultados[f"Payout_{i}A"] = round(payout, 2)
+            resultados[f"Div_{i}A"] = round(div_ano, 2)
+
+        ultimos_12m = dividends[dividends.index >= pd.Timestamp.today() - pd.DateOffset(years=1)].sum()
+        try:
+            net_income_ttm = yf_ticker.get_income_stmt(freq="quarterly").sum().loc["Net Income"].sum()
+            shares_outstanding = yf_ticker.info.get("sharesOutstanding", 0)
+            lpa_ttm = net_income_ttm / shares_outstanding if shares_outstanding > 0 else 0
+        except:
+            lpa_ttm = 0
+        payout_12m = (ultimos_12m / lpa_ttm * 100) if lpa_ttm > 0 else 0
+        resultados["Payout_12M"] = round(payout_12m, 2)
+        resultados["Div_12M"] = round(ultimos_12m, 2)
+
+        return resultados
+    except Exception as e:
+        print(f"Erro payout histórico {ticker}: {e}")
+        return {}
+##parte2c
+def buscar_agenda_dividendos(ticker):
+    try:
+        url = f"https://brapi.dev/api/quote/{ticker}?dividends=true&token={API_KEY}"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            info = r.json()
+            if "results" in info and "dividendsData" in info["results"][0]:
+                agenda = info["results"][0]["dividendsData"]
+                dados = []
+                for item in agenda:
+                    dados.append({
+                        "DataCom": item.get("dateWith", ""),
+                        "DataEx": item.get("dateWithout", ""),
+                        "DataPagamento": item.get("paymentDate", ""),
+                        "ValorPorAcao": item.get("value", 0)
+                    })
+                return dados
+    except Exception as e:
+        print(f"Erro agenda dividendos {ticker}: {e}")
+    return []
 
 def salvar_dados(df):
     conn = sqlite3.connect(DB_NAME)
@@ -154,11 +211,14 @@ def atualizar_dados():
                 time.sleep(1)
                 fundamentals = coletar_yfinance(ticker)
             if not fundamentals:
-                fundamentals = {"DY":0,"P/L":0,"P/VP":0,"ROE":0,"LPA":0,"VPA":0,"CrescimentoLucro":0,
-                                "EBITDA":0,"DividaLiquida":0,"ValorMercado":0,"ReceitaLiquida":0,
-                                "MargemLiquida":0,"Liquidez":0}
+                fundamentals = {
+                    "DY":0,"P/L":0,"P/VP":0,"ROE":0,"LPA":0,"VPA":0,"CrescimentoLucro":0,
+                    "EBITDA":0,"DividaLiquida":0,"ValorMercado":0,"ReceitaLiquida":0,
+                    "MargemLiquida":0,"Liquidez":0
+                }
             div_hist = calcular_dividendos_historico(ticker)
-            dados.append({"Ticker": ticker, **fundamentals, **div_hist})
+            payout_hist = calcular_payout_historico(ticker)
+            dados.append({"Ticker": ticker, **fundamentals, **div_hist, **payout_hist})
         print(f"Lote {i//50+1} atualizado com {len(lote)} ativos.")
         time.sleep(2)
     df = pd.DataFrame(dados)
@@ -166,7 +226,7 @@ def atualizar_dados():
         salvar_dados(df)
         print(f"Banco atualizado com {len(df)} registros.")
     return df
-##parte 3
+##parte3
 @app.get("/")
 def home():
     return {"msg": "API Sobral Invest com SQLite ativo!"}
@@ -187,7 +247,19 @@ def buscar_acao(ticker: str):
 def dividendos_acao(ticker: str):
     resultados = calcular_dividendos_historico(ticker)
     return {"Ticker": ticker.upper(), **resultados}
-##4 parte
+
+@app.get("/acao/{ticker}/payout")
+def payout_acao(ticker: str):
+    resultados = calcular_payout_historico(ticker)
+    return {"Ticker": ticker.upper(), **resultados}
+
+@app.get("/acao/{ticker}/agenda_dividendos")
+def agenda_dividendos(ticker: str):
+    resultados = buscar_agenda_dividendos(ticker)
+    if not resultados:
+        return {"error": f"Nenhuma agenda encontrada para {ticker}."}
+    return {"Ticker": ticker.upper(), "AgendaDividendos": resultados}
+##parte4
 @app.get("/ranking/dy")
 def ranking_dy():
     df = carregar_dados()
