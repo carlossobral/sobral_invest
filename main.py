@@ -42,6 +42,11 @@ TICKERS_FIXOS = [
     "USIM5","VALE3","VAMO3","VBBR3","VITT3","VIVA3","VIVR3","VIVT3","VLID3","VSTE3",
     "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
+# Helper para respostas seguras
+def resposta_segura(ticker, dados, tipo="indicadores"):
+    if not dados or all(v == 0 or v is None for v in dados.values()):
+        return {"Ticker": ticker.upper(), "msg": f"Sem dados válidos para {tipo}."}
+    return {"Ticker": ticker.upper(), **dados}
 ##PARTE2a
 def coletar_fundamentus(ticker):
     try:
@@ -106,6 +111,12 @@ def calcular_dividendos_historico(ticker, anos=6):
         dividends = yf_ticker.dividends
         history = yf_ticker.history(period=f"{anos}y")
 
+        # Corrigir timezone
+        if hasattr(dividends.index, "tz"):
+            dividends.index = dividends.index.tz_localize(None)
+        if hasattr(history.index, "tz"):
+            history.index = history.index.tz_localize(None)
+
         resultados = {}
         ano_atual = pd.Timestamp.today().year
 
@@ -113,13 +124,13 @@ def calcular_dividendos_historico(ticker, anos=6):
             ano = ano_atual - i
             div_ano = dividends[dividends.index.year == ano].sum()
             preco_medio = history[history.index.year == ano]["Close"].mean()
-            dy = (div_ano / preco_medio * 100) if preco_medio > 0 else 0
+            dy = (div_ano / preco_medio * 100) if preco_medio and preco_medio > 0 else 0
             resultados[f"DY_{i}A"] = round(dy, 2)
             resultados[f"Div_{i}A"] = round(div_ano, 2)
 
         ultimos_12m = dividends[dividends.index >= pd.Timestamp.today() - pd.DateOffset(years=1)].sum()
         preco_medio_12m = history[history.index >= pd.Timestamp.today() - pd.DateOffset(years=1)]["Close"].mean()
-        dy_12m = (ultimos_12m / preco_medio_12m * 100) if preco_medio_12m > 0 else 0
+        dy_12m = (ultimos_12m / preco_medio_12m * 100) if preco_medio_12m and preco_medio_12m > 0 else 0
         resultados["DY_12M"] = round(dy_12m, 2)
         resultados["Div_12M"] = round(ultimos_12m, 2)
 
@@ -134,6 +145,9 @@ def calcular_payout_historico(ticker, anos=6):
         dividends = yf_ticker.dividends
         financials = yf_ticker.financials.T
 
+        if hasattr(dividends.index, "tz"):
+            dividends.index = dividends.index.tz_localize(None)
+
         resultados = {}
         ano_atual = pd.Timestamp.today().year
 
@@ -144,9 +158,11 @@ def calcular_payout_historico(ticker, anos=6):
                 net_income = financials.loc[str(ano)]["Net Income"]
                 shares_outstanding = yf_ticker.info.get("sharesOutstanding", 0)
                 lpa = net_income / shares_outstanding if shares_outstanding > 0 else 0
+                if isinstance(lpa, (pd.Series, pd.DataFrame)):
+                    lpa = float(lpa.values[0])
             except:
                 lpa = 0
-            payout = (div_ano / lpa * 100) if lpa > 0 else 0
+            payout = (div_ano / lpa * 100) if lpa and lpa > 0 else 0
             resultados[f"Payout_{i}A"] = round(payout, 2)
             resultados[f"Div_{i}A"] = round(div_ano, 2)
 
@@ -155,9 +171,11 @@ def calcular_payout_historico(ticker, anos=6):
             net_income_ttm = yf_ticker.get_income_stmt(freq="quarterly").sum().loc["Net Income"].sum()
             shares_outstanding = yf_ticker.info.get("sharesOutstanding", 0)
             lpa_ttm = net_income_ttm / shares_outstanding if shares_outstanding > 0 else 0
+            if isinstance(lpa_ttm, (pd.Series, pd.DataFrame)):
+                lpa_ttm = float(lpa_ttm.values[0])
         except:
             lpa_ttm = 0
-        payout_12m = (ultimos_12m / lpa_ttm * 100) if lpa_ttm > 0 else 0
+        payout_12m = (ultimos_12m / lpa_ttm * 100) if lpa_ttm and lpa_ttm > 0 else 0
         resultados["Payout_12M"] = round(payout_12m, 2)
         resultados["Div_12M"] = round(ultimos_12m, 2)
 
@@ -227,6 +245,7 @@ def atualizar_dados():
         print(f"Banco atualizado com {len(df)} registros.")
     return df
 ##parte3
+# Endpoint raiz
 @app.get("/")
 def home():
     return {
@@ -257,123 +276,86 @@ def home():
         }
     }
 
-@app.get("/atualizar")
-def atualizar():
-    df = atualizar_dados()
-    return {"msg": f"Dados atualizados com {len(df)} registros."} if not df.empty else {"error": "Não foi possível atualizar dados."}
-
+# Endpoint indicadores gerais
 @app.get("/acao/{ticker}")
 def buscar_acao(ticker: str):
     df = carregar_dados()
     ticker = ticker.upper()
     dados = df[df["Ticker"] == ticker]
-    return dados.to_dict(orient="records")[0] if not dados.empty else {"error": f"Ação {ticker} não encontrada."}
+    if not dados.empty:
+        registro = dados.to_dict(orient="records")[0]
+        registro["PrecoAtual"] = preco_atual(ticker)
+        return resposta_segura(ticker, registro, tipo="indicadores")
+    return {"error": f"Ação {ticker} não encontrada."}
 
+# Endpoint dividendos
 @app.get("/acao/{ticker}/dividendos")
 def dividendos_acao(ticker: str):
     resultados = calcular_dividendos_historico(ticker)
-    return {"Ticker": ticker.upper(), **resultados}
+    return resposta_segura(ticker, resultados, tipo="dividendos")
 
+# Endpoint payout
 @app.get("/acao/{ticker}/payout")
 def payout_acao(ticker: str):
     resultados = calcular_payout_historico(ticker)
-    return {"Ticker": ticker.upper(), **resultados}
+    return resposta_segura(ticker, resultados, tipo="payout")
 
+# Endpoint agenda de dividendos
 @app.get("/acao/{ticker}/agenda_dividendos")
 def agenda_dividendos(ticker: str):
     resultados = buscar_agenda_dividendos(ticker)
     if not resultados:
-        return {"error": f"Nenhuma agenda encontrada para {ticker}."}
+        return {"Ticker": ticker.upper(), "msg": "Sem dados válidos para agenda de dividendos."}
     return {"Ticker": ticker.upper(), "AgendaDividendos": resultados}
+
 ##parte4
-@app.get("/ranking/dy")
-def ranking_dy():
-    df = carregar_dados()
-    return df.sort_values(by="DY", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/roe")
-def ranking_roe():
-    df = carregar_dados()
-    return df.sort_values(by="ROE", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/graham")
-def ranking_graham():
-    df = carregar_dados()
-    df["Graham"] = df.apply(lambda row: math.sqrt(22.5*row["LPA"]*row["VPA"]) if row["LPA"]>0 and row["VPA"]>0 else 0, axis=1)
-    return df.sort_values(by="Graham", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/bazin")
-def ranking_bazin():
-    df = carregar_dados()
-    df["Bazin"] = df["DY"].apply(lambda x: x if x >= 6 else 0)
-    return df.sort_values(by="Bazin", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/peterlynch")
-def ranking_peterlynch():
-    df = carregar_dados()
-    def calc_lynch(row):
-        pl = row["P/L"]
-        crescimento = row["CrescimentoLucro"]
-        return pl/crescimento if crescimento>0 else float("inf")
-    df["Lynch"] = df.apply(calc_lynch, axis=1)
-    return df.sort_values(by="Lynch", ascending=True).head(30).to_dict(orient="records")
-
-@app.get("/ranking/ebitda")
-def ranking_ebitda():
-    df = carregar_dados()
-    return df.sort_values(by="EBITDA", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/valor_mercado")
-def ranking_valor_mercado():
-    df = carregar_dados()
-    return df.sort_values(by="ValorMercado", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/margem_liquida")
-def ranking_margem_liquida():
-    df = carregar_dados()
-    return df.sort_values(by="MargemLiquida", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/receita_liquida")
-def ranking_receita_liquida():
-    df = carregar_dados()
-    return df.sort_values(by="ReceitaLiquida", ascending=False).head(30).to_dict(orient="records")
-
 @app.get("/ranking/divida_liquida")
 def ranking_divida_liquida():
     df = carregar_dados()
+    if df.empty or df["DividaLiquida"].sum() == 0:
+        return {"msg": "Sem dados válidos para ranking Dívida Líquida."}
     return df.sort_values(by="DividaLiquida", ascending=True).head(30).to_dict(orient="records")
 
 @app.get("/ranking/liquidez")
 def ranking_liquidez():
     df = carregar_dados()
+    if df.empty or df["Liquidez"].sum() == 0:
+        return {"msg": "Sem dados válidos para ranking Liquidez."}
     return df.sort_values(by="Liquidez", ascending=False).head(30).to_dict(orient="records")
 
 @app.get("/ranking/dy_consistente")
 def ranking_dy_consistente(periodo: int = 3):
     df = carregar_dados()
-    if periodo not in [3,5]:
-        return {"error":"Período deve ser 3 ou 5 anos."}
+    if df.empty or periodo not in [3,5]:
+        return {"msg":"Sem dados válidos para ranking DY Consistente."}
     colunas = [f"DY_{i}A" for i in range(1, periodo+1)]
     df["DYConsistente"] = df[colunas].mean(axis=1)
+    if df["DYConsistente"].sum() == 0:
+        return {"msg":"Sem dados válidos para ranking DY Consistente."}
     return df.sort_values(by="DYConsistente", ascending=False).head(30).to_dict(orient="records")
 
 @app.get("/ranking/payout_consistente")
 def ranking_payout_consistente(periodo: int = 3):
     df = carregar_dados()
-    if periodo not in [3,5]:
-        return {"error":"Período deve ser 3 ou 5 anos."}
+    if df.empty or periodo not in [3,5]:
+        return {"msg":"Sem dados válidos para ranking Payout Consistente."}
     colunas = [f"Payout_{i}A" for i in range(1, periodo+1)]
     df["PayoutConsistente"] = df[colunas].mean(axis=1)
+    if df["PayoutConsistente"].sum() == 0:
+        return {"msg":"Sem dados válidos para ranking Payout Consistente."}
     return df.sort_values(by="PayoutConsistente", ascending=False).head(30).to_dict(orient="records")
 
 @app.get("/ranking/consistente")
 def ranking_consistente(periodo: int = 3):
     df = carregar_dados()
-    if periodo not in [3,5]:
-        return {"error":"Período deve ser 3 ou 5 anos."}
+    if df.empty or periodo not in [3,5]:
+        return {"msg":"Sem dados válidos para ranking Consistente."}
     colunas_dy = [f"DY_{i}A" for i in range(1, periodo+1)]
     colunas_payout = [f"Payout_{i}A" for i in range(1, periodo+1)]
     df["DYConsistente"] = df[colunas_dy].mean(axis=1)
     df["PayoutConsistente"] = df[colunas_payout].mean(axis=1)
     df["ConsistenciaTotal"] = (df["DYConsistente"] + df["PayoutConsistente"]) / 2
+    if df["ConsistenciaTotal"].sum() == 0:
+        return {"msg":"Sem dados válidos para ranking Consistente."}
     return df.sort_values(by="ConsistenciaTotal", ascending=False).head(30).to_dict(orient="records")
+
