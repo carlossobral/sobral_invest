@@ -37,7 +37,7 @@ def coletar_dados():
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest online com chave Brapi!"}
+    return {"msg": "API Sobral Invest online!"}
 
 @app.get("/ranking/dy")
 def ranking_dy():
