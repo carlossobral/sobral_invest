@@ -29,14 +29,14 @@ def carregar_dados():
 
 # Função para coletar dados da Brapi e salvar no banco
 def atualizar_dados(limit=100):
-    url_tickers = f"https://brapi.dev/api/available?token={BRAPI_KEY}"
+    url_tickers = f"https://brapi.dev/api/available?token={API_KEY}"
     resp = requests.get(url_tickers)
     tickers = resp.json().get("stocks", [])[:limit]
     dados = []
 
     for ticker in tickers:
         try:
-            url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={BRAPI_KEY}"
+            url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 info = r.json()
