@@ -4,13 +4,15 @@ import pandas as pd
 import math
 import time
 import sqlite3
+from bs4 import BeautifulSoup
+import yfinance as yf
 
 app = FastAPI()
 
-API_KEY = "esWXsXKkdh45gTmhS33aNK"  # sua chave da Brapi
+API_KEY = "esWXsXKkdh45gTmhS33aNK"
 DB_NAME = "dados.db"
 
-# Lista fixa de ativos
+# Lista fixa de ativos (sua lista completa)
 TICKERS_FIXOS = [
     "AALR3","ABCB4","ABEV3","AERI3","AGRO3","AGXY3","ALLD3","ALOS3","ALPA4","ALPK3",
     "ALUP11","ALUP4","AMAR3","AMBP3","AMER3","AMOB3","ANIM3","ARML3","ASAI3","ATED3",
@@ -38,6 +40,53 @@ TICKERS_FIXOS = [
     "USIM5","VALE3","VAMO3","VBBR3","VITT3","VIVA3","VIVR3","VIVT3","VLID3","VSTE3",
     "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
+# --- Funções auxiliares ---
+def coletar_fundamentus(ticker):
+    try:
+        url = f"http://fundamentus.com.br/detalhes.php?papel={ticker}"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "html.parser")
+            def pegar_valor(label):
+                el = soup.find(text=label)
+                if el:
+                    val = el.find_next("td").text.strip().replace(",", ".")
+                    try:
+                        return float(val)
+                    except:
+                        return 0
+                return 0
+            return {
+                "DY": pegar_valor("Div.Yield"),
+                "P/L": pegar_valor("P/L"),
+                "P/VP": pegar_valor("P/VP"),
+                "ROE": pegar_valor("ROE"),
+                "LPA": pegar_valor("LPA"),
+                "VPA": pegar_valor("VPA"),
+                "CrescimentoLucro": pegar_valor("Cres. Rec.")
+            }
+    except Exception as e:
+        print(f"Erro Fundamentus {ticker}: {e}")
+    return {}
+
+def coletar_yfinance(ticker):
+    try:
+        yf_ticker = yf.Ticker(f"{ticker}.SA")
+        info = yf_ticker.info
+        return {
+            "DY": info.get("dividendYield", 0) or 0,
+            "P/L": info.get("forwardPE", 0) or 0,
+            "P/VP": info.get("priceToBook", 0) or 0,
+            "ROE": info.get("returnOnEquity", 0) or 0,
+            "LPA": info.get("earningsPerShare", 0) or 0,
+            "VPA": info.get("bookValue", 0) or 0,
+            "CrescimentoLucro": info.get("earningsGrowth", 0) or 0
+        }
+    except Exception as e:
+        print(f"Erro yfinance {ticker}: {e}")
+    return {}
+
+# --- Banco ---
 def salvar_dados(df):
     conn = sqlite3.connect(DB_NAME)
     df.to_sql("acoes", conn, if_exists="replace", index=False)
@@ -52,9 +101,11 @@ def carregar_dados():
     conn.close()
     return df
 
+# --- Atualização ---
 def atualizar_dados():
     dados = []
     for ticker in TICKERS_FIXOS:
+        fundamentals = {}
         try:
             url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
             r = requests.get(url, timeout=10)
@@ -62,26 +113,26 @@ def atualizar_dados():
                 info = r.json()
                 if "results" in info:
                     fundamentals = info["results"][0].get("fundamentals", {})
-                    dados.append({
-                        "Ticker": ticker,
-                        "DY": fundamentals.get("dividendYield", 0),
-                        "P/L": fundamentals.get("priceToEarningsRatio", 0),
-                        "P/VP": fundamentals.get("priceToBookRatio", 0),
-                        "ROE": fundamentals.get("returnOnEquity", 0),
-                        "LPA": fundamentals.get("earningsPerShare", 0),
-                        "VPA": fundamentals.get("bookValuePerShare", 0),
-                        "CrescimentoLucro": fundamentals.get("earningsGrowth", 0)
-                    })
-                else:
-                    print(f"Ticker {ticker} sem dados, salvando zerado")
-                    dados.append({
-                        "Ticker": ticker,
-                        "DY": 0, "P/L": 0, "P/VP": 0,
-                        "ROE": 0, "LPA": 0, "VPA": 0,
-                        "CrescimentoLucro": 0
-                    })
         except Exception as e:
-            print(f"Erro em {ticker}: {e}")
+            print(f"Erro Brapi {ticker}: {e}")
+
+        if not fundamentals:
+            fundamentals = coletar_fundamentus(ticker)
+        if not fundamentals:
+            fundamentals = coletar_yfinance(ticker)
+        if not fundamentals:
+            fundamentals = {"DY":0,"P/L":0,"P/VP":0,"ROE":0,"LPA":0,"VPA":0,"CrescimentoLucro":0}
+
+        dados.append({
+            "Ticker": ticker,
+            "DY": fundamentals.get("DY", 0),
+            "P/L": fundamentals.get("P/L", 0),
+            "P/VP": fundamentals.get("P/VP", 0),
+            "ROE": fundamentals.get("ROE", 0),
+            "LPA": fundamentals.get("LPA", 0),
+            "VPA": fundamentals.get("VPA", 0),
+            "CrescimentoLucro": fundamentals.get("CrescimentoLucro", 0)
+        })
 
     df = pd.DataFrame(dados)
     if not df.empty:
@@ -92,13 +143,13 @@ def atualizar_dados():
     return df
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com SQLite ativos!"}
+    return {"msg": "API Sobral Invest com SQLite ativo!"}
 
 @app.get("/atualizar")
 def atualizar():
     df = atualizar_dados()
     if df.empty:
-        return {"error": "Não foi possível atualizar dados da Brapi."}
+        return {"error": "Não foi possível atualizar dados da Brapi/Fundamentus/Yahoo."}
     return {"msg": f"Dados atualizados com {len(df)} registros."}
 
 @app.get("/ranking/dy")
@@ -129,3 +180,35 @@ def ranking_graham():
     df["Graham"] = df.apply(calc_graham, axis=1)
     return df.sort_values(by="Graham", ascending=False).head(10).to_dict(orient="records")
 
+@app.get("/ranking/bazin")
+def ranking_bazin():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para Bazin."}
+    df["Bazin"] = df["DY"].apply(lambda x: x if x >= 0.06 else 0)
+    return df.sort_values(by="Bazin", ascending=False).head(10).to_dict(orient="records")
+
+@app.get("/ranking/peterlynch")
+def ranking_peterlynch():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para Peter Lynch."}
+    def calc_lynch(row):
+        pl = row["P/L"]
+        crescimento = row["CrescimentoLucro"]
+        if crescimento > 0:
+            return pl / crescimento
+        return float("inf")
+    df["Lynch"] = df.apply(calc_lynch, axis=1)
+    return df.sort_values(by="Lynch", ascending=True).head(10).to_dict(orient="records")
+
+@app.get("/health")
+def health():
+    df = carregar_dados()
+    if df.empty:
+        return {"status": "offline", "msg": "Sem dados no banco"}
+    return {
+        "status": "online",
+        "ultima_atualizacao": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+        "total_registros": len(df)
+    }
