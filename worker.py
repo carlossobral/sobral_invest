@@ -24,7 +24,7 @@ def atualizar_dados(limit=100):
     dados = []
     for ticker in tickers:
         try:
-            url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
+            url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={BRAPI_KEY}"
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 info = r.json()
