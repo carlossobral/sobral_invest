@@ -2,7 +2,6 @@ from fastapi import FastAPI
 import requests
 import pandas as pd
 import math
-import os
 import time
 import sqlite3
 
@@ -39,7 +38,6 @@ TICKERS_FIXOS = [
     "USIM5","VALE3","VAMO3","VBBR3","VITT3","VIVA3","VIVR3","VIVT3","VLID3","VSTE3",
     "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
-
 def salvar_dados(df):
     conn = sqlite3.connect(DB_NAME)
     df.to_sql("acoes", conn, if_exists="replace", index=False)
@@ -92,10 +90,9 @@ def atualizar_dados():
     else:
         print("Nenhum dado coletado.")
     return df
-
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com SQLite ativos!"}
+    return {"msg": "API Sobral Invest com SQLite ativo!"}
 
 @app.get("/atualizar")
 def atualizar():
@@ -132,5 +129,3 @@ def ranking_graham():
     df["Graham"] = df.apply(calc_graham, axis=1)
     return df.sort_values(by="Graham", ascending=False).head(10).to_dict(orient="records")
 
-@app.get("/ranking/bazin")
-def ranking_b
