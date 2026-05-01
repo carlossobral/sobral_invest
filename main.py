@@ -38,7 +38,7 @@ def coletar_dados(limit=100):
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest online!"}
+    return {"msg": "API Sobral Invest online_a!"}
 
 @app.get("/ranking/dy")
 def ranking_dy():
