@@ -4,23 +4,31 @@ import pandas as pd
 import math
 import os
 import time
+import sqlite3
 
 app = FastAPI()
 
 API_KEY = os.getenv("BRAPI_KEY", "MINHA_CHAVE_API")
+DB_NAME = "dados.db"
 
-# Cache em memória
-cache = {
-    "data": None,
-    "timestamp": 0
-}
+# Função para salvar dados no SQLite
+def salvar_dados(df):
+    conn = sqlite3.connect(DB_NAME)
+    df.to_sql("acoes", conn, if_exists="replace", index=False)
+    conn.close()
 
-def coletar_dados(limit=100, ttl=3600):
-    """Coleta dados da Brapi com cache (ttl em segundos)"""
-    agora = time.time()
-    if cache["data"] is not None and (agora - cache["timestamp"] < ttl):
-        return cache["data"]
+# Função para carregar dados do SQLite
+def carregar_dados():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        df = pd.read_sql("SELECT * FROM acoes", conn)
+    except Exception:
+        df = pd.DataFrame()
+    conn.close()
+    return df
 
+# Função para coletar dados da Brapi e salvar no banco
+def atualizar_dados(limit=100):
     url_tickers = f"https://brapi.dev/api/available?token={API_KEY}"
     resp = requests.get(url_tickers)
     tickers = resp.json().get("stocks", [])[:limit]
@@ -47,35 +55,42 @@ def coletar_dados(limit=100, ttl=3600):
             print(f"Erro em {ticker}: {e}")
 
     df = pd.DataFrame(dados)
-    cache["data"] = df
-    cache["timestamp"] = agora
+    if not df.empty:
+        salvar_dados(df)
     return df
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com cache ativoa!"}
+    return {"msg": "API Sobral Invest com SQLite ativo!"}
+
+@app.get("/atualizar")
+def atualizar():
+    df = atualizar_dados()
+    if df.empty:
+        return {"error": "Não foi possível atualizar dados da Brapi."}
+    return {"msg": f"Dados atualizados com {len(df)} registros."}
 
 @app.get("/ranking/dy")
 def ranking_dy():
-    df = coletar_dados()
+    df = carregar_dados()
     if df.empty:
-        return {"error": "Nenhum dado disponível da Brapi para calcular Dividend Yield."}
+        return {"error": "Nenhum dado disponível para Dividend Yield."}
     top_dy = df.sort_values(by="DY", ascending=False).head(10)
     return top_dy.to_dict(orient="records")
 
 @app.get("/ranking/roe")
 def ranking_roe():
-    df = coletar_dados()
+    df = carregar_dados()
     if df.empty:
-        return {"error": "Nenhum dado disponível da Brapi para calcular ROE."}
+        return {"error": "Nenhum dado disponível para ROE."}
     top_roe = df.sort_values(by="ROE", ascending=False).head(10)
     return top_roe.to_dict(orient="records")
 
 @app.get("/ranking/graham")
 def ranking_graham():
-    df = coletar_dados()
+    df = carregar_dados()
     if df.empty:
-        return {"error": "Nenhum dado disponível da Brapi para calcular Graham."}
+        return {"error": "Nenhum dado disponível para Graham."}
     def calc_graham(row):
         lpa = row["LPA"]
         vpa = row["VPA"]
@@ -88,18 +103,18 @@ def ranking_graham():
 
 @app.get("/ranking/bazin")
 def ranking_bazin():
-    df = coletar_dados()
+    df = carregar_dados()
     if df.empty:
-        return {"error": "Nenhum dado disponível da Brapi para calcular Bazin."}
+        return {"error": "Nenhum dado disponível para Bazin."}
     df["Bazin"] = df["DY"].apply(lambda x: x if x >= 0.06 else 0)
     top_bazin = df.sort_values(by="Bazin", ascending=False).head(10)
     return top_bazin.to_dict(orient="records")
 
 @app.get("/ranking/peterlynch")
 def ranking_peterlynch():
-    df = coletar_dados()
+    df = carregar_dados()
     if df.empty:
-        return {"error": "Nenhum dado disponível da Brapi para calcular Peter Lynch."}
+        return {"error": "Nenhum dado disponível para Peter Lynch."}
     def calc_lynch(row):
         pl = row["P/L"]
         crescimento = row["CrescimentoLucro"]
@@ -109,13 +124,14 @@ def ranking_peterlynch():
     df["Lynch"] = df.apply(calc_lynch, axis=1)
     top_lynch = df.sort_values(by="Lynch", ascending=True).head(10)
     return top_lynch.to_dict(orient="records")
+
 @app.get("/health")
 def health():
-    if cache["data"] is None:
-        return {"status": "offline", "msg": "Sem dados no cache"}
-    ultima_atualizacao = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(cache["timestamp"]))
+    df = carregar_dados()
+    if df.empty:
+        return {"status": "offline", "msg": "Sem dados no banco"}
     return {
         "status": "online",
-        "ultima_atualizacao": ultima_atualizacao,
-        "total_registros": len(cache["data"])
+        "ultima_atualizacao": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+        "total_registros": len(df)
     }
