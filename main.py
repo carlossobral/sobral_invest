@@ -353,11 +353,11 @@ def ranking_peterlynch():
     df["Lynch"] = df.apply(calc_lynch, axis=1)
     return df.sort_values(by="Lynch", ascending=True).head(30).to_dict(orient="records")
 
-	@app.get("/ranking/ebitda")
+    @app.get("/ranking/ebitda")
 def ranking_ebitda():
     df = carregar_dados()
     if df.empty or "EBITDA" not in df:
-        return {"msg": "Sem dados válidos para ranking EBITDA."}
+    return {"msg": "Sem dados válidos para ranking EBITDA."}
     df["EBITDA_Milhoes"] = df["EBITDA"] / 1_000_000
     return df.sort_values(by="EBITDA", ascending=False).head(30)[["Ticker","EBITDA_Milhoes"]].to_dict(orient="records")
 
