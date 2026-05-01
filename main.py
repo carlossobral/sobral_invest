@@ -353,7 +353,7 @@ def ranking_peterlynch():
     df["Lynch"] = df.apply(calc_lynch, axis=1)
     return df.sort_values(by="Lynch", ascending=True).head(30).to_dict(orient="records")
 
-    @app.get("/ranking/ebitda")
+@app.get("/ranking/ebitda")
 def ranking_ebitda():
     df = carregar_dados()
     if df.empty or "EBITDA" not in df:
