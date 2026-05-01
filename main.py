@@ -28,35 +28,45 @@ def carregar_dados():
     return df
 
 # Função para coletar dados da Brapi e salvar no banco
-def atualizar_dados(limit=100):
+def atualizar_dados(limit=50):
     url_tickers = f"https://brapi.dev/api/available?token={API_KEY}"
-    resp = requests.get(url_tickers)
-    tickers = resp.json().get("stocks", [])[:limit]
-    dados = []
+    try:
+        resp = requests.get(url_tickers, timeout=10)
+        tickers = resp.json().get("stocks", [])[:limit]
+    except Exception as e:
+        print("Erro ao buscar tickers:", e)
+        return pd.DataFrame()
 
+    dados = []
     for ticker in tickers:
         try:
             url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 info = r.json()
-                fundamentals = info["results"][0]["fundamentals"]
-                dados.append({
-                    "Ticker": ticker,
-                    "DY": fundamentals.get("dividendYield") or 0,
-                    "P/L": fundamentals.get("priceToEarningsRatio") or 0,
-                    "P/VP": fundamentals.get("priceToBookRatio") or 0,
-                    "ROE": fundamentals.get("returnOnEquity") or 0,
-                    "LPA": fundamentals.get("earningsPerShare") or 0,
-                    "VPA": fundamentals.get("bookValuePerShare") or 0,
-                    "CrescimentoLucro": fundamentals.get("earningsGrowth") or 0
-                })
+                if "results" in info and "fundamentals" in info["results"][0]:
+                    fundamentals = info["results"][0]["fundamentals"]
+                    dados.append({
+                        "Ticker": ticker,
+                        "DY": fundamentals.get("dividendYield") or 0,
+                        "P/L": fundamentals.get("priceToEarningsRatio") or 0,
+                        "P/VP": fundamentals.get("priceToBookRatio") or 0,
+                        "ROE": fundamentals.get("returnOnEquity") or 0,
+                        "LPA": fundamentals.get("earningsPerShare") or 0,
+                        "VPA": fundamentals.get("bookValuePerShare") or 0,
+                        "CrescimentoLucro": fundamentals.get("earningsGrowth") or 0
+                    })
+                else:
+                    print(f"Ticker {ticker} sem fundamentals")
         except Exception as e:
             print(f"Erro em {ticker}: {e}")
 
     df = pd.DataFrame(dados)
     if not df.empty:
         salvar_dados(df)
+        print(f"Banco atualizado com {len(df)} registros.")
+    else:
+        print("Nenhum dado coletado.")
     return df
 
 @app.get("/")
