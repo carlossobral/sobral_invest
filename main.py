@@ -193,13 +193,47 @@ def atualizar_dados():
             dados_yf = coletar_yfinance(ticker)
             dados_div = calcular_dividendos_historico(ticker)
             dados_payout = calcular_payout_historico(ticker)
+
             dados = {**dados_fund, **dados_yf, **dados_div, **dados_payout}
             dados["Ticker"] = ticker
+
+            # Padronização de nomes de colunas para os rankings
+            if "Div.Yield" in dados:
+                dados["DY"] = dados.pop("Div.Yield")
+            if "DividendYield" in dados:
+                dados["DY"] = dados.pop("DividendYield")
+
+            if "ReturnOnEquity" in dados:
+                dados["ROE"] = dados.pop("ReturnOnEquity")
+            if "ROE (%)" in dados:
+                dados["ROE"] = dados.pop("ROE (%)")
+
+            if "LucroPorAcao" in dados:
+                dados["LPA"] = dados.pop("LucroPorAcao")
+            if "EPS" in dados:
+                dados["LPA"] = dados.pop("EPS")
+
+            if "ValorPatrimonialPorAcao" in dados:
+                dados["VPA"] = dados.pop("ValorPatrimonialPorAcao")
+            if "BookValuePerShare" in dados:
+                dados["VPA"] = dados.pop("BookValuePerShare")
+
+            if "NetMargin" in dados:
+                dados["MargemLiquida"] = dados.pop("NetMargin")
+
+            if "Revenue" in dados:
+                dados["ReceitaLiquida"] = dados.pop("Revenue")
+
+            if "NetDebt" in dados:
+                dados["DividaLiquida"] = dados.pop("NetDebt")
+
             resultados.append(dados)
             print(f"Coletado {ticker}")
             time.sleep(1)
+
         except Exception as e:
             print(f"Erro ao coletar {ticker}: {e}")
+
     df = pd.DataFrame(resultados)
     sucesso = salvar_dados(df)
     return df if sucesso else pd.DataFrame()
