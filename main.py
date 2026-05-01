@@ -71,7 +71,7 @@ def atualizar_dados(limit=50):
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com SQLite ativo!"}
+    return {"msg": "API Sobral Invest com SQLite ativao!"}
 
 @app.get("/atualizar")
 def atualizar():
