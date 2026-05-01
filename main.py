@@ -3,16 +3,27 @@ import requests
 import pandas as pd
 import math
 import os
+import time
 
 app = FastAPI()
 
-API_KEY = os.getenv("BRAPI_KEY", "MINHA_CHAVE_API")  # configure no Render
+API_KEY = os.getenv("BRAPI_KEY", "MINHA_CHAVE_API")
 
-def coletar_dados(limit=100):
-    """Coleta dados da Brapi com limite de tickers para evitar timeout"""
+# Cache em memória
+cache = {
+    "data": None,
+    "timestamp": 0
+}
+
+def coletar_dados(limit=100, ttl=1800):
+    """Coleta dados da Brapi com cache (ttl em segundos)"""
+    agora = time.time()
+    if cache["data"] is not None and (agora - cache["timestamp"] < ttl):
+        return cache["data"]
+
     url_tickers = f"https://brapi.dev/api/available?token={API_KEY}"
     resp = requests.get(url_tickers)
-    tickers = resp.json().get("stocks", [])[:limit]  # pega só os primeiros N
+    tickers = resp.json().get("stocks", [])[:limit]
     dados = []
 
     for ticker in tickers:
@@ -34,11 +45,15 @@ def coletar_dados(limit=100):
                 })
         except Exception as e:
             print(f"Erro em {ticker}: {e}")
-    return pd.DataFrame(dados)
+
+    df = pd.DataFrame(dados)
+    cache["data"] = df
+    cache["timestamp"] = agora
+    return df
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest online_a!"}
+    return {"msg": "API Sobral Invest com cache ativo!"}
 
 @app.get("/ranking/dy")
 def ranking_dy():
@@ -80,7 +95,7 @@ def ranking_peterlynch():
         crescimento = row["CrescimentoLucro"]
         if crescimento > 0:
             return pl / crescimento
-        return float("inf")  # se não tiver crescimento, joga pro fim
+        return float("inf")
     df["Lynch"] = df.apply(calc_lynch, axis=1)
     top_lynch = df.sort_values(by="Lynch", ascending=True).head(10)
     return top_lynch.to_dict(orient="records")
