@@ -63,7 +63,13 @@ def coletar_fundamentus(ticker):
                 "ROE": pegar_valor("ROE"),
                 "LPA": pegar_valor("LPA"),
                 "VPA": pegar_valor("VPA"),
-                "CrescimentoLucro": pegar_valor("Cres. Rec.")
+                "CrescimentoLucro": pegar_valor("Cres. Rec."),
+                "EBITDA": pegar_valor("EBITDA"),
+                "DividaLiquida": pegar_valor("Dív Líquida"),
+                "ValorMercado": pegar_valor("Valor Mercado"),
+                "ReceitaLiquida": pegar_valor("Receita Líquida"),
+                "MargemLiquida": pegar_valor("Margem Líquida"),
+                "Liquidez": pegar_valor("Liquidez Corr.")
             }
     except Exception as e:
         print(f"Erro Fundamentus {ticker}: {e}")
@@ -80,7 +86,13 @@ def coletar_yfinance(ticker):
             "ROE": info.get("returnOnEquity", 0) or 0,
             "LPA": info.get("earningsPerShare", 0) or 0,
             "VPA": info.get("bookValue", 0) or 0,
-            "CrescimentoLucro": info.get("earningsGrowth", 0) or 0
+            "CrescimentoLucro": info.get("earningsGrowth", 0) or 0,
+            "EBITDA": info.get("ebitda", 0) or 0,
+            "DividaLiquida": info.get("totalDebt", 0) or 0,
+            "ValorMercado": info.get("enterpriseValue", 0) or 0,
+            "ReceitaLiquida": info.get("totalRevenue", 0) or 0,
+            "MargemLiquida": info.get("profitMargins", 0) or 0,
+            "Liquidez": info.get("averageVolume", 0) or 0
         }
     except Exception as e:
         print(f"Erro yfinance {ticker}: {e}")
@@ -101,38 +113,54 @@ def carregar_dados():
     conn.close()
     return df
 
-# --- Atualização ---
+# --- Atualização em lotes ---
 def atualizar_dados():
     dados = []
-    for ticker in TICKERS_FIXOS:
-        fundamentals = {}
-        try:
-            url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                info = r.json()
-                if "results" in info:
-                    fundamentals = info["results"][0].get("fundamentals", {})
-        except Exception as e:
-            print(f"Erro Brapi {ticker}: {e}")
+    for i in range(0, len(TICKERS_FIXOS), 50):  # processa em lotes de 50
+        lote = TICKERS_FIXOS[i:i+50]
+        for ticker in lote:
+            fundamentals = {}
+            try:
+                url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
+                r = requests.get(url, timeout=10)
+                if r.status_code == 200:
+                    info = r.json()
+                    if "results" in info:
+                        fundamentals = info["results"][0].get("fundamentals", {})
+            except Exception as e:
+                print(f"Erro Brapi {ticker}: {e}")
 
-        if not fundamentals:
-            fundamentals = coletar_fundamentus(ticker)
-        if not fundamentals:
-            fundamentals = coletar_yfinance(ticker)
-        if not fundamentals:
-            fundamentals = {"DY":0,"P/L":0,"P/VP":0,"ROE":0,"LPA":0,"VPA":0,"CrescimentoLucro":0}
+            if not fundamentals:
+                fundamentals = coletar_fundamentus(ticker)
+            if not fundamentals:
+                time.sleep(1)  # pausa antes de chamar yfinance
+                fundamentals = coletar_yfinance(ticker)
+            if not fundamentals:
+                fundamentals = {
+                    "DY":0,"P/L":0,"P/VP":0,"ROE":0,"LPA":0,"VPA":0,"CrescimentoLucro":0,
+                    "EBITDA":0,"DividaLiquida":0,"ValorMercado":0,"ReceitaLiquida":0,
+                    "MargemLiquida":0,"Liquidez":0
+                }
 
-        dados.append({
-            "Ticker": ticker,
-            "DY": fundamentals.get("DY", 0),
-            "P/L": fundamentals.get("P/L", 0),
-            "P/VP": fundamentals.get("P/VP", 0),
-            "ROE": fundamentals.get("ROE", 0),
-            "LPA": fundamentals.get("LPA", 0),
-            "VPA": fundamentals.get("VPA", 0),
-            "CrescimentoLucro": fundamentals.get("CrescimentoLucro", 0)
-        })
+            dados.append({
+                "Ticker": ticker,
+                "DY": fundamentals.get("DY", 0),
+                "P/L": fundamentals.get("P/L", 0),
+                "P/VP": fundamentals.get("P/VP", 0),
+                "ROE": fundamentals.get("ROE", 0),
+                "LPA": fundamentals.get("LPA", 0),
+                "VPA": fundamentals.get("VPA", 0),
+                "CrescimentoLucro": fundamentals.get("CrescimentoLucro", 0),
+                "EBITDA": fundamentals.get("EBITDA", 0),
+                "DividaLiquida": fundamentals.get("DividaLiquida", 0),
+                "ValorMercado": fundamentals.get("ValorMercado", 0),
+                "ReceitaLiquida": fundamentals.get("ReceitaLiquida", 0),
+                "MargemLiquida": fundamentals.get("MargemLiquida", 0),
+                "Liquidez": fundamentals.get("Liquidez", 0)
+            })
+
+        print(f"Lote {i//50+1} atualizado com {len(lote)} ativos.")
+        time.sleep(2)  # pausa entre lotes
 
     df = pd.DataFrame(dados)
     if not df.empty:
@@ -141,6 +169,7 @@ def atualizar_dados():
     else:
         print("Nenhum dado coletado.")
     return df
+# III PARTE
 @app.get("/")
 def home():
     return {"msg": "API Sobral Invest com SQLite ativo!"}
@@ -149,7 +178,7 @@ def home():
 def atualizar():
     df = atualizar_dados()
     if df.empty:
-        return {"error": "Não foi possível atualizar dados da Brapi/Fundamentus/Yahoo."}
+        return {"error": "Não foi possível atualizar dados."}
     return {"msg": f"Dados atualizados com {len(df)} registros."}
 
 @app.get("/ranking/dy")
@@ -202,6 +231,49 @@ def ranking_peterlynch():
     df["Lynch"] = df.apply(calc_lynch, axis=1)
     return df.sort_values(by="Lynch", ascending=True).head(10).to_dict(orient="records")
 
+# --- Novos rankings ---
+@app.get("/ranking/ebitda")
+def ranking_ebitda():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para EBITDA."}
+    return df.sort_values(by="EBITDA", ascending=False).head(10).to_dict(orient="records")
+
+@app.get("/ranking/valor_mercado")
+def ranking_valor_mercado():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para Valor de Mercado."}
+    return df.sort_values(by="ValorMercado", ascending=False).head(10).to_dict(orient="records")
+
+@app.get("/ranking/margem_liquida")
+def ranking_margem_liquida():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para Margem Líquida."}
+    return df.sort_values(by="MargemLiquida", ascending=False).head(10).to_dict(orient="records")
+
+@app.get("/ranking/receita_liquida")
+def ranking_receita_liquida():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para Receita Líquida."}
+    return df.sort_values(by="ReceitaLiquida", ascending=False).head(10).to_dict(orient="records")
+
+@app.get("/ranking/divida_liquida")
+def ranking_divida_liquida():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para Dívida Líquida."}
+    return df.sort_values(by="DividaLiquida", ascending=True).head(10).to_dict(orient="records")
+
+@app.get("/ranking/liquidez")
+def ranking_liquidez():
+    df = carregar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível para Liquidez."}
+    return df.sort_values(by="Liquidez", ascending=False).head(10).to_dict(orient="records")
+
 @app.get("/health")
 def health():
     df = carregar_dados()
@@ -212,3 +284,4 @@ def health():
         "ultima_atualizacao": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
         "total_registros": len(df)
     }
+
