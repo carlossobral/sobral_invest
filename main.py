@@ -5,19 +5,18 @@ import math
 import os
 import time
 import sqlite3
+import random
 
 app = FastAPI()
 
 API_KEY = "esWXsXKkdh45gTmhS33aNK"  # sua chave da Brapi
 DB_NAME = "dados.db"
 
-# Função para salvar dados no SQLite
 def salvar_dados(df):
     conn = sqlite3.connect(DB_NAME)
     df.to_sql("acoes", conn, if_exists="replace", index=False)
     conn.close()
 
-# Função para carregar dados do SQLite
 def carregar_dados():
     conn = sqlite3.connect(DB_NAME)
     try:
@@ -27,18 +26,19 @@ def carregar_dados():
     conn.close()
     return df
 
-# Função para coletar dados da Brapi e salvar no banco
 def atualizar_dados(limit=20):
     url_tickers = f"https://brapi.dev/api/available?token={API_KEY}"
     try:
         resp = requests.get(url_tickers, timeout=10)
-        tickers = resp.json().get("stocks", [])[:limit]
+        tickers = resp.json().get("stocks", [])
+        # embaralha e seleciona aleatoriamente
+        selecionados = random.sample(tickers, min(limit, len(tickers)))
     except Exception as e:
         print("Erro ao buscar tickers:", e)
         return pd.DataFrame()
 
     dados = []
-    for ticker in tickers:
+    for ticker in selecionados:
         try:
             url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
             r = requests.get(url, timeout=10)
@@ -77,7 +77,7 @@ def atualizar_dados(limit=20):
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com SQLite ativo!"}
+    return {"msg": "API Sobral Invest com SQLite ativo_!"}
 
 @app.get("/atualizar")
 def atualizar():
