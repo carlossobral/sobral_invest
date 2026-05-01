@@ -23,7 +23,7 @@ def coletar_dados(limit=100, ttl=3600):
 
     url_tickers = f"https://brapi.dev/api/available?token={API_KEY}"
     resp = requests.get(url_tickers)
-    tickers = resp.json().get("stocks", [])[:limit]  # limite para evitar timeout
+    tickers = resp.json().get("stocks", [])[:limit]
     dados = []
 
     for ticker in tickers:
@@ -53,23 +53,29 @@ def coletar_dados(limit=100, ttl=3600):
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com cache ativo_a!"}
+    return {"msg": "API Sobral Invest com cache ativo!"}
 
 @app.get("/ranking/dy")
 def ranking_dy():
     df = coletar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível da Brapi para calcular Dividend Yield."}
     top_dy = df.sort_values(by="DY", ascending=False).head(10)
     return top_dy.to_dict(orient="records")
 
 @app.get("/ranking/roe")
 def ranking_roe():
     df = coletar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível da Brapi para calcular ROE."}
     top_roe = df.sort_values(by="ROE", ascending=False).head(10)
     return top_roe.to_dict(orient="records")
 
 @app.get("/ranking/graham")
 def ranking_graham():
     df = coletar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível da Brapi para calcular Graham."}
     def calc_graham(row):
         lpa = row["LPA"]
         vpa = row["VPA"]
@@ -83,6 +89,8 @@ def ranking_graham():
 @app.get("/ranking/bazin")
 def ranking_bazin():
     df = coletar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível da Brapi para calcular Bazin."}
     df["Bazin"] = df["DY"].apply(lambda x: x if x >= 0.06 else 0)
     top_bazin = df.sort_values(by="Bazin", ascending=False).head(10)
     return top_bazin.to_dict(orient="records")
@@ -90,6 +98,8 @@ def ranking_bazin():
 @app.get("/ranking/peterlynch")
 def ranking_peterlynch():
     df = coletar_dados()
+    if df.empty:
+        return {"error": "Nenhum dado disponível da Brapi para calcular Peter Lynch."}
     def calc_lynch(row):
         pl = row["P/L"]
         crescimento = row["CrescimentoLucro"]
