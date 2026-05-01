@@ -44,74 +44,57 @@ TICKERS_FIXOS = [
 ]
 # Helper para respostas seguras
 def resposta_segura(ticker, dados, tipo="indicadores"):
+    """
+    Retorna resposta segura para endpoints.
+    Se não houver dados válidos, devolve mensagem clara em vez de zeros.
+    """
     if not dados or all(v == 0 or v is None for v in dados.values()):
         return {"Ticker": ticker.upper(), "msg": f"Sem dados válidos para {tipo}."}
     return {"Ticker": ticker.upper(), **dados}
 ##PARTE2a
 def coletar_fundamentus(ticker):
     try:
-        url = f"http://fundamentus.com.br/detalhes.php?papel={ticker}"
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.text, "html.parser")
-            def pegar_valor(label):
-                el = soup.find(text=label)
-                if el:
-                    val = el.find_next("td").text.strip().replace(",", ".")
-                    try:
-                        return float(val)
-                    except:
-                        return 0
-                return 0
-            return {
-                "DY": pegar_valor("Div.Yield"),
-                "P/L": pegar_valor("P/L"),
-                "P/VP": pegar_valor("P/VP"),
-                "ROE": pegar_valor("ROE"),
-                "LPA": pegar_valor("LPA"),
-                "VPA": pegar_valor("VPA"),
-                "CrescimentoLucro": pegar_valor("Cres. Rec."),
-                "EBITDA": pegar_valor("EBITDA"),
-                "DividaLiquida": pegar_valor("Dív Líquida"),
-                "ValorMercado": pegar_valor("Valor Mercado"),
-                "ReceitaLiquida": pegar_valor("Receita Líquida"),
-                "MargemLiquida": pegar_valor("Margem Líquida"),
-                "Liquidez": pegar_valor("Liquidez Corr.")
-            }
+        url = f"https://fundamentus.com.br/detalhes.php?papel={ticker}"
+        r = requests.get(url)
+        soup = BeautifulSoup(r.text, "html.parser")
+        dados = {}
+        # Exemplo de coleta: P/L, ROE, DY
+        for linha in soup.find_all("tr"):
+            cols = linha.find_all("td")
+            if len(cols) == 2:
+                chave = cols[0].text.strip()
+                valor = cols[1].text.strip().replace(",", ".").replace("%", "")
+                try:
+                    dados[chave] = float(valor)
+                except:
+                    dados[chave] = valor
+        return dados
     except Exception as e:
-        print(f"Erro Fundamentus {ticker}: {e}")
-    return {}
+        print(f"Erro ao coletar Fundamentus {ticker}: {e}")
+        return {}
 
 def coletar_yfinance(ticker):
     try:
         yf_ticker = yf.Ticker(f"{ticker}.SA")
         info = yf_ticker.info
-        return {
-            "DY": info.get("dividendYield", 0) or 0,
-            "P/L": info.get("forwardPE", 0) or 0,
-            "P/VP": info.get("priceToBook", 0) or 0,
-            "ROE": info.get("returnOnEquity", 0) or 0,
-            "LPA": info.get("earningsPerShare", 0) or 0,
-            "VPA": info.get("bookValue", 0) or 0,
-            "CrescimentoLucro": info.get("earningsGrowth", 0) or 0,
-            "EBITDA": info.get("ebitda", 0) or 0,
-            "DividaLiquida": info.get("totalDebt", 0) or 0,
-            "ValorMercado": info.get("enterpriseValue", 0) or 0,
-            "ReceitaLiquida": info.get("totalRevenue", 0) or 0,
-            "MargemLiquida": info.get("profitMargins", 0) or 0,
-            "Liquidez": info.get("averageVolume", 0) or 0
+        dados = {
+            "Setor": info.get("sector", ""),
+            "Subsetor": info.get("industry", ""),
+            "ValorMercado": info.get("marketCap", 0),
+            "EBITDA": info.get("ebitda", 0),
+            "Liquidez": info.get("averageVolume", 0),
         }
+        return dados
     except Exception as e:
-        print(f"Erro yfinance {ticker}: {e}")
-    return {}
-## parte2b
+        print(f"Erro ao coletar yfinance {ticker}: {e}")
+        return {}
+
 def calcular_dividendos_historico(ticker, anos=6):
     try:
         yf_ticker = yf.Ticker(f"{ticker}.SA")
         dividends = yf_ticker.dividends
         history = yf_ticker.history(period=f"{anos}y")
 
-        # Corrigir timezone
         if hasattr(dividends.index, "tz"):
             dividends.index = dividends.index.tz_localize(None)
         if hasattr(history.index, "tz"):
@@ -183,32 +166,15 @@ def calcular_payout_historico(ticker, anos=6):
     except Exception as e:
         print(f"Erro payout histórico {ticker}: {e}")
         return {}
-##parte2c
-def buscar_agenda_dividendos(ticker):
-    try:
-        url = f"https://brapi.dev/api/quote/{ticker}?dividends=true&token={API_KEY}"
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            info = r.json()
-            if "results" in info and "dividendsData" in info["results"][0]:
-                agenda = info["results"][0]["dividendsData"]
-                dados = []
-                for item in agenda:
-                    dados.append({
-                        "DataCom": item.get("dateWith", ""),
-                        "DataEx": item.get("dateWithout", ""),
-                        "DataPagamento": item.get("paymentDate", ""),
-                        "ValorPorAcao": item.get("value", 0)
-                    })
-                return dados
-    except Exception as e:
-        print(f"Erro agenda dividendos {ticker}: {e}")
-    return []
 
 def salvar_dados(df):
+    if df.empty:
+        print("Nenhum dado coletado, não salvando no banco.")
+        return False
     conn = sqlite3.connect(DB_NAME)
     df.to_sql("acoes", conn, if_exists="replace", index=False)
     conn.close()
+    return True
 
 def carregar_dados():
     conn = sqlite3.connect(DB_NAME)
@@ -220,30 +186,24 @@ def carregar_dados():
     return df
 
 def atualizar_dados():
-    dados = []
-    for i in range(0, len(TICKERS_FIXOS), 50):
-        lote = TICKERS_FIXOS[i:i+50]
-        for ticker in lote:
-            fundamentals = coletar_fundamentus(ticker)
-            if not fundamentals:
-                time.sleep(1)
-                fundamentals = coletar_yfinance(ticker)
-            if not fundamentals:
-                fundamentals = {
-                    "DY":0,"P/L":0,"P/VP":0,"ROE":0,"LPA":0,"VPA":0,"CrescimentoLucro":0,
-                    "EBITDA":0,"DividaLiquida":0,"ValorMercado":0,"ReceitaLiquida":0,
-                    "MargemLiquida":0,"Liquidez":0
-                }
-            div_hist = calcular_dividendos_historico(ticker)
-            payout_hist = calcular_payout_historico(ticker)
-            dados.append({"Ticker": ticker, **fundamentals, **div_hist, **payout_hist})
-        print(f"Lote {i//50+1} atualizado com {len(lote)} ativos.")
-        time.sleep(2)
-    df = pd.DataFrame(dados)
-    if not df.empty:
-        salvar_dados(df)
-        print(f"Banco atualizado com {len(df)} registros.")
-    return df
+    resultados = []
+    for ticker in TICKERS_FIXOS:
+        try:
+            dados_fund = coletar_fundamentus(ticker)
+            dados_yf = coletar_yfinance(ticker)
+            dados_div = calcular_dividendos_historico(ticker)
+            dados_payout = calcular_payout_historico(ticker)
+            dados = {**dados_fund, **dados_yf, **dados_div, **dados_payout}
+            dados["Ticker"] = ticker
+            resultados.append(dados)
+            print(f"Coletado {ticker}")
+            time.sleep(1)
+        except Exception as e:
+            print(f"Erro ao coletar {ticker}: {e}")
+    df = pd.DataFrame(resultados)
+    sucesso = salvar_dados(df)
+    return df if sucesso else pd.DataFrame()
+
 ##parte3
 # Endpoint raiz
 @app.get("/")
@@ -276,7 +236,6 @@ def home():
         }
     }
 
-# Endpoint indicadores gerais
 @app.get("/acao/{ticker}")
 def buscar_acao(ticker: str):
     df = carregar_dados()
@@ -284,78 +243,157 @@ def buscar_acao(ticker: str):
     dados = df[df["Ticker"] == ticker]
     if not dados.empty:
         registro = dados.to_dict(orient="records")[0]
-        registro["PrecoAtual"] = preco_atual(ticker)
         return resposta_segura(ticker, registro, tipo="indicadores")
     return {"error": f"Ação {ticker} não encontrada."}
 
-# Endpoint dividendos
 @app.get("/acao/{ticker}/dividendos")
 def dividendos_acao(ticker: str):
     resultados = calcular_dividendos_historico(ticker)
     return resposta_segura(ticker, resultados, tipo="dividendos")
 
-# Endpoint payout
 @app.get("/acao/{ticker}/payout")
 def payout_acao(ticker: str):
     resultados = calcular_payout_historico(ticker)
     return resposta_segura(ticker, resultados, tipo="payout")
 
-# Endpoint agenda de dividendos
 @app.get("/acao/{ticker}/agenda_dividendos")
 def agenda_dividendos(ticker: str):
-    resultados = buscar_agenda_dividendos(ticker)
+    # Se você tiver função buscar_agenda_dividendos implementada
+    try:
+        resultados = buscar_agenda_dividendos(ticker)
+    except:
+        resultados = {}
     if not resultados:
         return {"Ticker": ticker.upper(), "msg": "Sem dados válidos para agenda de dividendos."}
     return {"Ticker": ticker.upper(), "AgendaDividendos": resultados}
 
-##parte4
+@app.get("/atualizar")
+def atualizar():
+    df = atualizar_dados()
+    if df.empty:
+        return {"msg": "Falha ao atualizar, nenhum dado coletado."}
+    return {"msg": f"Dados atualizados com sucesso ({len(df)} ativos)."}
+##4parte
+@app.get("/ranking/dy")
+def ranking_dy():
+    df = carregar_dados()
+    if df.empty or "DY" not in df or df["DY"].sum() == 0:
+        return {"msg": "Sem dados válidos para ranking DY."}
+    return df.sort_values(by="DY", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/roe")
+def ranking_roe():
+    df = carregar_dados()
+    if df.empty or "ROE" not in df or df["ROE"].sum() == 0:
+        return {"msg": "Sem dados válidos para ranking ROE."}
+    return df.sort_values(by="ROE", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/graham")
+def ranking_graham():
+    df = carregar_dados()
+    if df.empty or "LPA" not in df or "VPA" not in df:
+        return {"msg": "Sem dados válidos para ranking Graham."}
+    df["Graham"] = df.apply(
+        lambda row: math.sqrt(22.5 * row["LPA"] * row["VPA"]) if row["LPA"] > 0 and row["VPA"] > 0 else 0,
+        axis=1
+    )
+    return df.sort_values(by="Graham", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/bazin")
+def ranking_bazin():
+    df = carregar_dados()
+    if df.empty or "DY" not in df:
+        return {"msg": "Sem dados válidos para ranking Bazin."}
+    df["Bazin"] = df["DY"].apply(lambda x: x if x >= 6 else 0)
+    return df.sort_values(by="Bazin", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/peterlynch")
+def ranking_peterlynch():
+    df = carregar_dados()
+    if df.empty or "P/L" not in df or "CrescimentoLucro" not in df:
+        return {"msg": "Sem dados válidos para ranking Peter Lynch."}
+    def calc_lynch(row):
+        pl = row["P/L"]
+        crescimento = row["CrescimentoLucro"]
+        return pl / crescimento if crescimento > 0 else float("inf")
+    df["Lynch"] = df.apply(calc_lynch, axis=1)
+    return df.sort_values(by="Lynch", ascending=True).head(30).to_dict(orient="records")
+
+@app.get("/ranking/ebitda")
+def ranking_ebitda():
+    df = carregar_dados()
+    if df.empty or "EBITDA" not in df or df["EBITDA"].sum() == 0:
+        return {"msg": "Sem dados válidos para ranking EBITDA."}
+    return df.sort_values(by="EBITDA", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/valor_mercado")
+def ranking_valor_mercado():
+    df = carregar_dados()
+    if df.empty or "ValorMercado" not in df or df["ValorMercado"].sum() == 0:
+        return {"msg": "Sem dados válidos para ranking Valor de Mercado."}
+    return df.sort_values(by="ValorMercado", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/margem_liquida")
+def ranking_margem_liquida():
+    df = carregar_dados()
+    if df.empty or "MargemLiquida" not in df or df["MargemLiquida"].sum() == 0:
+        return {"msg": "Sem dados válidos para ranking Margem Líquida."}
+    return df.sort_values(by="MargemLiquida", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/receita_liquida")
+def ranking_receita_liquida():
+    df = carregar_dados()
+    if df.empty or "ReceitaLiquida" not in df or df["ReceitaLiquida"].sum() == 0:
+        return {"msg": "Sem dados válidos para ranking Receita Líquida."}
+    return df.sort_values(by="ReceitaLiquida", ascending=False).head(30).to_dict(orient="records")
+
 @app.get("/ranking/divida_liquida")
 def ranking_divida_liquida():
     df = carregar_dados()
-    if df.empty or df["DividaLiquida"].sum() == 0:
+    if df.empty or "DividaLiquida" not in df or df["DividaLiquida"].sum() == 0:
         return {"msg": "Sem dados válidos para ranking Dívida Líquida."}
     return df.sort_values(by="DividaLiquida", ascending=True).head(30).to_dict(orient="records")
 
 @app.get("/ranking/liquidez")
 def ranking_liquidez():
     df = carregar_dados()
-    if df.empty or df["Liquidez"].sum() == 0:
+    if df.empty or "Liquidez" not in df or df["Liquidez"].sum() == 0:
         return {"msg": "Sem dados válidos para ranking Liquidez."}
     return df.sort_values(by="Liquidez", ascending=False).head(30).to_dict(orient="records")
 
 @app.get("/ranking/dy_consistente")
 def ranking_dy_consistente(periodo: int = 3):
     df = carregar_dados()
-    if df.empty or periodo not in [3,5]:
-        return {"msg":"Sem dados válidos para ranking DY Consistente."}
-    colunas = [f"DY_{i}A" for i in range(1, periodo+1)]
+    if df.empty or periodo not in [3, 5]:
+        return {"msg": "Sem dados válidos para ranking DY Consistente."}
+    colunas = [f"DY_{i}A" for i in range(1, periodo+1) if f"DY_{i}A" in df]
+    if not colunas:
+        return {"msg": "Sem dados válidos para ranking DY Consistente."}
     df["DYConsistente"] = df[colunas].mean(axis=1)
-    if df["DYConsistente"].sum() == 0:
-        return {"msg":"Sem dados válidos para ranking DY Consistente."}
     return df.sort_values(by="DYConsistente", ascending=False).head(30).to_dict(orient="records")
 
 @app.get("/ranking/payout_consistente")
 def ranking_payout_consistente(periodo: int = 3):
     df = carregar_dados()
-    if df.empty or periodo not in [3,5]:
-        return {"msg":"Sem dados válidos para ranking Payout Consistente."}
-    colunas = [f"Payout_{i}A" for i in range(1, periodo+1)]
+    if df.empty or periodo not in [3, 5]:
+        return {"msg": "Sem dados válidos para ranking Payout Consistente."}
+    colunas = [f"Payout_{i}A" for i in range(1, periodo+1) if f"Payout_{i}A" in df]
+    if not colunas:
+        return {"msg": "Sem dados válidos para ranking Payout Consistente."}
     df["PayoutConsistente"] = df[colunas].mean(axis=1)
-    if df["PayoutConsistente"].sum() == 0:
-        return {"msg":"Sem dados válidos para ranking Payout Consistente."}
     return df.sort_values(by="PayoutConsistente", ascending=False).head(30).to_dict(orient="records")
 
 @app.get("/ranking/consistente")
 def ranking_consistente(periodo: int = 3):
     df = carregar_dados()
-    if df.empty or periodo not in [3,5]:
-        return {"msg":"Sem dados válidos para ranking Consistente."}
-    colunas_dy = [f"DY_{i}A" for i in range(1, periodo+1)]
-    colunas_payout = [f"Payout_{i}A" for i in range(1, periodo+1)]
+    if df.empty or periodo not in [3, 5]:
+        return {"msg": "Sem dados válidos para ranking Consistente."}
+    colunas_dy = [f"DY_{i}A" for i in range(1, periodo+1) if f"DY_{i}A" in df]
+    colunas_payout = [f"Payout_{i}A" for i in range(1, periodo+1) if f"Payout_{i}A" in df]
+    if not colunas_dy or not colunas_payout:
+        return {"msg": "Sem dados válidos para ranking Consistente."}
     df["DYConsistente"] = df[colunas_dy].mean(axis=1)
     df["PayoutConsistente"] = df[colunas_payout].mean(axis=1)
     df["ConsistenciaTotal"] = (df["DYConsistente"] + df["PayoutConsistente"]) / 2
-    if df["ConsistenciaTotal"].sum() == 0:
-        return {"msg":"Sem dados válidos para ranking Consistente."}
     return df.sort_values(by="ConsistenciaTotal", ascending=False).head(30).to_dict(orient="records")
 
