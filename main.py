@@ -53,7 +53,7 @@ def coletar_dados(limit=100, ttl=3600):
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com cache ativo!"}
+    return {"msg": "API Sobral Invest com cache ativoa!"}
 
 @app.get("/ranking/dy")
 def ranking_dy():
@@ -109,3 +109,13 @@ def ranking_peterlynch():
     df["Lynch"] = df.apply(calc_lynch, axis=1)
     top_lynch = df.sort_values(by="Lynch", ascending=True).head(10)
     return top_lynch.to_dict(orient="records")
+@app.get("/health")
+def health():
+    if cache["data"] is None:
+        return {"status": "offline", "msg": "Sem dados no cache"}
+    ultima_atualizacao = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(cache["timestamp"]))
+    return {
+        "status": "online",
+        "ultima_atualizacao": ultima_atualizacao,
+        "total_registros": len(cache["data"])
+    }
