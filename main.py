@@ -1,16 +1,18 @@
-from fastapi import FastAPI
 import requests
 import pandas as pd
-import math
-import time
 import sqlite3
-from bs4 import BeautifulSoup
+import time
+import math
 import yfinance as yf
+from bs4 import BeautifulSoup
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+import io
 
 app = FastAPI()
 
-API_KEY = "esWXsXKkdh45gTmhS33aNK"
-DB_NAME = "dados.db"
+DB_NAME = "acoes.db"
+API_KEY = "SUA_CHAVE_BRAPI"
 
 # Lista fixa de ativos (sua lista completa)
 TICKERS_FIXOS = [
@@ -40,8 +42,9 @@ TICKERS_FIXOS = [
     "USIM5","VALE3","VAMO3","VBBR3","VITT3","VIVA3","VIVR3","VIVT3","VLID3","VSTE3",
     "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
-# --- Funções auxiliares ---
+##parte 2
 def coletar_fundamentus(ticker):
+    # coleta simplificada do Fundamentus
     try:
         url = f"http://fundamentus.com.br/detalhes.php?papel={ticker}"
         r = requests.get(url, timeout=10)
@@ -98,7 +101,35 @@ def coletar_yfinance(ticker):
         print(f"Erro yfinance {ticker}: {e}")
     return {}
 
-# --- Banco ---
+def calcular_dividendos_historico(ticker, anos=6):
+    try:
+        yf_ticker = yf.Ticker(f"{ticker}.SA")
+        dividends = yf_ticker.dividends
+        history = yf_ticker.history(period=f"{anos}y")
+
+        resultados = {}
+        ano_atual = pd.Timestamp.today().year
+
+        for i in range(1, anos+1):
+            ano = ano_atual - i
+            div_ano = dividends[dividends.index.year == ano].sum()
+            preco_medio = history[history.index.year == ano]["Close"].mean()
+            dy = (div_ano / preco_medio * 100) if preco_medio > 0 else 0
+            resultados[f"DY_{i}A"] = round(dy, 2)
+            resultados[f"Div_{i}A"] = round(div_ano, 2)
+
+        # Últimos 12 meses
+        ultimos_12m = dividends[dividends.index >= pd.Timestamp.today() - pd.DateOffset(years=1)].sum()
+        preco_medio_12m = history[history.index >= pd.Timestamp.today() - pd.DateOffset(years=1)]["Close"].mean()
+        dy_12m = (ultimos_12m / preco_medio_12m * 100) if preco_medio_12m > 0 else 0
+        resultados["DY_12M"] = round(dy_12m, 2)
+        resultados["Div_12M"] = round(ultimos_12m, 2)
+
+        return resultados
+    except Exception as e:
+        print(f"Erro dividendos histórico {ticker}: {e}")
+        return {}
+
 def salvar_dados(df):
     conn = sqlite3.connect(DB_NAME)
     df.to_sql("acoes", conn, if_exists="replace", index=False)
@@ -113,63 +144,29 @@ def carregar_dados():
     conn.close()
     return df
 
-# --- Atualização em lotes ---
 def atualizar_dados():
     dados = []
-    for i in range(0, len(TICKERS_FIXOS), 50):  # processa em lotes de 50
+    for i in range(0, len(TICKERS_FIXOS), 50):
         lote = TICKERS_FIXOS[i:i+50]
         for ticker in lote:
-            fundamentals = {}
-            try:
-                url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
-                r = requests.get(url, timeout=10)
-                if r.status_code == 200:
-                    info = r.json()
-                    if "results" in info:
-                        fundamentals = info["results"][0].get("fundamentals", {})
-            except Exception as e:
-                print(f"Erro Brapi {ticker}: {e}")
-
+            fundamentals = coletar_fundamentus(ticker)
             if not fundamentals:
-                fundamentals = coletar_fundamentus(ticker)
-            if not fundamentals:
-                time.sleep(1)  # pausa antes de chamar yfinance
+                time.sleep(1)
                 fundamentals = coletar_yfinance(ticker)
             if not fundamentals:
-                fundamentals = {
-                    "DY":0,"P/L":0,"P/VP":0,"ROE":0,"LPA":0,"VPA":0,"CrescimentoLucro":0,
-                    "EBITDA":0,"DividaLiquida":0,"ValorMercado":0,"ReceitaLiquida":0,
-                    "MargemLiquida":0,"Liquidez":0
-                }
-
-            dados.append({
-                "Ticker": ticker,
-                "DY": fundamentals.get("DY", 0),
-                "P/L": fundamentals.get("P/L", 0),
-                "P/VP": fundamentals.get("P/VP", 0),
-                "ROE": fundamentals.get("ROE", 0),
-                "LPA": fundamentals.get("LPA", 0),
-                "VPA": fundamentals.get("VPA", 0),
-                "CrescimentoLucro": fundamentals.get("CrescimentoLucro", 0),
-                "EBITDA": fundamentals.get("EBITDA", 0),
-                "DividaLiquida": fundamentals.get("DividaLiquida", 0),
-                "ValorMercado": fundamentals.get("ValorMercado", 0),
-                "ReceitaLiquida": fundamentals.get("ReceitaLiquida", 0),
-                "MargemLiquida": fundamentals.get("MargemLiquida", 0),
-                "Liquidez": fundamentals.get("Liquidez", 0)
-            })
-
+                fundamentals = {"DY":0,"P/L":0,"P/VP":0,"ROE":0,"LPA":0,"VPA":0,"CrescimentoLucro":0,
+                                "EBITDA":0,"DividaLiquida":0,"ValorMercado":0,"ReceitaLiquida":0,
+                                "MargemLiquida":0,"Liquidez":0}
+            div_hist = calcular_dividendos_historico(ticker)
+            dados.append({"Ticker": ticker, **fundamentals, **div_hist})
         print(f"Lote {i//50+1} atualizado com {len(lote)} ativos.")
-        time.sleep(2)  # pausa entre lotes
-
+        time.sleep(2)
     df = pd.DataFrame(dados)
     if not df.empty:
         salvar_dados(df)
         print(f"Banco atualizado com {len(df)} registros.")
-    else:
-        print("Nenhum dado coletado.")
     return df
-# III PARTE
+##parte 3
 @app.get("/")
 def home():
     return {"msg": "API Sobral Invest com SQLite ativo!"}
@@ -177,141 +174,108 @@ def home():
 @app.get("/atualizar")
 def atualizar():
     df = atualizar_dados()
-    if df.empty:
-        return {"error": "Não foi possível atualizar dados."}
-    return {"msg": f"Dados atualizados com {len(df)} registros."}
-
-@app.get("/ranking/dy")
-def ranking_dy():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Dividend Yield."}
-    return df.sort_values(by="DY", ascending=False).head(10).to_dict(orient="records")
-
-@app.get("/ranking/roe")
-def ranking_roe():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para ROE."}
-    return df.sort_values(by="ROE", ascending=False).head(10).to_dict(orient="records")
-
-@app.get("/ranking/graham")
-def ranking_graham():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Graham."}
-    def calc_graham(row):
-        lpa = row["LPA"]
-        vpa = row["VPA"]
-        if lpa > 0 and vpa > 0:
-            return math.sqrt(22.5 * lpa * vpa)
-        return 0
-    df["Graham"] = df.apply(calc_graham, axis=1)
-    return df.sort_values(by="Graham", ascending=False).head(10).to_dict(orient="records")
-
-@app.get("/ranking/bazin")
-def ranking_bazin():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Bazin."}
-    df["Bazin"] = df["DY"].apply(lambda x: x if x >= 0.06 else 0)
-    return df.sort_values(by="Bazin", ascending=False).head(10).to_dict(orient="records")
-
-@app.get("/ranking/peterlynch")
-def ranking_peterlynch():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Peter Lynch."}
-    def calc_lynch(row):
-        pl = row["P/L"]
-        crescimento = row["CrescimentoLucro"]
-        if crescimento > 0:
-            return pl / crescimento
-        return float("inf")
-    df["Lynch"] = df.apply(calc_lynch, axis=1)
-    return df.sort_values(by="Lynch", ascending=True).head(10).to_dict(orient="records")
-
-# --- Novos rankings ---
-@app.get("/ranking/ebitda")
-def ranking_ebitda():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para EBITDA."}
-    return df.sort_values(by="EBITDA", ascending=False).head(10).to_dict(orient="records")
-
-@app.get("/ranking/valor_mercado")
-def ranking_valor_mercado():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Valor de Mercado."}
-    return df.sort_values(by="ValorMercado", ascending=False).head(10).to_dict(orient="records")
-
-@app.get("/ranking/margem_liquida")
-def ranking_margem_liquida():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Margem Líquida."}
-    return df.sort_values(by="MargemLiquida", ascending=False).head(10).to_dict(orient="records")
-
-@app.get("/ranking/receita_liquida")
-def ranking_receita_liquida():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Receita Líquida."}
-    return df.sort_values(by="ReceitaLiquida", ascending=False).head(10).to_dict(orient="records")
-
-@app.get("/ranking/divida_liquida")
-def ranking_divida_liquida():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Dívida Líquida."}
-    return df.sort_values(by="DividaLiquida", ascending=True).head(10).to_dict(orient="records")
-
-@app.get("/ranking/liquidez")
-def ranking_liquidez():
-    df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para Liquidez."}
-    return df.sort_values(by="Liquidez", ascending=False).head(10).to_dict(orient="records")
+    return {"msg": f"Dados atualizados com {len(df)} registros."} if not df.empty else {"error": "Não foi possível atualizar dados."}
 
 @app.get("/acao/{ticker}")
 def buscar_acao(ticker: str):
     df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível no banco."}
-    # Normaliza para maiúsculo
     ticker = ticker.upper()
     dados = df[df["Ticker"] == ticker]
-    if dados.empty:
-        return {"error": f"Ação {ticker} não encontrada."}
-    return dados.to_dict(orient="records")[0]
+    return dados.to_dict(orient="records")[0] if not dados.empty else {"error": f"Ação {ticker} não encontrada."}
 
-
-@app.get("/health")
-def health():
+@app.get("/acao/{ticker}/dividendos")
+def dividendos_acao(ticker: str):
+    resultados = calcular_dividendos_historico(ticker)
+    return {"Ticker": ticker.upper(), **resultados}
+##4 parte
+@app.get("/ranking/dy")
+def ranking_dy():
     df = carregar_dados()
-    if df.empty:
-        return {"status": "offline", "msg": "Sem dados no banco"}
-    return {
-        "status": "online",
-        "ultima_atualizacao": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-        "total_registros": len(df)
-    }
-#parte 4
-from fastapi.responses import StreamingResponse
-import io
+    return df.sort_values(by="DY", ascending=False).head(30).to_dict(orient="records")
 
-@app.get("/export/csv")
-def export_csv():
+@app.get("/ranking/roe")
+def ranking_roe():
     df = carregar_dados()
-    if df.empty:
-        return {"error": "Nenhum dado disponível para exportação."}
+    return df.sort_values(by="ROE", ascending=False).head(30).to_dict(orient="records")
 
-    output = io.StringIO()
-    df.to_csv(output, index=False)
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=acoes.csv"}
-    )
+@app.get("/ranking/graham")
+def ranking_graham():
+    df = carregar_dados()
+    df["Graham"] = df.apply(lambda row: math.sqrt(22.5*row["LPA"]*row["VPA"]) if row["LPA"]>0 and row["VPA"]>0 else 0, axis=1)
+    return df.sort_values(by="Graham", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/bazin")
+def ranking_bazin():
+    df = carregar_dados()
+    df["Bazin"] = df["DY"].apply(lambda x: x if x >= 6 else 0)
+    return df.sort_values(by="Bazin", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/peterlynch")
+def ranking_peterlynch():
+    df = carregar_dados()
+    def calc_lynch(row):
+        pl = row["P/L"]
+        crescimento = row["CrescimentoLucro"]
+        return pl/crescimento if crescimento>0 else float("inf")
+    df["Lynch"] = df.apply(calc_lynch, axis=1)
+    return df.sort_values(by="Lynch", ascending=True).head(30).to_dict(orient="records")
+
+@app.get("/ranking/ebitda")
+def ranking_ebitda():
+    df = carregar_dados()
+    return df.sort_values(by="EBITDA", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/valor_mercado")
+def ranking_valor_mercado():
+    df = carregar_dados()
+    return df.sort_values(by="ValorMercado", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/margem_liquida")
+def ranking_margem_liquida():
+    df = carregar_dados()
+    return df.sort_values(by="MargemLiquida", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/receita_liquida")
+def ranking_receita_liquida():
+    df = carregar_dados()
+    return df.sort_values(by="ReceitaLiquida", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/divida_liquida")
+def ranking_divida_liquida():
+    df = carregar_dados()
+    return df.sort_values(by="DividaLiquida", ascending=True).head(30).to_dict(orient="records")
+
+@app.get("/ranking/liquidez")
+def ranking_liquidez():
+    df = carregar_dados()
+    return df.sort_values(by="Liquidez", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/dy_consistente")
+def ranking_dy_consistente(periodo: int = 3):
+    df = carregar_dados()
+    if periodo not in [3,5]:
+        return {"error":"Período deve ser 3 ou 5 anos."}
+    colunas = [f"DY_{i}A" for i in range(1, periodo+1)]
+    df["DYConsistente"] = df[colunas].mean(axis=1)
+    return df.sort_values(by="DYConsistente", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/payout_consistente")
+def ranking_payout_consistente(periodo: int = 3):
+    df = carregar_dados()
+    if periodo not in [3,5]:
+        return {"error":"Período deve ser 3 ou 5 anos."}
+    colunas = [f"Payout_{i}A" for i in range(1, periodo+1)]
+    df["PayoutConsistente"] = df[colunas].mean(axis=1)
+    return df.sort_values(by="PayoutConsistente", ascending=False).head(30).to_dict(orient="records")
+
+@app.get("/ranking/consistente")
+def ranking_consistente(periodo: int = 3):
+    df = carregar_dados()
+    if periodo not in [3,5]:
+        return {"error":"Período deve ser 3 ou 5 anos."}
+    colunas_dy = [f"DY_{i}A" for i in range(1, periodo+1)]
+    colunas_payout = [f"Payout_{i}A" for i in range(1, periodo+1)]
+    df["DYConsistente"] = df[colunas_dy].mean(axis=1)
+    df["PayoutConsistente"] = df[colunas_payout].mean(axis=1)
+    df["ConsistenciaTotal"] = (df["DYConsistente"] + df["PayoutConsistente"]) / 2
+    return df.sort_values(by="ConsistenciaTotal", ascending=False).head(30).to_dict(orient="records")
