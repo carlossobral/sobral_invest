@@ -45,15 +45,9 @@ def atualizar_dados(limit=20):
             if r.status_code == 200:
                 info = r.json()
                 if "results" in info:
-                    resultado = info["results"][0]
-                    fundamentals = resultado.get("fundamentals", {})
-                    
-                    # Coletando o preço atual da ação para o cálculo de Upside/Downside
-                    preco_atual = resultado.get("regularMarketPrice", 0)
-
+                    fundamentals = info["results"][0].get("fundamentals", {})
                     dados.append({
                         "Ticker": ticker,
-                        "PrecoAtual": preco_atual,
                         "DY": fundamentals.get("dividendYield", 0),
                         "P/L": fundamentals.get("priceToEarningsRatio", 0),
                         "P/VP": fundamentals.get("priceToBookRatio", 0),
@@ -65,8 +59,10 @@ def atualizar_dados(limit=20):
                 else:
                     print(f"Ticker {ticker} sem dados, salvando zerado")
                     dados.append({
-                        "Ticker": ticker, "PrecoAtual": 0, "DY": 0, "P/L": 0, 
-                        "P/VP": 0, "ROE": 0, "LPA": 0, "VPA": 0, "CrescimentoLucro": 0
+                        "Ticker": ticker,
+                        "DY": 0, "P/L": 0, "P/VP": 0,
+                        "ROE": 0, "LPA": 0, "VPA": 0,
+                        "CrescimentoLucro": 0
                     })
         except Exception as e:
             print(f"Erro em {ticker}: {e}")
@@ -81,7 +77,7 @@ def atualizar_dados(limit=20):
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com SQLite ativo e Valuations Integrados!"}
+    return {"msg": "API Sobral Invest com SQLite ativo!"}
 
 @app.get("/atualizar")
 def atualizar():
@@ -109,85 +105,36 @@ def ranking_graham():
     df = carregar_dados()
     if df.empty:
         return {"error": "Nenhum dado disponível para Graham."}
-    
     def calc_graham(row):
         lpa = row["LPA"]
         vpa = row["VPA"]
         if lpa > 0 and vpa > 0:
             return math.sqrt(22.5 * lpa * vpa)
         return 0
-        
-    df["ValorIntrinseco"] = df.apply(calc_graham, axis=1)
-    
-    # Cálculo de Upside / Downside
-    def calc_margem(row):
-        vi = row["ValorIntrinseco"]
-        preco = row["PrecoAtual"]
-        if vi > 0 and preco > 0:
-            margem = (vi / preco) - 1
-            tipo = "UPSIDE" if margem > 0 else "DOWNSIDE"
-            return f"{tipo} ({abs(margem)*100:.2f}%)"
-        return "N/A"
-        
-    df["Potencial"] = df.apply(calc_margem, axis=1)
-    return df.sort_values(by="ValorIntrinseco", ascending=False).head(10).to_dict(orient="records")
+    df["Graham"] = df.apply(calc_graham, axis=1)
+    return df.sort_values(by="Graham", ascending=False).head(10).to_dict(orient="records")
 
 @app.get("/ranking/bazin")
 def ranking_bazin():
     df = carregar_dados()
     if df.empty:
         return {"error": "Nenhum dado disponível para Bazin."}
-        
-    def calc_bazin(row):
-        dy = row["DY"]
-        preco = row["PrecoAtual"]
-        if dy > 0 and preco > 0:
-            # Encontra o dividendo pago em reais para projetar o preço teto
-            dividendo_reais = preco * dy
-            preco_teto = dividendo_reais / 0.06
-            
-            # Cálculo de Upside / Downside
-            margem = (preco_teto / preco) - 1
-            tipo = "UPSIDE" if margem > 0 else "DOWNSIDE"
-            potencial = f"{tipo} ({abs(margem)*100:.2f}%)"
-            return pd.Series([preco_teto, potencial])
-        return pd.Series([0, "N/A"])
-        
-    df[["PrecoTeto", "Potencial"]] = df.apply(calc_bazin, axis=1)
-    
-    # Mantém a filosofia de Décio Bazin: focar em empresas que pagam DY >= 6%
-    df_bazin = df[df["DY"] >= 0.06].copy()
-    return df_bazin.sort_values(by="PrecoTeto", ascending=False).head(10).to_dict(orient="records")
+    df["Bazin"] = df["DY"].apply(lambda x: x if x >= 0.06 else 0)
+    return df.sort_values(by="Bazin", ascending=False).head(10).to_dict(orient="records")
 
 @app.get("/ranking/peterlynch")
 def ranking_peterlynch():
     df = carregar_dados()
     if df.empty:
         return {"error": "Nenhum dado disponível para Peter Lynch."}
-        
     def calc_lynch(row):
         pl = row["P/L"]
-        # Converte o crescimento (que vem em decimal da Brapi) para o número inteiro usado na fórmula de Lynch
-        crescimento = row["CrescimentoLucro"] * 100 
+        crescimento = row["CrescimentoLucro"]
         if crescimento > 0:
             return pl / crescimento
         return float("inf")
-        
-    df["PEG_Ratio"] = df.apply(calc_lynch, axis=1)
-    
-    # Cálculo de Upside / Downside baseado no PEG Ratio (Abaixo de 1 = Descontada)
-    def avaliacao_lynch(peg):
-        if peg == float("inf"):
-            return "N/A"
-        if peg < 1:
-            return "UPSIDE (Descontada)"
-        elif peg == 1:
-            return "Preço Justo"
-        else:
-            return "DOWNSIDE (Cara)"
-            
-    df["Potencial"] = df["PEG_Ratio"].apply(avaliacao_lynch)
-    return df.sort_values(by="PEG_Ratio", ascending=True).head(10).to_dict(orient="records")
+    df["Lynch"] = df.apply(calc_lynch, axis=1)
+    return df.sort_values(by="Lynch", ascending=True).head(10).to_dict(orient="records")
 
 @app.get("/health")
 def health():
