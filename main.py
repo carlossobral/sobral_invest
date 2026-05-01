@@ -15,7 +15,7 @@ cache = {
     "timestamp": 0
 }
 
-def coletar_dados(limit=100, ttl=1800):
+def coletar_dados(limit=100, ttl=3600):
     """Coleta dados da Brapi com cache (ttl em segundos)"""
     agora = time.time()
     if cache["data"] is not None and (agora - cache["timestamp"] < ttl):
@@ -23,7 +23,7 @@ def coletar_dados(limit=100, ttl=1800):
 
     url_tickers = f"https://brapi.dev/api/available?token={API_KEY}"
     resp = requests.get(url_tickers)
-    tickers = resp.json().get("stocks", [])[:limit]
+    tickers = resp.json().get("stocks", [])[:limit]  # limite para evitar timeout
     dados = []
 
     for ticker in tickers:
@@ -53,7 +53,7 @@ def coletar_dados(limit=100, ttl=1800):
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com cache ativo!"}
+    return {"msg": "API Sobral Invest com cache ativo_a!"}
 
 @app.get("/ranking/dy")
 def ranking_dy():
