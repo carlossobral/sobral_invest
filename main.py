@@ -92,7 +92,7 @@ def atualizar_dados():
     return df
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com SQLite ativo!"}
+    return {"msg": "API Sobral Invest com SQLite ativos!"}
 
 @app.get("/atualizar")
 def atualizar():
