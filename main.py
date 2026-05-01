@@ -353,47 +353,53 @@ def ranking_peterlynch():
     df["Lynch"] = df.apply(calc_lynch, axis=1)
     return df.sort_values(by="Lynch", ascending=True).head(30).to_dict(orient="records")
 
-@app.get("/ranking/ebitda")
+	@app.get("/ranking/ebitda")
 def ranking_ebitda():
     df = carregar_dados()
-    if df.empty or "EBITDA" not in df or df["EBITDA"].sum() == 0:
+    if df.empty or "EBITDA" not in df:
         return {"msg": "Sem dados válidos para ranking EBITDA."}
-    return df.sort_values(by="EBITDA", ascending=False).head(30).to_dict(orient="records")
+    df["EBITDA_Milhoes"] = df["EBITDA"] / 1_000_000
+    return df.sort_values(by="EBITDA", ascending=False).head(30)[["Ticker","EBITDA_Milhoes"]].to_dict(orient="records")
 
 @app.get("/ranking/valor_mercado")
 def ranking_valor_mercado():
     df = carregar_dados()
-    if df.empty or "ValorMercado" not in df or df["ValorMercado"].sum() == 0:
+    if df.empty or "ValorMercado" not in df:
         return {"msg": "Sem dados válidos para ranking Valor de Mercado."}
-    return df.sort_values(by="ValorMercado", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/margem_liquida")
-def ranking_margem_liquida():
-    df = carregar_dados()
-    if df.empty or "MargemLiquida" not in df or df["MargemLiquida"].sum() == 0:
-        return {"msg": "Sem dados válidos para ranking Margem Líquida."}
-    return df.sort_values(by="MargemLiquida", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/receita_liquida")
-def ranking_receita_liquida():
-    df = carregar_dados()
-    if df.empty or "ReceitaLiquida" not in df or df["ReceitaLiquida"].sum() == 0:
-        return {"msg": "Sem dados válidos para ranking Receita Líquida."}
-    return df.sort_values(by="ReceitaLiquida", ascending=False).head(30).to_dict(orient="records")
-
-@app.get("/ranking/divida_liquida")
-def ranking_divida_liquida():
-    df = carregar_dados()
-    if df.empty or "DividaLiquida" not in df or df["DividaLiquida"].sum() == 0:
-        return {"msg": "Sem dados válidos para ranking Dívida Líquida."}
-    return df.sort_values(by="DividaLiquida", ascending=True).head(30).to_dict(orient="records")
+    df["ValorMercado_Milhoes"] = df["ValorMercado"] / 1_000_000
+    return df.sort_values(by="ValorMercado", ascending=False).head(30)[["Ticker","ValorMercado_Milhoes"]].to_dict(orient="records")
 
 @app.get("/ranking/liquidez")
 def ranking_liquidez():
     df = carregar_dados()
-    if df.empty or "Liquidez" not in df or df["Liquidez"].sum() == 0:
+    if df.empty or "Liquidez" not in df:
         return {"msg": "Sem dados válidos para ranking Liquidez."}
-    return df.sort_values(by="Liquidez", ascending=False).head(30).to_dict(orient="records")
+    df["Liquidez_Milhoes"] = df["Liquidez"] / 1_000_000
+    return df.sort_values(by="Liquidez", ascending=False).head(30)[["Ticker","Liquidez_Milhoes"]].to_dict(orient="records")
+
+@app.get("/ranking/receita_liquida")
+def ranking_receita_liquida():
+    df = carregar_dados()
+    if df.empty or "ReceitaLiquida" not in df:
+        return {"msg": "Sem dados válidos para ranking Receita Líquida."}
+    df["ReceitaLiquida_Milhoes"] = df["ReceitaLiquida"] / 1_000_000
+    return df.sort_values(by="ReceitaLiquida", ascending=False).head(30)[["Ticker","ReceitaLiquida_Milhoes"]].to_dict(orient="records")
+
+@app.get("/ranking/divida_liquida")
+def ranking_divida_liquida():
+    df = carregar_dados()
+    if df.empty or "DividaLiquida" not in df:
+        return {"msg": "Sem dados válidos para ranking Dívida Líquida."}
+    df["DividaLiquida_Milhoes"] = df["DividaLiquida"] / 1_000_000
+    return df.sort_values(by="DividaLiquida", ascending=True).head(30)[["Ticker","DividaLiquida_Milhoes"]].to_dict(orient="records")
+
+@app.get("/ranking/margem_liquida")
+def ranking_margem_liquida():
+    df = carregar_dados()
+    if df.empty or "MargemLiquida" not in df:
+        return {"msg": "Sem dados válidos para ranking Margem Líquida."}
+    df["MargemLiquida_Milhoes"] = df["MargemLiquida"] / 1_000_000    
+    return df.sort_values(by="MargemLiquida", ascending=False).head(30)[["Ticker","MargemLiquida_Milhoes"]].to_dict(orient="records")
 
 @app.get("/ranking/dy_consistente")
 def ranking_dy_consistente(periodo: int = 3):
