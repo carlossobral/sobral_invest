@@ -397,3 +397,9 @@ def ranking_consistente(periodo: int = 3):
     df["ConsistenciaTotal"] = (df["DYConsistente"] + df["PayoutConsistente"]) / 2
     return df.sort_values(by="ConsistenciaTotal", ascending=False).head(30).to_dict(orient="records")
 
+@app.get("/health")
+def health():
+    df = carregar_dados()
+    if df.empty:
+        return {"status": "offline", "msg": "Banco vazio, nenhum dado carregado."}
+    return {"status": "online", "msg": f"Banco com {len(df)} ativos carregados."}
