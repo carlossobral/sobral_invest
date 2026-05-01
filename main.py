@@ -2,18 +2,20 @@ from fastapi import FastAPI
 import requests
 import pandas as pd
 import math
+import os
 
 app = FastAPI()
 
-# Função para coletar dados da Brapi
+API_KEY = os.getenv("BRAPI_KEY", "MINHA_CHAVE_API")  # usa variável de ambiente ou valor fixo
+
 def coletar_dados():
-    url_tickers = "https://brapi.dev/api/available"
+    url_tickers = f"https://brapi.dev/api/available?token={API_KEY}"
     resp = requests.get(url_tickers)
     tickers = resp.json().get("stocks", [])
     dados = []
 
     for ticker in tickers:
-        url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true"
+        url = f"https://brapi.dev/api/quote/{ticker}?fundamental=true&token={API_KEY}"
         r = requests.get(url)
         if r.status_code == 200:
             info = r.json()
@@ -35,7 +37,7 @@ def coletar_dados():
 
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest online!"}
+    return {"msg": "API Sobral Invest online com chave Brapi!"}
 
 @app.get("/ranking/dy")
 def ranking_dy():
@@ -59,7 +61,6 @@ def ranking_graham():
 @app.get("/ranking/bazin")
 def ranking_bazin():
     df = coletar_dados()
-    # Critério de Bazin: DY mínimo de 6%
     df["Bazin"] = df["DY"].apply(lambda x: x if x and x >= 0.06 else 0)
     top_bazin = df.sort_values(by="Bazin", ascending=False).head(10)
     return top_bazin.to_dict(orient="records")
@@ -67,7 +68,6 @@ def ranking_bazin():
 @app.get("/ranking/peterlynch")
 def ranking_peterlynch():
     df = coletar_dados()
-    # Critério de Lynch: P/L comparado ao crescimento do lucro
     df["Lynch"] = df.apply(lambda x: (x["P/L"] or 0) / (x["CrescimentoLucro"] or 1), axis=1)
-    top_lynch = df.sort_values(by="Lynch", ascending=True).head(10)  # menor é melhor
+    top_lynch = df.sort_values(by="Lynch", ascending=True).head(10)
     return top_lynch.to_dict(orient="records")
