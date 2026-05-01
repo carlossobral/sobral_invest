@@ -229,7 +229,33 @@ def atualizar_dados():
 ##parte3
 @app.get("/")
 def home():
-    return {"msg": "API Sobral Invest com SQLite ativo!"}
+    return {
+        "msg": "Bem-vindo à API Sobral Invest!",
+        "endpoints_disponiveis": {
+            "Ações": [
+                "/acao/{ticker}",
+                "/acao/{ticker}/dividendos",
+                "/acao/{ticker}/payout",
+                "/acao/{ticker}/agenda_dividendos"
+            ],
+            "Rankings (Top 30)": [
+                "/ranking/dy",
+                "/ranking/roe",
+                "/ranking/graham",
+                "/ranking/bazin",
+                "/ranking/peterlynch",
+                "/ranking/ebitda",
+                "/ranking/valor_mercado",
+                "/ranking/margem_liquida",
+                "/ranking/receita_liquida",
+                "/ranking/divida_liquida",
+                "/ranking/liquidez",
+                "/ranking/dy_consistente?periodo=3",
+                "/ranking/payout_consistente?periodo=3",
+                "/ranking/consistente?periodo=3"
+            ]
+        }
+    }
 
 @app.get("/atualizar")
 def atualizar():
