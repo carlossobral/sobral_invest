@@ -8,7 +8,7 @@ import sqlite3
 
 app = FastAPI()
 
-API_KEY = os.getenv("BRAPI_KEY", "MINHA_CHAVE_API")
+API_KEY = "esWXsXKkdh45gTmhS33aNK"
 DB_NAME = "dados.db"
 
 # Função para salvar dados no SQLite
