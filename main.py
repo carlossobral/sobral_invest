@@ -307,7 +307,10 @@ def atualizar():
     if df.empty:
         return {"msg": "Falha ao atualizar, nenhum dado coletado."}
     return {"msg": f"Dados atualizados com sucesso ({len(df)} ativos)."}
-##4parte
+# ============================
+# Parte 4 - Endpoints Rankings
+# ============================
+
 @app.get("/ranking/dy")
 def ranking_dy():
     df = carregar_dados()
@@ -315,12 +318,14 @@ def ranking_dy():
         return {"msg": "Sem dados válidos para ranking DY."}
     return df.sort_values(by="DY", ascending=False).head(30).to_dict(orient="records")
 
+
 @app.get("/ranking/roe")
 def ranking_roe():
     df = carregar_dados()
     if df.empty or "ROE" not in df or df["ROE"].sum() == 0:
         return {"msg": "Sem dados válidos para ranking ROE."}
     return df.sort_values(by="ROE", ascending=False).head(30).to_dict(orient="records")
+
 
 @app.get("/ranking/graham")
 def ranking_graham():
@@ -333,6 +338,7 @@ def ranking_graham():
     )
     return df.sort_values(by="Graham", ascending=False).head(30).to_dict(orient="records")
 
+
 @app.get("/ranking/bazin")
 def ranking_bazin():
     df = carregar_dados()
@@ -340,6 +346,7 @@ def ranking_bazin():
         return {"msg": "Sem dados válidos para ranking Bazin."}
     df["Bazin"] = df["DY"].apply(lambda x: x if x >= 6 else 0)
     return df.sort_values(by="Bazin", ascending=False).head(30).to_dict(orient="records")
+
 
 @app.get("/ranking/peterlynch")
 def ranking_peterlynch():
@@ -353,13 +360,15 @@ def ranking_peterlynch():
     df["Lynch"] = df.apply(calc_lynch, axis=1)
     return df.sort_values(by="Lynch", ascending=True).head(30).to_dict(orient="records")
 
+
 @app.get("/ranking/ebitda")
 def ranking_ebitda():
     df = carregar_dados()
     if df.empty or "EBITDA" not in df:
-    return {"msg": "Sem dados válidos para ranking EBITDA."}
+        return {"msg": "Sem dados válidos para ranking EBITDA."}
     df["EBITDA_Milhoes"] = df["EBITDA"] / 1_000_000
-    return df.sort_values(by="EBITDA", ascending=False).head(30)[["Ticker","EBITDA_Milhoes"]].to_dict(orient="records")
+    return df.sort_values(by="EBITDA", ascending=False).head(30)[["Ticker", "EBITDA_Milhoes"]].to_dict(orient="records")
+
 
 @app.get("/ranking/valor_mercado")
 def ranking_valor_mercado():
@@ -367,7 +376,8 @@ def ranking_valor_mercado():
     if df.empty or "ValorMercado" not in df:
         return {"msg": "Sem dados válidos para ranking Valor de Mercado."}
     df["ValorMercado_Milhoes"] = df["ValorMercado"] / 1_000_000
-    return df.sort_values(by="ValorMercado", ascending=False).head(30)[["Ticker","ValorMercado_Milhoes"]].to_dict(orient="records")
+    return df.sort_values(by="ValorMercado", ascending=False).head(30)[["Ticker", "ValorMercado_Milhoes"]].to_dict(orient="records")
+
 
 @app.get("/ranking/liquidez")
 def ranking_liquidez():
@@ -375,7 +385,8 @@ def ranking_liquidez():
     if df.empty or "Liquidez" not in df:
         return {"msg": "Sem dados válidos para ranking Liquidez."}
     df["Liquidez_Milhoes"] = df["Liquidez"] / 1_000_000
-    return df.sort_values(by="Liquidez", ascending=False).head(30)[["Ticker","Liquidez_Milhoes"]].to_dict(orient="records")
+    return df.sort_values(by="Liquidez", ascending=False).head(30)[["Ticker", "Liquidez_Milhoes"]].to_dict(orient="records")
+
 
 @app.get("/ranking/receita_liquida")
 def ranking_receita_liquida():
@@ -383,7 +394,8 @@ def ranking_receita_liquida():
     if df.empty or "ReceitaLiquida" not in df:
         return {"msg": "Sem dados válidos para ranking Receita Líquida."}
     df["ReceitaLiquida_Milhoes"] = df["ReceitaLiquida"] / 1_000_000
-    return df.sort_values(by="ReceitaLiquida", ascending=False).head(30)[["Ticker","ReceitaLiquida_Milhoes"]].to_dict(orient="records")
+    return df.sort_values(by="ReceitaLiquida", ascending=False).head(30)[["Ticker", "ReceitaLiquida_Milhoes"]].to_dict(orient="records")
+
 
 @app.get("/ranking/divida_liquida")
 def ranking_divida_liquida():
@@ -391,15 +403,17 @@ def ranking_divida_liquida():
     if df.empty or "DividaLiquida" not in df:
         return {"msg": "Sem dados válidos para ranking Dívida Líquida."}
     df["DividaLiquida_Milhoes"] = df["DividaLiquida"] / 1_000_000
-    return df.sort_values(by="DividaLiquida", ascending=True).head(30)[["Ticker","DividaLiquida_Milhoes"]].to_dict(orient="records")
+    return df.sort_values(by="DividaLiquida", ascending=True).head(30)[["Ticker", "DividaLiquida_Milhoes"]].to_dict(orient="records")
+
 
 @app.get("/ranking/margem_liquida")
 def ranking_margem_liquida():
     df = carregar_dados()
     if df.empty or "MargemLiquida" not in df:
         return {"msg": "Sem dados válidos para ranking Margem Líquida."}
-    df["MargemLiquida_Milhoes"] = df["MargemLiquida"] / 1_000_000    
-    return df.sort_values(by="MargemLiquida", ascending=False).head(30)[["Ticker","MargemLiquida_Milhoes"]].to_dict(orient="records")
+    df["MargemLiquida_Milhoes"] = df["MargemLiquida"] / 1_000_000
+    return df.sort_values(by="MargemLiquida", ascending=False).head(30)[["Ticker", "MargemLiquida_Milhoes"]].to_dict(orient="records")
+
 
 @app.get("/ranking/dy_consistente")
 def ranking_dy_consistente(periodo: int = 3):
@@ -412,6 +426,7 @@ def ranking_dy_consistente(periodo: int = 3):
     df["DYConsistente"] = df[colunas].mean(axis=1)
     return df.sort_values(by="DYConsistente", ascending=False).head(30).to_dict(orient="records")
 
+
 @app.get("/ranking/payout_consistente")
 def ranking_payout_consistente(periodo: int = 3):
     df = carregar_dados()
@@ -422,6 +437,7 @@ def ranking_payout_consistente(periodo: int = 3):
         return {"msg": "Sem dados válidos para ranking Payout Consistente."}
     df["PayoutConsistente"] = df[colunas].mean(axis=1)
     return df.sort_values(by="PayoutConsistente", ascending=False).head(30).to_dict(orient="records")
+
 
 @app.get("/ranking/consistente")
 def ranking_consistente(periodo: int = 3):
@@ -437,9 +453,11 @@ def ranking_consistente(periodo: int = 3):
     df["ConsistenciaTotal"] = (df["DYConsistente"] + df["PayoutConsistente"]) / 2
     return df.sort_values(by="ConsistenciaTotal", ascending=False).head(30).to_dict(orient="records")
 
+
 @app.get("/health")
 def health():
     df = carregar_dados()
     if df.empty:
         return {"status": "offline", "msg": "Banco vazio, nenhum dado carregado."}
     return {"status": "online", "msg": f"Banco com {len(df)} ativos carregados."}
+
