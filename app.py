@@ -1,5 +1,5 @@
 import pandas as pd
-from usebolsai_client import buscar_acoes
+from usebolsai_client import buscar_acoes_usebolsai as buscar_acoes
 from indicadores import calcular_indicadores
 from valuation import (
     calcular_graham,
