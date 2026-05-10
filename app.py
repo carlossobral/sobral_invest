@@ -80,4 +80,6 @@ for data in todos_dados:
 df = pd.DataFrame(dados_finais)
 salvar_excel(df)
 print(f"\n✅ Excel gerado com {len(df)} ativos!")
-print(df[["Ticker", "Cotacao", "PL", "ROE", "Score_BH"]].head(10).to_string())
+if not df.empty:
+    cols = [c for c in ["Ticker", "Cotacao", "PL", "ROE", "Score_BH"] if c in df.columns]
+    print(df[cols].head(10).to_string())
