@@ -13,16 +13,20 @@ def buscar_acoes(lista_tickers):
         "token": BRAPI_TOKEN
     }
 
+    print("===================================")
     print("URL:", url)
+    print("TOKEN:", BRAPI_TOKEN)
+    print("===================================")
 
     response = requests.get(
         url,
         params=params
     )
 
-    print("STATUS:", response.status_code)
+    print("STATUS CODE:", response.status_code)
 
-    print("RESPOSTA:", response.text[:1000])
+    print("RESPOSTA API:")
+    print(response.text[:3000])
 
     if response.status_code != 200:
 
@@ -30,4 +34,8 @@ def buscar_acoes(lista_tickers):
 
     data = response.json()
 
-    return data.get("results", [])
+    resultados = data.get("results", [])
+
+    print("TOTAL RESULTADOS:", len(resultados))
+
+    return resultados
