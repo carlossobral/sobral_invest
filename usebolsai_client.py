@@ -9,6 +9,7 @@ def buscar_acoes_usebolsai(tickers):
         print("⚠️ USEBOLSAI_API_KEY não configurada.")
         return []
 
+    # Endpoint correto: Stock Quote
     url = f"{BASE_URL}?tickers={','.join(tickers)}"
     headers = {"X-API-Key": api_key}
     resp = requests.get(url, headers=headers)
