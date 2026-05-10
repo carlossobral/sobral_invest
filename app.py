@@ -66,7 +66,7 @@ for data in dados:
 
     try:
 
-        ticker = data.get("symbol", "N/A")
+        ticker = data.get("Ticker", "N/A")
 
         print(f"Processando {ticker}")
 
