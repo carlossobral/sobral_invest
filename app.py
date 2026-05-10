@@ -1,6 +1,6 @@
 import pandas as pd
 
-from brapi_client import buscar_acao
+from brapi_client import buscar_acoes
 from indicadores import calcular_indicadores
 from valuation import *
 from checklist import checklist_buy_hold
