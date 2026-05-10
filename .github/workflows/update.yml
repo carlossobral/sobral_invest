@@ -1,9 +1,6 @@
 name: Atualizar Planilha
 
 on:
-  schedule:
-    - cron: '0 3 * * *'
-
   workflow_dispatch:
 
 permissions:
@@ -15,15 +12,11 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
 
       - name: Clonar repositório
         uses: actions/checkout@v5
         with:
-          persist-credentials: true
           fetch-depth: 0
 
       - name: Configurar Python
@@ -42,6 +35,10 @@ jobs:
         run: |
           python app.py
 
+      - name: Atualizar branch local
+        run: |
+          git pull origin main --rebase
+
       - name: Commit arquivos atualizados
         run: |
 
@@ -52,6 +49,4 @@ jobs:
 
           git diff --cached --quiet || git commit -m "Atualização automática"
 
-          git pull --rebase origin main
-
-          git push
+          git push origin main
