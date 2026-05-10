@@ -9,3 +9,4 @@ streamlit
 matplotlib
 plotly
 schedule
+gunicorn
