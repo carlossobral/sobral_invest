@@ -11,7 +11,7 @@ from valuation import (
 from checklist import checklist_buy_hold
 from export_excel import salvar_excel
 
-# Lista de ativos (mantida completa)
+# Lista de ativos
 ativos = [
     "AALR3","ABCB4","ABEV3","AERI3","AGRO3","AGXY3","ALLD3","ALOS3","ALPA4","ALPK3",
     "ALUP11","ALUP4","AMAR3","AMBP3","AMER3","AMOB3","ANIM3","ARML3","ASAI3","ATED3",
