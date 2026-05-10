@@ -30,6 +30,18 @@ def calcular_indicadores(data):
         # Liquidez
         liquidez_corrente = data.get("currentRatio", 0)
 
+        # ROIC (aproximação)
+        ebit = data.get("ebit", 0)
+        taxa_imposto = data.get("taxRate", 0)
+        total_debt = data.get("totalDebt", 0)
+        total_cash = data.get("totalCash", 0)
+        total_equity = data.get("totalStockholderEquity", 0)
+
+        capital_investido = (total_debt - total_cash) + total_equity
+        roic = None
+        if ebit and capital_investido:
+            roic = (ebit * (1 - taxa_imposto)) / capital_investido
+
         indicadores = {
             "Cotacao": preco,
 
@@ -42,6 +54,7 @@ def calcular_indicadores(data):
             # Rentabilidade
             "ROE": roe,
             "ROA": roa,
+            "ROIC": roic,
 
             # Margens
             "Margem_Liquida": margem_liquida,
