@@ -4,7 +4,7 @@ import requests
 from datetime import date
 
 BASE_URL = "https://api.usebolsai.com/api/v1"
-TOP_N = 200
+TOP_N = 160  # 1 (screener) + 160 (fundamentals) = 161 req/dia — cabe no plano free (200/dia)
 CACHE_FILE = "cache_bolsai.json"
 
 
