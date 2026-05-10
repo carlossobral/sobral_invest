@@ -21,5 +21,5 @@ def buscar_acoes_usebolsai(tickers):
             print("⚠️ Resposta inesperada:", data)
             return []
     else:
-        print(f"Erro {resp.status_code} ao buscar tickers")
+        print(f"Erro {resp.status_code} ao buscar tickers: {resp.text}")
         return []
