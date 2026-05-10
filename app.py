@@ -69,6 +69,15 @@ if nao_encontrados:
                     "cagr_revenue_5y":  yf.get("Receita_CAGR"),
                     "cagr_earnings_5y": yf.get("Lucro_CAGR"),
                     "market_cap":       yf.get("MarketCap"),
+                    "vpa":              yf.get("VPA"),
+                    "ebitda":           yf.get("EBITDA"),
+                    "ebit":             yf.get("EBIT"),
+                    "equity":           yf.get("Patrimonio"),
+                    "net_revenue":      yf.get("Receita_Liquida"),
+                    "net_income":       yf.get("Lucro_Liquido"),
+                    "net_debt":         yf.get("Divida_Liquida"),
+                    "cash":             yf.get("Caixa"),
+                    "total_assets":     yf.get("Ativos_Totais"),
                 })
         except Exception as e:
             print(f"⚠️ Erro yfinance {ticker}: {e}")
