@@ -78,60 +78,50 @@ def carregar_dados_excel():
     return None
 
 # ─── Busca de tickers (opcional para análise customizada) ───────────────────────────────────────────────────────
-col1, col2, col3 = st.columns([2, 3, 2])
-with col2:
-    with st.form("ticker_form"):
-        tickers_input = st.text_input("🔍 Digite ticker (ex: PETR4,VALE3)", "")
-        col_search, col_button = st.columns([3, 1])
-        with col_search:
-            submitted = st.form_submit_button("Buscar", use_container_width=True)
-        with col_button:
-            pass
+col_left, col_search, col_right = st.columns([1, 2.5, 1])
+with col_search:
+    tickers_input = st.text_input("🔍", placeholder="PETR4, VALE3...", label_visibility="collapsed")
+    if tickers_input:
+        tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
+        if tickers:
+            with st.spinner("Buscando dados e calculando indicadores..."):
+                resultados, _ = buscar_acoes_usebolsai(tickers)
 
-# Tenta carregar dados do Excel primeiro
-df = None
-if not submitted:
+                dados = []
+                for r in resultados:
+                    ind = calcular_indicadores(r)
+                    _, score = checklist_buy_hold(ind)
+                    graham = calcular_graham(ind["LPA"], ind["VPA"])
+                    graham_br = calcular_graham_br(
+                        graham,
+                        ind["ROE"],
+                        ind["Divida_PL"],
+                        ind["Margem_Liquida"],
+                        ind["Receita_CAGR"]
+                    )
+                    bazin = calcular_bazin(ind["DY"])
+                    lynch = calcular_lynch(ind["PL"], ind["Lucro_CAGR"])
+                    agf = calcular_agf(ind["DY"], ind["Lucro_CAGR"])
+
+                    dados.append({
+                        "Ticker": r.get("Ticker", "N/A"),
+                        **ind,
+                        "Score_BH": score,
+                        "Graham": graham,
+                        "Graham_BR": graham_br,
+                        "Bazin": bazin,
+                        "Lynch_PEG": lynch,
+                        "AGF": agf
+                    })
+
+                st.session_state["dados_ativos"] = pd.DataFrame(dados)
+
+# Se não fez busca, carrega dados do Excel
+df = st.session_state.get("dados_ativos")
+if df is None:
     df = carregar_dados_excel()
     if df is not None:
         st.session_state["dados_ativos"] = df
-else:
-    tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
-    if not tickers:
-        st.warning("Informe pelo menos um ticker válido.")
-    else:
-        with st.spinner("Buscando dados e calculando indicadores..."):
-            resultados, _ = buscar_acoes_usebolsai(tickers)
-
-            dados = []
-            for r in resultados:
-                ind = calcular_indicadores(r)
-                _, score = checklist_buy_hold(ind)
-                graham = calcular_graham(ind["LPA"], ind["VPA"])
-                graham_br = calcular_graham_br(
-                    graham,
-                    ind["ROE"],
-                    ind["Divida_PL"],
-                    ind["Margem_Liquida"],
-                    ind["Receita_CAGR"]
-                )
-                bazin = calcular_bazin(ind["DY"])
-                lynch = calcular_lynch(ind["PL"], ind["Lucro_CAGR"])
-                agf = calcular_agf(ind["DY"], ind["Lucro_CAGR"])
-
-                dados.append({
-                    "Ticker": r.get("Ticker", "N/A"),
-                    **ind,
-                    "Score_BH": score,
-                    "Graham": graham,
-                    "Graham_BR": graham_br,
-                    "Bazin": bazin,
-                    "Lynch_PEG": lynch,
-                    "AGF": agf
-                })
-
-            st.session_state["dados_ativos"] = pd.DataFrame(dados)
-
-df = st.session_state.get("dados_ativos")
 
 if df is None or df.empty:
     st.info("📊 Carregando dados do arquivo gerado por app.py... Se vazio, execute `app.py` para atualizar os indicadores de todos os ativos da B3.")
