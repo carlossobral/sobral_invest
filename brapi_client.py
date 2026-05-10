@@ -2,10 +2,6 @@ import requests
 
 from config import BRAPI_TOKEN, BASE_URL
 
-headers = {
-    "Authorization": f"Bearer {BRAPI_TOKEN}"
-}
-
 
 def buscar_acoes(lista_tickers):
 
@@ -14,22 +10,21 @@ def buscar_acoes(lista_tickers):
     url = f"{BASE_URL}/quote/{tickers}"
 
     params = {
-        "modules": (
-            "summaryProfile,"
-            "defaultKeyStatistics,"
-            "financialData"
-        )
+        "token": BRAPI_TOKEN
     }
+
+    print("URL:", url)
 
     response = requests.get(
         url,
-        headers=headers,
         params=params
     )
 
-    if response.status_code != 200:
+    print("STATUS:", response.status_code)
 
-        print("Erro BRAPI:", response.text)
+    print("RESPOSTA:", response.text[:1000])
+
+    if response.status_code != 200:
 
         return []
 
