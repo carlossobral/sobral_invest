@@ -2,20 +2,18 @@ import requests
 from config import BRAPI_TOKEN, BASE_URL
 
 def buscar_acoes(lista_tickers):
-    tickers = ",".join(lista_tickers)
-    url = f"{BASE_URL}/quote/{tickers}"
+    resultados = []
+    for ticker in lista_tickers:
+        url = f"{BASE_URL}/quote/{ticker}"
+        response = requests.get(url, params={"token": BRAPI_TOKEN})
 
-    params = {"token": BRAPI_TOKEN}
+        print(f"Buscando {ticker} - STATUS {response.status_code}")
 
-    response = requests.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            resultados.extend(data.get("results", []))
+        else:
+            print("Erro:", response.text)
 
-    print("STATUS CODE:", response.status_code)
-    print("RESPOSTA API:", response.text[:500])
-
-    if response.status_code != 200:
-        return []
-
-    data = response.json()
-    resultados = data.get("results", [])
     print("TOTAL RESULTADOS:", len(resultados))
     return resultados
