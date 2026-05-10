@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import datetime
 
 from usebolsai_client import buscar_acoes_usebolsai
 from indicadores import calcular_indicadores
@@ -42,8 +43,22 @@ else:
     st.markdown(tema_escuro, unsafe_allow_html=True)
 
 # Logo e título
-st.image("https://sobralinvest.streamlit.app/logo.png", width=120)  # substitua pelo link do seu logo
+st.image("https://sobralinvest.streamlit.app/logo.png", width=120)  # substitua pelo link real do seu logo
 st.title("📊 Sobral Invest - Plataforma de Análise Fundamentalista")
+
+# ─── Dashboard Inicial ────────────────────────────────
+st.header("📌 Dashboard Inicial")
+
+# Bloco 1: Indicadores macro (cards simulados)
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Ibovespa", "118.500", "+0,85%")
+with col2:
+    st.metric("Dólar", "R$ 5,12", "-0,20%")
+with col3:
+    st.metric("Selic", "10,50%", "estável")
+with col4:
+    st.metric("IPCA (12m)", "4,2%", "-0,1pp")
 
 # Entrada de tickers
 tickers_input = st.text_area("Digite os tickers separados por vírgula:", "PETR4,VALE3,ITSA4")
@@ -75,6 +90,33 @@ if st.button("Buscar dados"):
 
     df = pd.DataFrame(dados)
 
+    # Bloco 2: Altas e baixas do dia (simulação com ROE)
+    st.subheader("📈 Maiores Altas e Baixas do Dia")
+    colA, colB = st.columns(2)
+    with colA:
+        st.dataframe(df.sort_values("ROE", ascending=False).head(5)[["Ticker","ROE","DY"]])
+    with colB:
+        st.dataframe(df.sort_values("ROE", ascending=True).head(5)[["Ticker","ROE","DY"]])
+
+    # Bloco 3: Ranking dinâmico
+    st.subheader("🏆 Ranking por Dividend Yield")
+    st.bar_chart(df.sort_values("DY", ascending=False).head(10).set_index("Ticker")["DY"])
+
+    # Bloco 4: Agenda de dividendos (mock)
+    st.subheader("📅 Agenda de Dividendos")
+    agenda = pd.DataFrame({
+        "Ticker": ["ITSA4","VALE3","PETR4"],
+        "Data Ex": ["2026-05-15","2026-05-20","2026-05-25"],
+        "Pagamento": ["2026-06-01","2026-06-05","2026-06-10"],
+        "Valor por ação": ["R$ 0,35","R$ 2,10","R$ 1,25"]
+    })
+    st.dataframe(agenda)
+
+    # Bloco 5: Radar de oportunidades
+    st.subheader("🎯 Radar de Oportunidades")
+    radar = px.line_polar(df.head(10), r="Score_BH", theta="Ticker", line_close=True)
+    st.plotly_chart(radar, use_container_width=True)
+
     # ─── Abas ────────────────────────────────
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Indicadores", 
@@ -95,8 +137,8 @@ if st.button("Buscar dados"):
 
     with tab3:
         st.subheader("Radar de Indicadores")
-        radar = px.line_polar(df.head(10), r="ROE", theta="Ticker", line_close=True)
-        st.plotly_chart(radar, use_container_width=True)
+        radar_ind = px.line_polar(df.head(10), r="ROE", theta="Ticker", line_close=True)
+        st.plotly_chart(radar_ind, use_container_width=True)
 
     with tab4:
         st.subheader("Modelos de Valuation")
