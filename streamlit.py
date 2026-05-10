@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from usebolsai import buscar_acoes_usebolsai
+from usebolsai_client import buscar_acoes_usebolsai
 from indicadores import calcular_indicadores
 from checklist import checklist_buy_hold
 from valuation import calcular_graham, calcular_graham_br, calcular_bazin, calcular_lynch, calcular_agf
