@@ -14,12 +14,13 @@ def buscar_acoes_usebolsai(tickers):
     for i in range(0, len(tickers), 30):
         lote = tickers[i:i+30]
         url = f"{BASE_URL}?tickers={','.join(lote)}"
-        headers = {"Authorization": f"Bearer {api_key}"}
+        headers = {"X-API-Key": api_key}
         resp = requests.get(url, headers=headers)
 
         if resp.status_code == 200:
-            resultados.extend(resp.json())
+            data = resp.json()
+            # O retorno aqui já é uma lista de dicts com "ticker"
+            resultados.extend(data.get("results", []))
         else:
             print(f"Erro {resp.status_code} ao buscar lote: {lote}")
-
     return resultados
