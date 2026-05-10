@@ -18,7 +18,7 @@ def buscar_acoes_usebolsai(tickers):
         if "results" in data:
             return data["results"]
         else:
-            print("⚠️ Nenhum campo 'results' na resposta:", data)
+            print("⚠️ Resposta inesperada:", data)
             return []
     else:
         print(f"Erro {resp.status_code} ao buscar tickers")
