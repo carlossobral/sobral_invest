@@ -18,6 +18,7 @@ def obter_dados_brapi(ticker):
                 return {}
         except Exception as e:
             print(f"⚠️ Erro ao decodificar JSON para {ticker}: {e}")
+            print("Resposta bruta:", r.text)  # debug
             return {}
     else:
         print(f"⚠️ Erro BRAPI {ticker}: {r.status_code} - {r.text}")
