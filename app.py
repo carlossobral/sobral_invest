@@ -2,9 +2,20 @@ import pandas as pd
 
 from brapi_client import buscar_acoes
 from indicadores import calcular_indicadores
-from valuation import *
+
+from valuation import (
+    calcular_graham,
+    calcular_graham_br,
+    calcular_bazin,
+    calcular_lynch,
+    calcular_agf
+)
+
 from checklist import checklist_buy_hold
+
 from export_excel import salvar_excel
+
+
 
 ativos = [
     "AALR3","ABCB4","ABEV3","AERI3","AGRO3","AGXY3","ALLD3","ALOS3","ALPA4","ALPK3",
@@ -35,72 +46,146 @@ ativos = [
 ]
 
 dados_finais = []
+print("Buscando dados da BRAPI...")
 
-for ticker in ativos:
+dados = buscar_acoes(ativos)
 
-    print(f"Buscando {ticker}")
+print(f"{len(dados)} ativos encontrados.")
 
-    data = buscar_acao(ticker)
 
-    if not data:
-        continue
+# ==========================================
+# PROCESSAMENTO
+# ==========================================
 
-    ind = calcular_indicadores(data)
+for data in dados:
 
-    lpa = data.get("earningsPerShare", 0)
-    vpa = data.get("bookValue", 0)
+    try:
 
-    dividendos = (
-        data.get("dividendRate", 0)
-    )
+        ticker = data.get("symbol", "N/A")
 
-    crescimento = (
-        ind.get("Lucro_CAGR", 0)
-    )
+        print(f"Processando {ticker}")
 
-    graham = calcular_graham(lpa, vpa)
+        # ==================================
+        # INDICADORES
+        # ==================================
 
-    graham_br = calcular_graham_br(
-        graham,
-        ind["ROE"],
-        ind["Divida_PL"],
-        ind["Margem_Liquida"],
-        ind["Receita_CAGR"]
-    )
+        ind = calcular_indicadores(data)
 
-    bazin = calcular_bazin(dividendos)
+        # ==================================
+        # DADOS BASE
+        # ==================================
 
-    lynch = calcular_lynch(
-        ind["PL"],
-        crescimento
-    )
+        lpa = data.get("earningsPerShare", 0)
 
-    agf = calcular_agf(
-        dividendos,
-        crescimento
-    )
+        vpa = data.get("bookValue", 0)
 
-    checklist, score = checklist_buy_hold(ind)
+        dividendos = data.get("dividendRate", 0)
 
-    linha = {
+        crescimento = ind.get("Lucro_CAGR", 0)
 
-        "Ticker": ticker,
+        # ==================================
+        # VALUATION
+        # ==================================
 
-        **ind,
+        graham = calcular_graham(
+            lpa,
+            vpa
+        )
 
-        "Graham": graham,
-        "Graham_BR": graham_br,
-        "Bazin": bazin,
-        "Lynch_PEG": lynch,
-        "AGF": agf,
+        graham_br = calcular_graham_br(
+            graham,
+            ind["ROE"],
+            ind["Divida_PL"],
+            ind["Margem_Liquida"],
+            ind["Receita_CAGR"]
+        )
 
-        "Score_BH": score
-    }
+        bazin = calcular_bazin(
+            dividendos
+        )
 
-    dados_finais.append(linha)
+        lynch = calcular_lynch(
+            ind["PL"],
+            crescimento
+        )
+
+        agf = calcular_agf(
+            dividendos,
+            crescimento
+        )
+
+        # ==================================
+        # CHECKLIST BUY & HOLD
+        # ==================================
+
+        checklist, score = checklist_buy_hold(ind)
+
+        # ==================================
+        # LINHA FINAL
+        # ==================================
+
+        linha = {
+
+            # Básico
+            "Ticker": ticker,
+            "Cotacao": ind.get("Cotacao"),
+
+            # Valuation
+            "DY": ind.get("DY"),
+            "PL": ind.get("PL"),
+            "PVP": ind.get("PVP"),
+            "EV_EBITDA": ind.get("EV_EBITDA"),
+
+            # Rentabilidade
+            "ROE": ind.get("ROE"),
+            "ROA": ind.get("ROA"),
+
+            # Margens
+            "Margem_Liquida": ind.get("Margem_Liquida"),
+            "Margem_EBIT": ind.get("Margem_EBIT"),
+            "Margem_Bruta": ind.get("Margem_Bruta"),
+
+            # Dívida
+            "Divida_PL": ind.get("Divida_PL"),
+
+            # Crescimento
+            "Receita_CAGR": ind.get("Receita_CAGR"),
+            "Lucro_CAGR": ind.get("Lucro_CAGR"),
+
+            # Liquidez
+            "Liquidez_Corrente": ind.get("Liquidez_Corrente"),
+
+            # Valuation avançado
+            "Graham": graham,
+            "Graham_BR": graham_br,
+            "Bazin": bazin,
+            "Lynch_PEG": lynch,
+            "AGF": agf,
+
+            # Buy and Hold
+            "Score_BH": score
+        }
+
+        dados_finais.append(linha)
+
+    except Exception as e:
+
+        print(f"Erro no ativo {ticker}: {e}")
+
+
+# ==========================================
+# DATAFRAME
+# ==========================================
 
 df = pd.DataFrame(dados_finais)
 
+
+# ==========================================
+# EXPORTAÇÃO
+# ==========================================
+
 salvar_excel(df)
 
-print(df)
+print("Excel gerado com sucesso!")
+
+print(df.head())
