@@ -1,4 +1,5 @@
 import requests
+
 from config import BRAPI_TOKEN, BASE_URL
 
 headers = {
@@ -6,29 +7,32 @@ headers = {
 }
 
 
-def buscar_acao(ticker):
-    url = f"{BASE_URL}/quote/{ticker}"
+def buscar_acoes(lista_tickers):
+
+    tickers = ",".join(lista_tickers)
+
+    url = f"{BASE_URL}/quote/{tickers}"
 
     params = {
         "modules": (
             "summaryProfile,"
             "defaultKeyStatistics,"
-            "financialData,"
-            "incomeStatementHistoryQuarterly,"
-            "balanceSheetHistoryQuarterly,"
-            "cashflowStatementHistoryQuarterly"
+            "financialData"
         )
     }
 
-    response = requests.get(url, headers=headers, params=params)
+    response = requests.get(
+        url,
+        headers=headers,
+        params=params
+    )
 
     if response.status_code != 200:
-        print(f"Erro ao buscar {ticker}")
-        return None
+
+        print("Erro BRAPI:", response.text)
+
+        return []
 
     data = response.json()
 
-    if "results" not in data:
-        return None
-
-    return data["results"][0]
+    return data.get("results", [])
