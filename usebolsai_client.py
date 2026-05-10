@@ -9,17 +9,15 @@ def buscar_acoes_usebolsai(tickers):
         print("⚠️ USEBOLSAI_API_KEY não configurada.")
         return []
 
+    # Endpoint correto: Stock Quote
     url = f"{BASE_URL}?tickers={','.join(tickers)}"
     headers = {"X-API-Key": api_key}
     resp = requests.get(url, headers=headers)
 
     if resp.status_code == 200:
         data = resp.json()
-        if "results" in data:
-            return data["results"]
-        else:
-            print("⚠️ Resposta sem campo 'results':", data)
-            return []
+        # Aqui sim vem "results" com os indicadores
+        return data.get("results", [])
     else:
         print(f"Erro {resp.status_code} ao buscar tickers")
         return []
