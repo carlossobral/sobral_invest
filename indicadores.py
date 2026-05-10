@@ -1,77 +1,36 @@
-import numpy as np
-
 def calcular_indicadores(data):
     indicadores = {}
     try:
-        preco = data.get("regularMarketPrice", 0)
-
-        # Dividendos e múltiplos
-        dy = data.get("dividendYield", 0)
-        pl = data.get("priceEarnings", 0)
-        pvp = data.get("priceToBook", 0)
-        ev_ebitda = data.get("enterpriseToEbitda", 0)
-
-        # Rentabilidade
-        roe = data.get("returnOnEquity", 0)
-        roa = data.get("returnOnAssets", 0)
-
-        # Margens
-        margem_liquida = data.get("profitMargins", 0)
-        margem_ebit = data.get("operatingMargins", 0)
-        margem_bruta = data.get("grossMargins", 0)
-
-        # Estrutura de capital
-        divida_pl = data.get("debtToEquity", 0)
-
-        # Crescimento
-        receita_growth = data.get("revenueGrowth", 0)
-        lucro_growth = data.get("earningsGrowth", 0)
-
-        # Liquidez
-        liquidez_corrente = data.get("currentRatio", 0)
-
-        # ROIC (aproximação)
-        ebit = data.get("ebit", 0)
-        taxa_imposto = data.get("taxRate", 0)
-        total_debt = data.get("totalDebt", 0)
-        total_cash = data.get("totalCash", 0)
-        total_equity = data.get("totalStockholderEquity", 0)
-
-        capital_investido = (total_debt - total_cash) + total_equity
-        roic = None
-        if ebit and capital_investido:
-            roic = (ebit * (1 - taxa_imposto)) / capital_investido
-
         indicadores = {
-            "Cotacao": preco,
-
-            # Valuation
-            "DY": dy,
-            "PL": pl,
-            "PVP": pvp,
-            "EV_EBITDA": ev_ebitda,
-
-            # Rentabilidade
-            "ROE": roe,
-            "ROA": roa,
-            "ROIC": roic,
-
-            # Margens
-            "Margem_Liquida": margem_liquida,
-            "Margem_EBIT": margem_ebit,
-            "Margem_Bruta": margem_bruta,
-
-            # Dívida
-            "Divida_PL": divida_pl,
-
-            # Crescimento
-            "Receita_CAGR": receita_growth,
-            "Lucro_CAGR": lucro_growth,
-
-            # Liquidez
-            "Liquidez_Corrente": liquidez_corrente
+            "Cotacao": data.get("close_price") or 0,
+            "PL": data.get("pl") or 0,
+            "PVP": data.get("pvp") or 0,
+            "EV_EBITDA": data.get("ev_ebitda") or 0,
+            "EV_EBIT": data.get("ev_ebit") or 0,
+            "LPA": data.get("lpa") or 0,
+            "VPA": data.get("vpa") or 0,
+            "DY": data.get("dividend_yield") or 0,
+            "ROE": data.get("roe") or 0,
+            "ROA": data.get("roa") or 0,
+            "ROIC": data.get("roic") or 0,
+            "Margem_Bruta": data.get("gross_margin") or 0,
+            "Margem_EBIT": data.get("ebit_margin") or 0,
+            "Margem_EBITDA": data.get("ebitda_margin") or 0,
+            "Margem_Liquida": data.get("net_margin") or 0,
+            "Divida_PL": data.get("debt_equity") or 0,
+            "Liquidez_Corrente": data.get("current_ratio") or 0,
+            "Receita_CAGR": data.get("cagr_revenue_5y") or 0,
+            "Lucro_CAGR": data.get("cagr_earnings_5y") or 0,
+            "Market_Cap": data.get("market_cap") or 0,
+            "Patrimonio": data.get("equity") or 0,
+            "Receita_Liquida": data.get("net_revenue") or 0,
+            "Lucro_Liquido": data.get("net_income") or 0,
+            "EBITDA": data.get("ebitda") or 0,
+            "EBIT": data.get("ebit") or 0,
+            "Divida_Liquida": data.get("net_debt") or 0,
+            "Caixa": data.get("cash") or 0,
+            "Ativos_Totais": data.get("total_assets") or 0
         }
-
     except Exception as e:
         print("Erro indicadores:", e)
 
