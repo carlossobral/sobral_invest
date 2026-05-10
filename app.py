@@ -11,7 +11,7 @@ from valuation import (
 from checklist import checklist_buy_hold
 from export_excel import salvar_excel
 
-# Lista de ativos
+# Lista de ativos (os 247 tickers)
 ativos = [
     "AALR3","ABCB4","ABEV3","AERI3","AGRO3","AGXY3","ALLD3","ALOS3","ALPA4","ALPK3",
     "ALUP11","ALUP4","AMAR3","AMBP3","AMER3","AMOB3","ANIM3","ARML3","ASAI3","ATED3",
@@ -88,12 +88,6 @@ for data in dados:
 
 # DataFrame final
 df = pd.DataFrame(dados_finais)
-
-# Exportação
-salvar_excel(df)
-
-print("✅ Excel gerado com sucesso!")
-print(df.head())
 
 # Exportação
 salvar_excel(df)
