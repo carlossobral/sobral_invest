@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
+import os
 
 from usebolsai_client import buscar_acoes_usebolsai
 from indicadores import calcular_indicadores
@@ -131,12 +132,29 @@ with col2:
         "- Ideal para quem busca análise fundamentalista rápida."
     )
 
-# ─── Busca de tickers ───────────────────────────────────────────────────────
-with st.form("ticker_form"):
-    tickers_input = st.text_area("Digite os tickers separados por vírgula", "PETR4,VALE3,ITSA4")
-    submitted = st.form_submit_button("Buscar dados")
+# ─── Carrega dados do Excel ───────────────────────────────────────────────
+@st.cache_data
+def carregar_dados_excel():
+    if os.path.exists("ativos.xlsx"):
+        try:
+            return pd.read_excel("ativos.xlsx", sheet_name="Ativos")
+        except Exception as e:
+            st.warning(f"Erro ao carregar ativos.xlsx: {e}")
+            return None
+    return None
 
-if submitted:
+# ─── Busca de tickers (opcional para análise customizada) ───────────────────────────────────────────────────────
+with st.form("ticker_form"):
+    tickers_input = st.text_area("(Opcional) Digite os tickers separados por vírgula para análise customizada", "PETR4,VALE3,ITSA4")
+    submitted = st.form_submit_button("Buscar dados customizados")
+
+# Tenta carregar dados do Excel primeiro
+df = None
+if not submitted:
+    df = carregar_dados_excel()
+    if df is not None:
+        st.session_state["dados_ativos"] = df
+else:
     tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
     if not tickers:
         st.warning("Informe pelo menos um ticker válido.")
@@ -173,11 +191,10 @@ if submitted:
 
             st.session_state["dados_ativos"] = pd.DataFrame(dados)
 
-
 df = st.session_state.get("dados_ativos")
 
 if df is None or df.empty:
-    st.info("Digite tickers e clique em Buscar para carregar indicadores e rankings.")
+    st.info("📊 Carregando dados do arquivo gerado por app.py... Se vazio, execute `app.py` para atualizar os indicadores de todos os ativos da B3.")
 else:
     df = df.fillna(0)
     df["DY_formatado"] = df["DY"].apply(formatar_percentual)
