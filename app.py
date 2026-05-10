@@ -49,7 +49,7 @@ dados_finais = []
 print("Buscando dados da BRAPI...")
 
 dados = buscar_acoes(ativos)
-
+print(dados)
 print(f"{len(dados)} ativos encontrados.")
 
 
