@@ -33,7 +33,6 @@ def gerar_excel_bytes(df: pd.DataFrame) -> bytes:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Ativos")
-        writer.save()
     return output.getvalue()
 
 
