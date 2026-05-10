@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import datetime
 
 from usebolsai_client import buscar_acoes_usebolsai
 from indicadores import calcular_indicadores
@@ -22,17 +21,17 @@ tema = st.sidebar.radio("Escolha o tema:", ["Claro", "Escuro"])
 # CSS para temas
 tema_claro = """
     <style>
-        .main { background-color: #f9f9f9; }
+        body, .main { background-color: #f9f9f9; color: #000000; }
         h1, h2, h3 { color: #003366; }
-        .stDataFrame { background-color: #ffffff; }
+        .stDataFrame { background-color: #ffffff; color: #000000; }
     </style>
 """
 
 tema_escuro = """
     <style>
-        .main { background-color: #1e1e1e; }
+        body, .main { background-color: #121212; color: #ffffff; }
         h1, h2, h3 { color: #66ccff; }
-        .stDataFrame { background-color: #2b2b2b; color: #ffffff; }
+        .stDataFrame { background-color: #1e1e1e; color: #ffffff; }
     </style>
 """
 
@@ -51,14 +50,10 @@ st.header("📌 Dashboard Inicial")
 
 # Bloco 1: Indicadores macro (cards simulados)
 col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Ibovespa", "118.500", "+0,85%")
-with col2:
-    st.metric("Dólar", "R$ 5,12", "-0,20%")
-with col3:
-    st.metric("Selic", "10,50%", "estável")
-with col4:
-    st.metric("IPCA (12m)", "4,2%", "-0,1pp")
+with col1: st.metric("Ibovespa", "118.500", "+0,85%")
+with col2: st.metric("Dólar", "R$ 5,12", "-0,20%")
+with col3: st.metric("Selic", "10,50%", "estável")
+with col4: st.metric("IPCA (12m)", "4,2%", "-0,1pp")
 
 # Entrada de tickers
 tickers_input = st.text_area("Digite os tickers separados por vírgula:", "PETR4,VALE3,ITSA4")
