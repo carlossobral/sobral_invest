@@ -19,10 +19,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Atualizar branch local
-        run: |
-          git pull origin main --rebase
-
       - name: Configurar Python
         uses: actions/setup-python@v6
         with:
@@ -41,14 +37,11 @@ jobs:
 
       - name: Commit arquivos atualizados
         run: |
-
           git config user.name "github-actions"
           git config user.email "actions@github.com"
 
           git rm -r --cached __pycache__ || true
-
           git add .
-
           git diff --cached --quiet || git commit -m "Atualização automática"
 
           git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
