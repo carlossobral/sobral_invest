@@ -42,7 +42,6 @@ else:
     st.markdown(tema_escuro, unsafe_allow_html=True)
 
 # Logo e título
-st.image("https://sobralinvest.streamlit.app/logo.png", width=120)  # substitua pelo link real do seu logo
 st.title("📊 Sobral Invest - Plataforma de Análise Fundamentalista")
 
 # ─── Dashboard Inicial ────────────────────────────────
@@ -114,12 +113,11 @@ if st.button("Buscar dados"):
     st.plotly_chart(radar, use_container_width=True)
 
     # ─── Abas ────────────────────────────────
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "📊 Indicadores", 
         "🏆 Ranking", 
         "📈 Radar", 
-        "💰 Valuation", 
-        "🏢 Empresas"
+        "💰 Valuation"
     ])
 
     with tab1:
@@ -139,8 +137,3 @@ if st.button("Buscar dados"):
     with tab4:
         st.subheader("Modelos de Valuation")
         st.dataframe(df[["Ticker","Graham","Graham_BR","Bazin","Lynch_PEG","AGF"]], use_container_width=True)
-
-    with tab5:
-        st.subheader("Logos das Empresas")
-        for ticker in df["Ticker"].head(10):
-            st.image(f"https://logo.clearbit.com/{ticker.lower()}.com", width=100, caption=ticker)
