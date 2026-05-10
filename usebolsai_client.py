@@ -9,18 +9,17 @@ def buscar_acoes_usebolsai(tickers):
         print("⚠️ USEBOLSAI_API_KEY não configurada.")
         return []
 
-    resultados = []
-    # Divide em lotes de até 30 tickers
-    for i in range(0, len(tickers), 30):
-        lote = tickers[i:i+30]
-        url = f"{BASE_URL}?tickers={','.join(lote)}"
-        headers = {"X-API-Key": api_key}
-        resp = requests.get(url, headers=headers)
+    url = f"{BASE_URL}?tickers={','.join(tickers)}"
+    headers = {"X-API-Key": api_key}
+    resp = requests.get(url, headers=headers)
 
-        if resp.status_code == 200:
-            data = resp.json()
-            # O retorno aqui já é uma lista de dicts com "ticker"
-            resultados.extend(data.get("results", []))
+    if resp.status_code == 200:
+        data = resp.json()
+        if "results" in data:
+            return data["results"]
         else:
-            print(f"Erro {resp.status_code} ao buscar lote: {lote}")
-    return resultados
+            print("⚠️ Resposta sem campo 'results':", data)
+            return []
+    else:
+        print(f"Erro {resp.status_code} ao buscar tickers")
+        return []
