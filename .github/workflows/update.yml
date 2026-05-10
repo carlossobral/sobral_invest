@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: true
+          fetch-depth: 0
 
       - name: Configurar Python
         uses: actions/setup-python@v6
@@ -50,5 +51,7 @@ jobs:
           git add .
 
           git diff --cached --quiet || git commit -m "Atualização automática"
+
+          git pull --rebase origin main
 
           git push
