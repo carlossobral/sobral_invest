@@ -1,6 +1,9 @@
 import requests
 import yfinance as yf
-from config import BRAPI_TOKEN, BASE_URL
+from config import BRAPI_TOKEN
+
+# Endpoint correto da BRAPI
+BASE_URL = "https://brapi.dev/api/quote"
 
 def obter_dados_brapi(ticker):
     url = f"{BASE_URL}/{ticker}"
@@ -18,7 +21,7 @@ def obter_dados_brapi(ticker):
                 return {}
         except Exception as e:
             print(f"⚠️ Erro ao decodificar JSON para {ticker}: {e}")
-            print("Resposta bruta:", r.text)  # debug
+            print("Resposta bruta:", r.text[:200])  # debug
             return {}
     else:
         print(f"⚠️ Erro BRAPI {ticker}: {r.status_code} - {r.text}")
@@ -28,6 +31,12 @@ def obter_dados_yfinance(ticker):
     acao = yf.Ticker(f"{ticker}.SA")
     info = acao.info
     return {
+        "Cotacao": info.get("currentPrice"),
+        "PL": info.get("forwardPE"),
+        "LPA": info.get("trailingEps"),
+        "DY": info.get("dividendYield"),
+        "PVP": info.get("priceToBook"),
+        "MarketCap": info.get("marketCap"),
         "ROE": info.get("returnOnEquity"),
         "ROA": info.get("returnOnAssets"),
         "ROIC": calcular_roic(info),
@@ -59,15 +68,25 @@ def buscar_acoes(lista_tickers):
         dados_brapi = obter_dados_brapi(ticker)
         dados_yf = obter_dados_yfinance(ticker)
 
+        # Fallback: se BRAPI falhar, usa Yahoo Finance
         consolidado = {
             "Ticker": ticker,
-            "Cotacao": dados_brapi.get("regularMarketPrice"),
-            "PL": dados_brapi.get("priceEarnings"),
-            "LPA": dados_brapi.get("earningsPerShare"),
-            "DY": dados_brapi.get("dividendYield"),
-            "PVP": dados_brapi.get("priceToBook"),
-            "MarketCap": dados_brapi.get("marketCap"),
-            **dados_yf
+            "Cotacao": dados_brapi.get("regularMarketPrice") or dados_yf.get("Cotacao", 0),
+            "PL": dados_brapi.get("priceEarnings") or dados_yf.get("PL", 0),
+            "LPA": dados_brapi.get("earningsPerShare") or dados_yf.get("LPA", 0),
+            "DY": dados_brapi.get("dividendYield") or dados_yf.get("DY", 0),
+            "PVP": dados_brapi.get("priceToBook") or dados_yf.get("PVP", 0),
+            "MarketCap": dados_brapi.get("marketCap") or dados_yf.get("MarketCap", 0),
+            "ROE": dados_yf.get("ROE"),
+            "ROA": dados_yf.get("ROA"),
+            "ROIC": dados_yf.get("ROIC"),
+            "Margem_Bruta": dados_yf.get("Margem_Bruta"),
+            "Margem_EBIT": dados_yf.get("Margem_EBIT"),
+            "Margem_Liquida": dados_yf.get("Margem_Liquida"),
+            "Divida_PL": dados_yf.get("Divida_PL"),
+            "Liquidez_Corrente": dados_yf.get("Liquidez_Corrente"),
+            "Receita_CAGR": dados_yf.get("Receita_CAGR"),
+            "Lucro_CAGR": dados_yf.get("Lucro_CAGR"),
         }
         resultados.append(consolidado)
 
