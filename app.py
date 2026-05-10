@@ -49,6 +49,11 @@ dados_finais = []
 print("Buscando dados da BRAPI...")
 
 dados = buscar_acoes(ativos)
+dados = buscar_acoes(ativos)
+
+if not dados:
+    print("Nenhum dado retornado da BRAPI. Abortando geração da planilha.")
+    exit(1)
 print(dados)
 print(f"{len(dados)} ativos encontrados.")
 
