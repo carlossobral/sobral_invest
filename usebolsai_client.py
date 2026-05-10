@@ -16,7 +16,6 @@ def buscar_acoes_usebolsai(tickers):
 
     if resp.status_code == 200:
         data = resp.json()
-        # Aqui sim vem "results" com os indicadores
         return data.get("results", [])
     else:
         print(f"Erro {resp.status_code} ao buscar tickers")
