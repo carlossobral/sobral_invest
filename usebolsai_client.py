@@ -1,3 +1,8 @@
+import os
+import requests
+
+BASE_URL = "https://api.usebolsai.com/api/v1/stocks/"
+
 def buscar_acoes_usebolsai(tickers):
     api_key = os.getenv("USEBOLSAI_API_KEY")
     if not api_key:
