@@ -3,15 +3,16 @@ import requests
 
 BASE_URL = "https://api.usebolsai.com/stocks"
 
-def buscar_acoes(tickers):
+def buscar_acoes_usebolsai(tickers):
     api_key = os.getenv("USEBOLSAI_API_KEY")
     if not api_key:
-        raise ValueError("API Key não encontrada. Configure USEBOLSAI_API_KEY nos Secrets do GitHub.")
+        print("⚠️ USEBOLSAI_API_KEY não configurada.")
+        return []
 
     resultados = []
-    # Divide em lotes de até 50 tickers
-    for i in range(0, len(tickers), 50):
-        lote = tickers[i:i+50]
+    # Divide em lotes de até 30 tickers
+    for i in range(0, len(tickers), 30):
+        lote = tickers[i:i+30]
         url = f"{BASE_URL}?tickers={','.join(lote)}"
         headers = {"Authorization": f"Bearer {api_key}"}
         resp = requests.get(url, headers=headers)
