@@ -1,9 +1,6 @@
 import requests
 import yfinance as yf
-import pandas as pd
-
-BRAPI_TOKEN = "SUA_CHAVE_BRAPI"
-BASE_URL = "https://brapi.dev/api/quote"
+from config import BRAPI_TOKEN, BASE_URL
 
 def obter_dados_brapi(ticker):
     url = f"{BASE_URL}/{ticker}"
@@ -16,7 +13,7 @@ def obter_dados_brapi(ticker):
         return {}
 
 def obter_dados_yfinance(ticker):
-    acao = yf.Ticker(f"{ticker}.SA")  # .SA = ações da B3
+    acao = yf.Ticker(f"{ticker}.SA")
     info = acao.info
     return {
         "ROE": info.get("returnOnEquity"),
@@ -43,23 +40,23 @@ def calcular_roic(info):
         return (ebit * (1 - taxa_imposto)) / capital_investido
     return None
 
-def consolidar_dados(ticker):
-    dados_brapi = obter_dados_brapi(ticker)
-    dados_yf = obter_dados_yfinance(ticker)
+def buscar_acoes(lista_tickers):
+    resultados = []
+    for ticker in lista_tickers:
+        dados_brapi = obter_dados_brapi(ticker)
+        dados_yf = obter_dados_yfinance(ticker)
 
-    consolidado = {
-        "Ticker": ticker,
-        "Cotacao": dados_brapi.get("regularMarketPrice"),
-        "PL": dados_brapi.get("priceEarnings"),
-        "LPA": dados_brapi.get("earningsPerShare"),
-        "DY": dados_brapi.get("dividendYield"),
-        "PVP": dados_brapi.get("priceToBook"),
-        "MarketCap": dados_brapi.get("marketCap"),
-        **dados_yf
-    }
-    return consolidado
+        consolidado = {
+            "Ticker": ticker,
+            "Cotacao": dados_brapi.get("regularMarketPrice"),
+            "PL": dados_brapi.get("priceEarnings"),
+            "LPA": dados_brapi.get("earningsPerShare"),
+            "DY": dados_brapi.get("dividendYield"),
+            "PVP": dados_brapi.get("priceToBook"),
+            "MarketCap": dados_brapi.get("marketCap"),
+            **dados_yf
+        }
+        resultados.append(consolidado)
 
-# Exemplo com PETR4
-dados = consolidar_dados("PETR4")
-df = pd.DataFrame([dados])
-print(df)
+    print("TOTAL RESULTADOS:", len(resultados))
+    return resultados
