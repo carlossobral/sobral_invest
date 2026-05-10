@@ -1,6 +1,6 @@
 import pandas as pd
-
-from brapi_client import buscar_acoes
+from usebolsai_client import buscar_acoes
+from indicadores import calcular_indicadores
 from valuation import (
     calcular_graham,
     calcular_graham_br,
@@ -40,56 +40,39 @@ ativos = [
     "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
 
-print("Buscando dados...")
+print("Buscando dados via USEBOLSAI...")
 dados = buscar_acoes(ativos)
 
 dados_finais = []
 
 for data in dados:
     try:
-        ticker = data.get("Ticker", "N/A")
+        ticker = data.get("ticker", "N/A")
         print(f"Processando {ticker}")
 
-        # Dados base com tratamento de None
-        lpa = data.get("LPA") or 0
-        vpa = data.get("PVP") or 0
-        dividendos = data.get("DY") or 0
-        pl = data.get("PL") or 0
-        crescimento = data.get("Lucro_CAGR") or 0
+        # Indicadores
+        ind = calcular_indicadores(data)
 
-        # Valuation com proteção contra erros
-        graham = calcular_graham(lpa, vpa) or 0
+        # Valuation
+        graham = calcular_graham(ind.get("LPA"), ind.get("VPA")) or 0
         graham_br = calcular_graham_br(
             graham,
-            data.get("ROE") or 0,
-            data.get("Divida_PL") or 0,
-            data.get("Margem_Liquida") or 0,
-            data.get("Receita_CAGR") or 0
+            ind.get("ROE"),
+            ind.get("Divida_PL"),
+            ind.get("Margem_Liquida"),
+            ind.get("Receita_CAGR")
         ) or 0
-        bazin = calcular_bazin(dividendos) or 0
-        lynch = calcular_lynch(pl, crescimento) or 0
-        agf = calcular_agf(dividendos, crescimento) or 0
+        bazin = calcular_bazin(ind.get("DY")) or 0
+        lynch = calcular_lynch(ind.get("PL"), ind.get("Lucro_CAGR")) or 0
+        agf = calcular_agf(ind.get("DY"), ind.get("Lucro_CAGR")) or 0
 
         # Checklist
-        checklist, score = checklist_buy_hold(data)
+        checklist, score = checklist_buy_hold(ind)
 
         # Linha final
         linha = {
             "Ticker": ticker,
-            "Cotacao": data.get("Cotacao") or 0,
-            "DY": dividendos,
-            "PL": pl,
-            "PVP": vpa,
-            "EV_EBITDA": data.get("EV_EBITDA") or 0,
-            "ROE": data.get("ROE") or 0,
-            "ROA": data.get("ROA") or 0,
-            "Margem_Liquida": data.get("Margem_Liquida") or 0,
-            "Margem_EBIT": data.get("Margem_EBIT") or 0,
-            "Margem_Bruta": data.get("Margem_Bruta") or 0,
-            "Divida_PL": data.get("Divida_PL") or 0,
-            "Receita_CAGR": data.get("Receita_CAGR") or 0,
-            "Lucro_CAGR": crescimento,
-            "Liquidez_Corrente": data.get("Liquidez_Corrente") or 0,
+            **ind,
             "Graham": graham,
             "Graham_BR": graham_br,
             "Bazin": bazin,
@@ -105,6 +88,12 @@ for data in dados:
 
 # DataFrame final
 df = pd.DataFrame(dados_finais)
+
+# Exportação
+salvar_excel(df)
+
+print("✅ Excel gerado com sucesso!")
+print(df.head())
 
 # Exportação
 salvar_excel(df)
