@@ -1,6 +1,5 @@
 import pandas as pd
 from usebolsai_client import buscar_acoes_usebolsai
-from brapi_client import obter_dados_yfinance
 from indicadores import calcular_indicadores
 from valuation import (
     calcular_graham,
@@ -40,55 +39,13 @@ ativos = [
     "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
 
-# 1. Busca principal (screener + top 200 fundamentals + cache)
-dados_usebolsai, nao_encontrados = buscar_acoes_usebolsai(ativos)
+# Busca dados (cache → yfinance + UsebolsaI top 160)
+todos_dados, _ = buscar_acoes_usebolsai(ativos)
 
-# 2. Fallback yfinance para ativos não encontrados
-dados_yfinance = []
-if nao_encontrados:
-    print(f"\nBuscando {len(nao_encontrados)} ativos via yfinance (fallback)...")
-    for ticker in nao_encontrados:
-        try:
-            yf = obter_dados_yfinance(ticker)
-            if yf:
-                dados_yfinance.append({
-                    "ticker":           ticker,
-                    "close_price":      yf.get("Cotacao"),
-                    "pl":               yf.get("PL"),
-                    "pvp":              yf.get("PVP"),
-                    "lpa":              yf.get("LPA"),
-                    "dividend_yield":   yf.get("DY"),
-                    "roe":              yf.get("ROE"),
-                    "roa":              yf.get("ROA"),
-                    "roic":             yf.get("ROIC"),
-                    "gross_margin":     yf.get("Margem_Bruta"),
-                    "ebit_margin":      yf.get("Margem_EBIT"),
-                    "net_margin":       yf.get("Margem_Liquida"),
-                    "debt_equity":      yf.get("Divida_PL"),
-                    "current_ratio":    yf.get("Liquidez_Corrente"),
-                    "cagr_revenue_5y":  yf.get("Receita_CAGR"),
-                    "cagr_earnings_5y": yf.get("Lucro_CAGR"),
-                    "market_cap":       yf.get("MarketCap"),
-                    "vpa":              yf.get("VPA"),
-                    "ebitda":           yf.get("EBITDA"),
-                    "ebit":             yf.get("EBIT"),
-                    "equity":           yf.get("Patrimonio"),
-                    "net_revenue":      yf.get("Receita_Liquida"),
-                    "net_income":       yf.get("Lucro_Liquido"),
-                    "net_debt":         yf.get("Divida_Liquida"),
-                    "cash":             yf.get("Caixa"),
-                    "total_assets":     yf.get("Ativos_Totais"),
-                })
-        except Exception as e:
-            print(f"⚠️ Erro yfinance {ticker}: {e}")
-
-# 3. Processa todos
-todos_dados = dados_usebolsai + dados_yfinance
-print(f"\nProcessando {len(todos_dados)} ativos...")
-
+# Processa cada ativo
 dados_finais = []
 for data in todos_dados:
-    ticker = data.get("ticker", "N/A")
+    ticker = data.get("Ticker", "N/A")
     try:
         ind = calcular_indicadores(data)
 
@@ -119,7 +76,7 @@ for data in todos_dados:
     except Exception as e:
         print(f"⚠️ Erro ao processar {ticker}: {e}")
 
-# 4. Exporta
+# Exporta
 df = pd.DataFrame(dados_finais)
 salvar_excel(df)
 print(f"\n✅ Excel gerado com {len(df)} ativos!")
