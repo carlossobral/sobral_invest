@@ -6,10 +6,21 @@ def obter_dados_brapi(ticker):
     url = f"{BASE_URL}/{ticker}"
     params = {"token": BRAPI_TOKEN}
     r = requests.get(url, params=params)
-    if r.status_code == 200:
-        return r.json().get("results", [])[0]
+
+    if r.status_code == 200 and r.text.strip():
+        try:
+            data = r.json()
+            results = data.get("results", [])
+            if results:
+                return results[0]
+            else:
+                print(f"⚠️ Nenhum resultado BRAPI para {ticker}")
+                return {}
+        except Exception as e:
+            print(f"⚠️ Erro ao decodificar JSON para {ticker}: {e}")
+            return {}
     else:
-        print("Erro BRAPI:", r.text)
+        print(f"⚠️ Erro BRAPI {ticker}: {r.status_code} - {r.text}")
         return {}
 
 def obter_dados_yfinance(ticker):
@@ -43,6 +54,7 @@ def calcular_roic(info):
 def buscar_acoes(lista_tickers):
     resultados = []
     for ticker in lista_tickers:
+        print(f"Buscando {ticker}...")
         dados_brapi = obter_dados_brapi(ticker)
         dados_yf = obter_dados_yfinance(ticker)
 
