@@ -14,7 +14,7 @@ st.set_page_config(
     page_title="Sobral Invest",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
@@ -34,24 +34,6 @@ def gerar_excel_bytes(df: pd.DataFrame) -> bytes:
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Ativos")
     return output.getvalue()
-
-
-def criar_estilo_tema(tema: str):
-    if tema == "Claro":
-        return """
-            <style>
-                body, .main { background-color: #f9f9f9; color: #000000; }
-                h1, h2, h3, h4, h5 { color: #003366; }
-                .stDataFrame { background-color: #ffffff; color: #000000; }
-            </style>
-        """
-    return """
-            <style>
-                body, .main { background-color: #121212; color: #ffffff; }
-                h1, h2, h3, h4, h5 { color: #66ccff; }
-                .stDataFrame { background-color: #1e1e1e; color: #ffffff; }
-            </style>
-        """
 
 
 def montar_agenda_dividendos(df: pd.DataFrame) -> pd.DataFrame:
@@ -74,28 +56,6 @@ def montar_agenda_dividendos(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(agenda)
 
 
-# ─── Sidebar ──────────────────────────────────────────────────────────────
-st.sidebar.title("Configurações")
-tema = st.sidebar.radio("Tema visual", ["Claro", "Escuro"], index=0)
-st.sidebar.markdown(criar_estilo_tema(tema), unsafe_allow_html=True)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Funcionalidades sugeridas")
-st.sidebar.markdown(
-    "- Comparar ações lado a lado\n"
-    "- Rankings por DY, ROE, PL e Score\n"
-    "- Calendário de dividendos e eventos\n"
-    "- Exportar relatórios para Excel\n"
-    "- Definições rápidas de indicadores e interpretações\n"
-)
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Observações")
-st.sidebar.info(
-    "Os indicadores são calculados a partir de dados do UsebolsaI e yfinance. "
-    "Valores podem variar conforme disponibilidade de dados." 
-)
-
-
 # ─── Cabeçalho ───────────────────────────────────────────────────────────────
 st.markdown("# 📊 Sobral Invest")
 st.markdown(
@@ -103,33 +63,8 @@ st.markdown(
     "Digite os tickers, compare resultados e exporte relatórios em Excel."
 )
 
-with st.expander("Como aperfeiçoar a página inicial", expanded=True):
-    st.markdown(
-        "- Adicionar um comparador de até 5 ações.\n"
-        "- Exibir cards de destaque com melhor Score, maior DY, melhor ROE e menor PL.\n"
-        "- Incluir um calendário de dividendos real e notícias recentes.\n"
-        "- Mostrar explicações rápidas dos indicadores e dos modelos de valuation.\n"
-        "- Permitir a exportação de relatórios de ativos para Excel."
-    )
-
 st.markdown("---")
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.markdown("### O que você pode fazer aqui")
-    st.markdown(
-        "- Buscar tickers da B3 e visualizar métricas fundacionais.\n"
-        "- Comparar ações lado a lado e identificar as melhores oportunidades.\n"
-        "- Visualizar rankings de DY, ROE e Score Buy & Hold.\n"
-        "- Exportar a análise em Excel para consultas offline."
-    )
-with col2:
-    st.markdown("### Diferenciais")
-    st.markdown(
-        "- Interface leve e direta.\n"
-        "- Uso de dados do UsebolsaI e yfinance.\n"
-        "- Métricas e valuation prontos para comparar.\n"
-        "- Ideal para quem busca análise fundamentalista rápida."
-    )
+
 
 # ─── Carrega dados do Excel ───────────────────────────────────────────────
 @st.cache_data
