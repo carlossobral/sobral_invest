@@ -2,28 +2,23 @@ import os
 import json
 import requests
 from datetime import date
+from brapi_client import obter_dados_yfinance
 
-BASE_URL = "https://api.usebolsai.com/api/v1"
-TOP_N = 160  # 1 (screener) + 160 (fundamentals) = 161 req/dia — cabe no plano free (200/dia)
+BASE_URL  = "https://api.usebolsai.com/api/v1"
+TOP_N     = 160   # 160 req fundamentals + margem de segurança dentro de 200/dia
 CACHE_FILE = "cache_bolsai.json"
 
 
-def _headers():
-    api_key = os.getenv("USEBOLSAI_API_KEY")
-    if not api_key:
-        raise EnvironmentError("⚠️ USEBOLSAI_API_KEY não configurada.")
-    return {"X-API-Key": api_key}
-
+# ─── Cache ────────────────────────────────────────────────────────────────────
 
 def _carregar_cache():
-    """Retorna dados do cache se foram gerados hoje, senão None."""
     if not os.path.exists(CACHE_FILE):
         return None
     try:
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
             cache = json.load(f)
         if cache.get("data") == str(date.today()):
-            print(f"✅ Cache válido encontrado ({CACHE_FILE}) — pulando chamadas à API.")
+            print(f"✅ Cache válido ({CACHE_FILE}) — pulando chamadas à API.")
             return cache.get("resultados", [])
     except Exception as e:
         print(f"⚠️ Erro ao ler cache: {e}")
@@ -39,69 +34,31 @@ def _salvar_cache(resultados):
         print(f"⚠️ Erro ao salvar cache: {e}")
 
 
-def _score_basico(item):
-    """Score rápido com dados do screener para rankear antes de chamar fundamentals."""
+# ─── Score básico (yfinance) ──────────────────────────────────────────────────
+
+def _score_basico(dados_yf):
     score = 0
-    roe = item.get("roe") or 0
-    dy  = item.get("dividend_yield") or 0
-    pl  = item.get("pl") or 999
-    pvp = item.get("pvp") or 999
-    net_margin = item.get("net_margin") or 0
-    debt_equity = item.get("debt_equity") or 999
+    roe        = dados_yf.get("ROE") or 0
+    dy         = dados_yf.get("DY") or 0
+    pl         = dados_yf.get("PL") or 999
+    pvp        = dados_yf.get("PVP") or 999
+    net_margin = dados_yf.get("Margem_Liquida") or 0
+    debt_eq    = dados_yf.get("Divida_PL") or 999
 
-    if dy > 1:
-        dy = dy / 100  # normaliza se vier como percentual
+    if dy > 1: dy = dy / 100  # normaliza percentual → decimal
 
-    if roe > 0.12:       score += 2
-    if dy > 0.07:        score += 2
-    if pl < 15:          score += 1
-    if pvp < 2:          score += 1
-    if net_margin > 0.1: score += 1
-    if debt_equity < 1:  score += 1
+    if roe > 0.12:        score += 2
+    if dy > 0.07:         score += 2
+    if 0 < pl < 15:       score += 1
+    if 0 < pvp < 2:       score += 1
+    if net_margin > 0.10: score += 1
+    if 0 < debt_eq < 1:   score += 1
     return score
 
 
-def _buscar_screener(tickers_set):
-    """Busca todos os ativos via screener (1 requisição)."""
-    headers = _headers()
-    resultados = []
-    offset = 0
-    limit = 500
-
-    print("📡 Buscando screener (1 requisição)...")
-    while True:
-        resp = requests.get(
-            f"{BASE_URL}/screener/",
-            headers=headers,
-            params={"limit": limit, "offset": offset, "sort": "market_cap", "order": "desc"},
-            timeout=30
-        )
-        if resp.status_code != 200:
-            print(f"⚠️ Screener erro {resp.status_code}: {resp.text[:200]}")
-            break
-
-        data = resp.json()
-        items = data if isinstance(data, list) else data.get("data", data.get("results", []))
-        if not items:
-            break
-
-        for item in items:
-            ticker = (item.get("ticker") or item.get("symbol") or "").upper()
-            if ticker in tickers_set:
-                item["ticker"] = ticker
-                item["_score_basico"] = _score_basico(item)
-                resultados.append(item)
-
-        if len(items) < limit:
-            break
-        offset += limit
-
-    print(f"   → {len(resultados)}/{len(tickers_set)} ativos encontrados no screener.")
-    return resultados
-
+# ─── UsebolsaI fundamentals ───────────────────────────────────────────────────
 
 def _buscar_fundamentals(ticker, headers):
-    """Busca fundamentals detalhados de um único ticker."""
     try:
         resp = requests.get(
             f"{BASE_URL}/fundamentals/{ticker}",
@@ -117,89 +74,96 @@ def _buscar_fundamentals(ticker, headers):
     return {}
 
 
-def _normalizar(item, fund=None):
-    """Monta dict padronizado mesclando screener + fundamentals."""
-    f = fund or {}
+def _enriquecer(dados_yf, fund):
+    """Substitui campos do yfinance pelos do UsebolsaI quando disponíveis."""
+    def pegar(chave_fund, chave_yf):
+        return fund.get(chave_fund) or dados_yf.get(chave_yf)
+
     return {
-        "ticker":           item.get("ticker"),
-        "close_price":      item.get("close") or item.get("price") or item.get("close_price") or f.get("close_price"),
-        "pl":               f.get("pl") or item.get("pl") or item.get("price_to_earnings"),
-        "pvp":              f.get("pvp") or item.get("pvp") or item.get("price_to_book"),
-        "ev_ebitda":        f.get("ev_ebitda") or item.get("ev_ebitda"),
-        "ev_ebit":          f.get("ev_ebit") or item.get("ev_ebit"),
-        "lpa":              f.get("lpa") or item.get("lpa") or item.get("eps"),
-        "vpa":              f.get("vpa") or item.get("vpa"),
-        "dividend_yield":   f.get("dividend_yield") or item.get("dividend_yield") or item.get("dy"),
-        "roe":              f.get("roe") or item.get("roe"),
-        "roa":              f.get("roa") or item.get("roa"),
-        "roic":             f.get("roic") or item.get("roic"),
-        "gross_margin":     f.get("gross_margin") or item.get("gross_margin"),
-        "ebit_margin":      f.get("ebit_margin") or item.get("ebit_margin"),
-        "ebitda_margin":    f.get("ebitda_margin") or item.get("ebitda_margin"),
-        "net_margin":       f.get("net_margin") or item.get("net_margin"),
-        "debt_equity":      f.get("debt_equity") or item.get("debt_equity"),
-        "current_ratio":    f.get("current_ratio") or item.get("current_ratio"),
-        "cagr_revenue_5y":  f.get("cagr_revenue_5y") or item.get("cagr_revenue_5y"),
-        "cagr_earnings_5y": f.get("cagr_earnings_5y") or item.get("cagr_earnings_5y"),
-        "market_cap":       f.get("market_cap") or item.get("market_cap"),
-        "equity":           f.get("equity") or item.get("equity"),
-        "net_revenue":      f.get("net_revenue") or item.get("net_revenue"),
-        "net_income":       f.get("net_income") or item.get("net_income"),
-        "ebitda":           f.get("ebitda") or item.get("ebitda"),
-        "ebit":             f.get("ebit") or item.get("ebit"),
-        "net_debt":         f.get("net_debt") or item.get("net_debt"),
-        "cash":             f.get("cash") or item.get("cash"),
-        "total_assets":     f.get("total_assets") or item.get("total_assets"),
+        **dados_yf,
+        "PL":              pegar("pl",              "PL"),
+        "PVP":             pegar("pvp",             "PVP"),
+        "LPA":             pegar("lpa",             "LPA"),
+        "VPA":             pegar("vpa",             "VPA"),
+        "DY":              pegar("dividend_yield",  "DY"),
+        "ROE":             pegar("roe",             "ROE"),
+        "ROA":             pegar("roa",             "ROA"),
+        "ROIC":            pegar("roic",            "ROIC"),
+        "Margem_Bruta":    pegar("gross_margin",    "Margem_Bruta"),
+        "Margem_EBIT":     pegar("ebit_margin",     "Margem_EBIT"),
+        "Margem_EBITDA":   fund.get("ebitda_margin"),
+        "Margem_Liquida":  pegar("net_margin",      "Margem_Liquida"),
+        "Divida_PL":       pegar("debt_equity",     "Divida_PL"),
+        "Liquidez_Corrente": pegar("current_ratio", "Liquidez_Corrente"),
+        "Receita_CAGR":    pegar("cagr_revenue_5y", "Receita_CAGR"),
+        "Lucro_CAGR":      pegar("cagr_earnings_5y","Lucro_CAGR"),
+        "EV_EBITDA":       fund.get("ev_ebitda"),
+        "EV_EBIT":         fund.get("ev_ebit"),
+        "EBITDA":          pegar("ebitda",          "EBITDA"),
+        "EBIT":            pegar("ebit",            "EBIT"),
+        "Patrimonio":      pegar("equity",          "Patrimonio"),
+        "Receita_Liquida": pegar("net_revenue",     "Receita_Liquida"),
+        "Lucro_Liquido":   pegar("net_income",      "Lucro_Liquido"),
+        "Divida_Liquida":  pegar("net_debt",        "Divida_Liquida"),
+        "Caixa":           pegar("cash",            "Caixa"),
+        "Ativos_Totais":   pegar("total_assets",    "Ativos_Totais"),
     }
 
 
+# ─── Entrada principal ────────────────────────────────────────────────────────
+
 def buscar_acoes_usebolsai(tickers):
     """
-    Estratégia:
-      1. Tenta carregar cache do dia — se existir, retorna direto.
-      2. Screener (1 req) → score básico para todos os ativos.
-      3. Top 200 por score → /fundamentals/{ticker} (até 200 req).
-      4. Restante fica só com dados do screener.
-      5. Salva tudo em cache JSON para o dia.
-    Retorna: (list[dict], list[str] não encontrados)
+    1. Cache: se já rodou hoje, retorna direto.
+    2. yfinance: busca todos os tickers (gratuito).
+    3. Score básico: rankeia os melhores.
+    4. Top 160: enriquece com /fundamentals/{ticker} do UsebolsaI.
+    5. Salva cache do dia.
+    Retorna: list[dict] com todos os ativos normalizados.
     """
-    # Cache
     cache = _carregar_cache()
     if cache is not None:
-        nao_encontrados = sorted(set(t.upper() for t in tickers) - {r["ticker"] for r in cache})
-        return cache, nao_encontrados
+        return cache, []
 
-    tickers_set = set(t.upper() for t in tickers)
-    headers = _headers()
+    api_key = os.getenv("USEBOLSAI_API_KEY")
+    headers = {"X-API-Key": api_key} if api_key else {}
+    if not api_key:
+        print("⚠️ USEBOLSAI_API_KEY não configurada — usando apenas yfinance.")
 
-    # Passo 1: screener
-    screener_items = _buscar_screener(tickers_set)
+    # Passo 1: yfinance para todos
+    print(f"📡 Buscando {len(tickers)} ativos via yfinance...")
+    dados_yf = {}
+    for i, ticker in enumerate(tickers, 1):
+        print(f"   [{i}/{len(tickers)}] {ticker}", end="\r")
+        yf = obter_dados_yfinance(ticker)
+        yf["Ticker"] = ticker
+        yf["_score"] = _score_basico(yf)
+        dados_yf[ticker] = yf
+    print()
 
     # Passo 2: rankeia e separa top N
-    screener_items.sort(key=lambda x: x.get("_score_basico", 0), reverse=True)
-    top_items    = screener_items[:TOP_N]
-    resto_items  = screener_items[TOP_N:]
+    ranking = sorted(dados_yf.values(), key=lambda x: x["_score"], reverse=True)
+    top     = ranking[:TOP_N]
+    resto   = ranking[TOP_N:]
 
-    # Passo 3: fundamentals para o top N
-    print(f"📡 Buscando fundamentals dos top {len(top_items)} ativos ({len(top_items)} requisições)...")
-    resultados = []
-    for i, item in enumerate(top_items, 1):
-        ticker = item["ticker"]
-        print(f"   [{i}/{len(top_items)}] {ticker}")
-        fund = _buscar_fundamentals(ticker, headers)
-        resultados.append(_normalizar(item, fund))
+    # Passo 3: enriquece top N com UsebolsaI
+    if api_key:
+        print(f"📡 Enriquecendo top {len(top)} com UsebolsaI fundamentals...")
+        for i, item in enumerate(top, 1):
+            ticker = item["Ticker"]
+            print(f"   [{i}/{len(top)}] {ticker}", end="\r")
+            fund = _buscar_fundamentals(ticker, headers)
+            top[i-1] = _enriquecer(item, fund)
+        print()
+    else:
+        print("⚠️ Sem API key — sem enriquecimento UsebolsaI.")
 
-    # Passo 4: resto só com screener
-    print(f"📋 Usando apenas screener para os demais {len(resto_items)} ativos.")
-    for item in resto_items:
-        resultados.append(_normalizar(item))
+    resultados = top + resto
 
-    # Passo 5: cache
+    # Remove campo interno de score
+    for r in resultados:
+        r.pop("_score", None)
+
     _salvar_cache(resultados)
-
-    nao_encontrados = sorted(tickers_set - {r["ticker"] for r in resultados})
-    if nao_encontrados:
-        print(f"⚠️ Não encontrados (fallback yfinance): {nao_encontrados}")
-
-    print(f"✅ Total: {len(resultados)} ativos processados.")
-    return resultados, nao_encontrados
+    print(f"✅ {len(resultados)} ativos prontos.")
+    return resultados, []
