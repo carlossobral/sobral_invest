@@ -54,24 +54,24 @@ for data in dados:
         # Indicadores
         ind = calcular_indicadores(data)
 
-        # Dados base
-        lpa = data.get("LPA", 0)
-        vpa = data.get("PVP", 0)  # ajuste conforme cálculo de VPA
-        dividendos = data.get("DY", 0)
-        crescimento = ind.get("Lucro_CAGR", 0)
+        # Dados base com tratamento de None
+        lpa = data.get("LPA") or 0
+        vpa = data.get("PVP") or 0
+        dividendos = data.get("DY") or 0
+        crescimento = ind.get("Lucro_CAGR") or 0
 
-        # Valuation
-        graham = calcular_graham(lpa, vpa)
+        # Valuation com proteção contra erros
+        graham = calcular_graham(lpa, vpa) or 0
         graham_br = calcular_graham_br(
             graham,
-            ind["ROE"],
-            ind["Divida_PL"],
-            ind["Margem_Liquida"],
-            ind["Receita_CAGR"]
-        )
-        bazin = calcular_bazin(dividendos)
-        lynch = calcular_lynch(ind["PL"], crescimento)
-        agf = calcular_agf(dividendos, crescimento)
+            ind.get("ROE") or 0,
+            ind.get("Divida_PL") or 0,
+            ind.get("Margem_Liquida") or 0,
+            ind.get("Receita_CAGR") or 0
+        ) or 0
+        bazin = calcular_bazin(dividendos) or 0
+        lynch = calcular_lynch(ind.get("PL") or 0, crescimento) or 0
+        agf = calcular_agf(dividendos, crescimento) or 0
 
         # Checklist
         checklist, score = checklist_buy_hold(ind)
@@ -79,20 +79,20 @@ for data in dados:
         # Linha final
         linha = {
             "Ticker": ticker,
-            "Cotacao": ind.get("Cotacao"),
-            "DY": ind.get("DY"),
-            "PL": ind.get("PL"),
-            "PVP": ind.get("PVP"),
-            "EV_EBITDA": ind.get("EV_EBITDA"),
-            "ROE": ind.get("ROE"),
-            "ROA": ind.get("ROA"),
-            "Margem_Liquida": ind.get("Margem_Liquida"),
-            "Margem_EBIT": ind.get("Margem_EBIT"),
-            "Margem_Bruta": ind.get("Margem_Bruta"),
-            "Divida_PL": ind.get("Divida_PL"),
-            "Receita_CAGR": ind.get("Receita_CAGR"),
-            "Lucro_CAGR": ind.get("Lucro_CAGR"),
-            "Liquidez_Corrente": ind.get("Liquidez_Corrente"),
+            "Cotacao": ind.get("Cotacao") or 0,
+            "DY": ind.get("DY") or 0,
+            "PL": ind.get("PL") or 0,
+            "PVP": ind.get("PVP") or 0,
+            "EV_EBITDA": ind.get("EV_EBITDA") or 0,
+            "ROE": ind.get("ROE") or 0,
+            "ROA": ind.get("ROA") or 0,
+            "Margem_Liquida": ind.get("Margem_Liquida") or 0,
+            "Margem_EBIT": ind.get("Margem_EBIT") or 0,
+            "Margem_Bruta": ind.get("Margem_Bruta") or 0,
+            "Divida_PL": ind.get("Divida_PL") or 0,
+            "Receita_CAGR": ind.get("Receita_CAGR") or 0,
+            "Lucro_CAGR": ind.get("Lucro_CAGR") or 0,
+            "Liquidez_Corrente": ind.get("Liquidez_Corrente") or 0,
             "Graham": graham,
             "Graham_BR": graham_br,
             "Bazin": bazin,
