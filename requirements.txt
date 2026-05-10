@@ -1,9 +1,0 @@
-flask
-gunicorn
-fastapi
-uvicorn
-requests
-pandas
-beautifulsoup4
-yfinance
-
