@@ -5,7 +5,13 @@ def buscar_acoes(lista_tickers):
     resultados = []
     for ticker in lista_tickers:
         url = f"{BASE_URL}/quote/{ticker}"
-        response = requests.get(url, params={"token": BRAPI_TOKEN})
+        params = {
+            "token": BRAPI_TOKEN,
+            "dividends": "true",
+            "modules": "defaultKeyStatistics,financialData"
+        }
+
+        response = requests.get(url, params=params)
 
         print(f"Buscando {ticker} - STATUS {response.status_code}")
 
