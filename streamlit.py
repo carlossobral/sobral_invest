@@ -90,17 +90,18 @@ if st.button("Buscar dados"):
 
     df = pd.DataFrame(dados)
 
-    # Bloco 2: Altas e baixas do dia (simulação com ROE)
-    st.subheader("📈 Maiores Altas e Baixas do Dia")
+    # Bloco 2: Altas e baixas do dia
+    st.subheader("📈 Maiores Altas e Baixas")
     colA, colB = st.columns(2)
     with colA:
-        st.dataframe(df.sort_values("ROE", ascending=False).head(5)[["Ticker","ROE","DY"]])
+        st.dataframe(df.sort_values("DY", ascending=False).head(5)[["Ticker","DY","ROE"]])
     with colB:
-        st.dataframe(df.sort_values("ROE", ascending=True).head(5)[["Ticker","ROE","DY"]])
+        st.dataframe(df.sort_values("DY", ascending=True).head(5)[["Ticker","DY","ROE"]])
 
     # Bloco 3: Ranking dinâmico
-    st.subheader("🏆 Ranking por Dividend Yield")
-    st.bar_chart(df.sort_values("DY", ascending=False).head(10).set_index("Ticker")["DY"])
+    st.subheader("🏆 Ranking Dividend Yield")
+    ranking_dy = df.sort_values("DY", ascending=False).head(10)
+    st.bar_chart(ranking_dy.set_index("Ticker")["DY"])
 
     # Bloco 4: Agenda de dividendos (mock)
     st.subheader("📅 Agenda de Dividendos")
