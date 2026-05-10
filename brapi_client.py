@@ -10,7 +10,7 @@ def buscar_acoes(lista_tickers):
     url = f"{BASE_URL}/quote/{tickers}"
 
     params = {
-        "token": "esWXsXKkdh45gTmhS33aNK"
+        "token": BRAPI_TOKEN
     }
 
     print("===================================")
