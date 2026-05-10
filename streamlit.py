@@ -78,9 +78,15 @@ def carregar_dados_excel():
     return None
 
 # ─── Busca de tickers (opcional para análise customizada) ───────────────────────────────────────────────────────
-with st.form("ticker_form"):
-    tickers_input = st.text_area("(Opcional) Digite os tickers separados por vírgula para análise customizada", "PETR4,VALE3,ITSA4")
-    submitted = st.form_submit_button("Buscar dados customizados")
+col1, col2, col3 = st.columns([2, 3, 2])
+with col2:
+    with st.form("ticker_form"):
+        tickers_input = st.text_input("🔍 Digite ticker (ex: PETR4,VALE3)", "")
+        col_search, col_button = st.columns([3, 1])
+        with col_search:
+            submitted = st.form_submit_button("Buscar", use_container_width=True)
+        with col_button:
+            pass
 
 # Tenta carregar dados do Excel primeiro
 df = None
