@@ -104,7 +104,7 @@ def recalcular_valuation(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ─── Busca de tickers (opcional para análise customizada) ───────────────────────────────────────────────────────
+# ─── Busca de ticker (apenas um por vez) ───────────────────────────────────────────────────────
 ticker_options = []
 if os.path.exists("ativos.xlsx"):
     try:
@@ -115,30 +115,26 @@ if os.path.exists("ativos.xlsx"):
 
 col_left, col_search, col_right = st.columns([1, 2.5, 1])
 with col_search:
-    st.write("### 🔎 Buscar ativos")
+    st.write("### 🔎 Buscar ativo")
     if ticker_options:
-        selected_tickers = st.multiselect(
-            "Selecione tickers",
-            options=ticker_options,
-            default=[],
-            help="Comece a digitar para filtrar. Use a lista suspensa para escolher seus tickers.",
+        selected_ticker = st.selectbox(
+            "Selecione um ticker",
+            options=[""] + ticker_options,
+            index=0,
+            help="Comece a digitar para filtrar. Selecione um único ticker.",
         )
     else:
-        st.info("Nenhum ticker disponível para autocompletar. Gere o arquivo ativos.xlsx ou digite manualmente abaixo.")
-        selected_tickers = []
-
-    manual_input = st.text_input("Adicionar ticker manual", placeholder="PETR4, VALE3")
-    if manual_input:
-        selected_tickers += [t.strip().upper() for t in manual_input.split(",") if t.strip()]
+        st.info("Nenhum ticker disponível para autocompletar. Gere o arquivo ativos.xlsx antes de usar a busca.")
+        selected_ticker = ""
 
     submitted = st.button("Buscar")
     if submitted:
-        tickers = [t.strip().upper() for t in selected_tickers if t.strip()]
-        if not tickers:
-            st.warning("Informe pelo menos um ticker válido.")
+        ticker = selected_ticker.strip().upper()
+        if not ticker:
+            st.warning("Selecione um ticker válido para buscar.")
         else:
             with st.spinner("Buscando dados e calculando indicadores..."):
-                resultados, _ = buscar_acoes_usebolsai(tickers)
+                resultados, _ = buscar_acoes_usebolsai([ticker])
 
                 dados = []
                 for r in resultados:
