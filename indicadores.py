@@ -48,6 +48,7 @@ def calcular_indicadores(data):
             "Divida_Liquida":    _get(data, "Divida_Liquida", "net_debt") or 0,
             "Caixa":             _get(data, "Caixa", "cash") or 0,
             "Ativos_Totais":     _get(data, "Ativos_Totais", "total_assets") or 0,
+            "Segmento":          _get(data, "Segmento", "segmento", "sector", "industry") or "Desconhecido",
         }
     except Exception as e:
         print("Erro indicadores:", e)

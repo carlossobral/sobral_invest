@@ -147,7 +147,7 @@ else:
 
     with st.container():
         st.subheader("🔎 Análise rápida de indicadores")
-        cols = ["Ticker", "PL", "PVP", "ROE", "DY", "Margem_Liquida", "Divida_PL", "Liquidez_Corrente", "Score_SI"]
+        cols = ["Ticker", "Segmento", "PL", "PVP", "ROE", "DY", "Margem_Liquida", "Divida_PL", "Liquidez_Corrente", "Score_SI"]
         st.dataframe(df[cols], use_container_width=True)
 
     with st.expander("O que significam estes indicadores?", expanded=False):
@@ -192,7 +192,7 @@ else:
         if comparacao_selecionadas:
             comparacao_df = df[df["Ticker"].isin(comparacao_selecionadas)].copy()
             comparacao_cols = [
-                "Ticker", "Cotacao", "PL", "PVP", "ROE", "DY", "Margem_Liquida",
+                "Ticker", "Segmento", "Cotacao", "PL", "PVP", "ROE", "DY", "Margem_Liquida",
                 "Divida_PL", "Liquidez_Corrente", "Score_SI", "Graham", "Graham_BR"
             ]
             st.dataframe(comparacao_df[comparacao_cols].set_index("Ticker"), use_container_width=True)

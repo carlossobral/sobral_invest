@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from datetime import date
-from brapi_client import obter_dados_yfinance
+from brapi_client import obter_dados_yfinance, obter_dados_brapi
 
 BASE_URL  = "https://api.usebolsai.com/api/v1"
 TOP_N     = 160   # 160 req fundamentals + margem de segurança dentro de 200/dia
@@ -137,6 +137,8 @@ def buscar_acoes_usebolsai(tickers):
         print(f"   [{i}/{len(tickers)}] {ticker}", end="\r")
         yf = obter_dados_yfinance(ticker)
         yf["Ticker"] = ticker
+        brapi = obter_dados_brapi(ticker)
+        yf["Segmento"] = brapi.get("sector") or brapi.get("industry") or brapi.get("segment") or "Desconhecido"
         yf["_score"] = _score_basico(yf)
         dados_yf[ticker] = yf
     print()

@@ -71,7 +71,7 @@ for data in todos_dados:
             "Bazin":     bazin,
             "Lynch_PEG": lynch,
             "AGF":       agf,
-            "Score_BH":  score
+            "Score_SI":  score
         })
     except Exception as e:
         print(f"⚠️ Erro ao processar {ticker}: {e}")
@@ -81,5 +81,5 @@ df = pd.DataFrame(dados_finais)
 salvar_excel(df)
 print(f"\n✅ Excel gerado com {len(df)} ativos!")
 if not df.empty:
-    cols = [c for c in ["Ticker", "Cotacao", "PL", "ROE", "Score_BH"] if c in df.columns]
+    cols = [c for c in ["Ticker", "Segmento", "Cotacao", "PL", "ROE", "Score_SI"] if c in df.columns]
     print(df[cols].head(10).to_string())
