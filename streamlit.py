@@ -542,13 +542,10 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
-            info["pl"],
-            info["pvp"],
-            info["dy"],
-            info["roe"],
+
             positive=True
         )
-        for _, row in maiores_altas.iloc[1:7].iterrows():
+        for _, row in maiores_altas.iloc[1:10].iterrows():
             html += render_highlow_line(row["ticker"], row["preco"], row["variacao"], positive=True)
         html += "</div>"
         st.markdown(html, unsafe_allow_html=True)
@@ -563,13 +560,9 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
-            info["pl"],
-            info["pvp"],
-            info["dy"],
-            info["roe"],
             positive=False
         )
-        for _, row in maiores_baixas.iloc[1:7].iterrows():
+        for _, row in maiores_baixas.iloc[1:10].iterrows():
             html += render_highlow_line(row["ticker"], row["preco"], row["variacao"], positive=False)
         html += "</div>"
         st.markdown(html, unsafe_allow_html=True)
