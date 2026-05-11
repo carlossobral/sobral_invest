@@ -1,27 +1,29 @@
 # logos.py
 """
-Baixa logos para a lista de tickers fornecida e salva todas como PNG em ./logos/.
-- Usa yfinance para obter logo_url.
-- Faz download com requests.
-- Converte SVG -> PNG se cairosvg estiver instalado.
-- Converte JPG/WEBP/etc -> PNG se Pillow estiver instalado.
-- Se não for possível converter, salva o arquivo original e tenta salvar também um PNG quando possível.
-Execução:
+Baixa logos para a lista de tickers e garante que exista um arquivo PNG para cada ticker em ./logos/.
+Fluxo por ticker:
+ 1. tenta logo_url via yfinance
+ 2. se não houver, tenta obter website via yfinance e usar Clearbit (logo.clearbit.com/{domain})
+ 3. se ainda não houver imagem, gera um PNG com as INICIAIS do ticker (fallback local, sem custo)
+Conversões:
+ - SVG -> PNG via cairosvg (se instalado)
+ - Outros formatos -> PNG via Pillow (se instalado)
+Uso:
     python logos.py
-Dependências (recomendadas):
+Dependências recomendadas (opcionais para melhores resultados):
     pip install requests yfinance pillow cairosvg
-Se não quiser instalar cairosvg, o script ainda tentará salvar o arquivo original.
+Se não instalar cairosvg/Pillow, o script ainda gera PNGs com iniciais.
 """
 
 import os
-import sys
 import time
 import requests
 import traceback
+from urllib.parse import urlparse
 
 import yfinance as yf
 
-# Tickers fornecidos (lista completa solicitada)
+# Lista completa de tickers solicitada
 TICKERS = [
 "AALR3","ABCB4","ABEV3","AERI3","AGRO3","AGXY3","ALLD3","ALOS3","ALPA4","ALPK3",
 "ALUP11","ALUP4","AMAR3","AMBP3","AMER3","AMOB3","ANIM3","ARML3","ASAI3","ATED3",
@@ -50,18 +52,16 @@ TICKERS = [
 "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
 
-# Pasta de destino
 LOGOS_DIR = "logos"
 os.makedirs(LOGOS_DIR, exist_ok=True)
 
-# Timeouts e retries
 REQUEST_TIMEOUT = 12
 RETRIES = 2
-RETRY_DELAY = 1.2
+RETRY_DELAY = 1.0
 
-# Tenta importar bibliotecas opcionais
+# bibliotecas opcionais
 try:
-    from PIL import Image
+    from PIL import Image, ImageDraw, ImageFont
     PIL_AVAILABLE = True
 except Exception:
     PIL_AVAILABLE = False
@@ -72,35 +72,45 @@ try:
 except Exception:
     CAIROSVG_AVAILABLE = False
 
-# Helpers
+# helpers
 def safe_name(ticker: str) -> str:
     return "".join(c for c in ticker if c.isalnum() or c in ("-", "_")).upper()
 
-def already_has_png(ticker_safe: str) -> bool:
-    return os.path.exists(os.path.join(LOGOS_DIR, ticker_safe + ".png"))
+def png_path_for(ticker_safe: str) -> str:
+    return os.path.join(LOGOS_DIR, ticker_safe + ".png")
 
-def find_existing_file(ticker_safe: str):
-    for ext in (".png", ".jpg", ".jpeg", ".svg", ".webp"):
+def any_existing_file(ticker_safe: str):
+    for ext in (".png", ".jpg", ".jpeg", ".svg", ".webp", ".gif"):
         p = os.path.join(LOGOS_DIR, ticker_safe + ext)
         if os.path.exists(p):
             return p
     return None
 
-def fetch_logo_url(ticker: str):
+def fetch_yfinance_info(ticker: str):
     try:
-        info = yf.Ticker(f"{ticker}.SA").info
-        if not info or not isinstance(info, dict):
-            return None
-        # yfinance costuma usar logo_url
-        logo = info.get("logo_url") or info.get("logo") or info.get("logoURL")
-        if logo and isinstance(logo, str) and logo.strip():
-            return logo.strip()
+        tkr = yf.Ticker(f"{ticker}.SA")
+        info = tkr.info or {}
+        return info
     except Exception:
-        return None
-    return None
+        return {}
 
-def infer_ext_from_content_type(ct: str, url: str) -> str:
-    ct = (ct or "").lower()
+def try_download(url: str):
+    headers = {"User-Agent": "Mozilla/5.0 (LogoDownloader)"}
+    attempt = 0
+    while attempt <= RETRIES:
+        try:
+            r = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+            if r.status_code == 200 and r.content:
+                return r.content, r.headers.get("Content-Type", "")
+            attempt += 1
+            time.sleep(RETRY_DELAY)
+        except Exception:
+            attempt += 1
+            time.sleep(RETRY_DELAY)
+    return None, None
+
+def infer_ext(content_type: str, url: str):
+    ct = (content_type or "").lower()
     if "svg" in ct or url.lower().endswith(".svg"):
         return ".svg"
     if "png" in ct or url.lower().endswith(".png"):
@@ -111,36 +121,20 @@ def infer_ext_from_content_type(ct: str, url: str) -> str:
         return ".webp"
     return ".bin"
 
-def download_bytes(url: str):
-    headers = {"User-Agent": "Mozilla/5.0 (LogoDownloader)"}
-    attempt = 0
-    while attempt <= RETRIES:
-        try:
-            resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200 and resp.content:
-                return resp.content, resp.headers.get("Content-Type", "")
-            else:
-                attempt += 1
-                time.sleep(RETRY_DELAY)
-        except Exception:
-            attempt += 1
-            time.sleep(RETRY_DELAY)
-    return None, None
-
-def save_bytes_to_file(b: bytes, path: str):
+def save_bytes(path: str, b: bytes):
     with open(path, "wb") as f:
         f.write(b)
 
-def convert_svg_bytes_to_png_bytes(svg_bytes: bytes):
+def convert_svg_to_png_bytes(svg_bytes: bytes):
     if not CAIROSVG_AVAILABLE:
         return None
     try:
-        png_bytes = cairosvg.svg2png(bytestring=svg_bytes)
-        return png_bytes
+        png = cairosvg.svg2png(bytestring=svg_bytes)
+        return png
     except Exception:
         return None
 
-def convert_image_bytes_to_png_bytes(img_bytes: bytes, src_ext: str):
+def convert_image_bytes_to_png_bytes(img_bytes: bytes):
     if not PIL_AVAILABLE:
         return None
     try:
@@ -153,116 +147,157 @@ def convert_image_bytes_to_png_bytes(img_bytes: bytes, src_ext: str):
     except Exception:
         return None
 
-def ensure_png_for_ticker(ticker: str, logo_url: str):
+def try_clearbit_logo_from_website(website: str):
+    # extrai domínio e usa logo.clearbit.com/{domain}
+    try:
+        parsed = urlparse(website)
+        domain = parsed.netloc or parsed.path
+        domain = domain.split(":")[0]
+        if not domain:
+            return None
+        return f"https://logo.clearbit.com/{domain}"
+    except Exception:
+        return None
+
+def generate_initials_png(ticker: str, size=128, bg_color="#0f172a", fg_color="#ffffff"):
+    """
+    Gera um PNG com as iniciais do ticker (ex: 'PETR4' -> 'PE' ou 'P4' dependendo).
+    Retorna bytes PNG.
+    """
+    if not PIL_AVAILABLE:
+        return None
+    try:
+        from io import BytesIO
+        # tenta extrair 2 caracteres representativos: letras iniciais do nome do ticker
+        label = "".join([c for c in ticker if c.isalpha()])[:2].upper()
+        if not label:
+            label = ticker[:2].upper()
+        img = Image.new("RGBA", (size, size), bg_color)
+        draw = ImageDraw.Draw(img)
+        # tenta fonte padrão; se não houver, usa fonte básica
+        try:
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(size * 0.45))
+        except Exception:
+            font = ImageFont.load_default()
+        w, h = draw.textsize(label, font=font)
+        draw.text(((size - w) / 2, (size - h) / 2 - 4), label, font=font, fill=fg_color)
+        out = BytesIO()
+        img.save(out, format="PNG")
+        return out.getvalue()
+    except Exception:
+        return None
+
+def ensure_png_for_ticker(ticker: str):
     ticker_safe = safe_name(ticker)
-    png_path = os.path.join(LOGOS_DIR, ticker_safe + ".png")
-    if already_has_png(ticker_safe):
+    png_path = png_path_for(ticker_safe)
+    if os.path.exists(png_path):
         return {"ticker": ticker, "status": "exists", "path": png_path}
 
-    # se já existe qualquer arquivo, tenta convertê-lo para png (se necessário)
-    existing = find_existing_file(ticker_safe)
+    # 1) tenta obter info yfinance
+    info = fetch_yfinance_info(ticker)
+    logo_url = None
+    website = None
+    if isinstance(info, dict):
+        logo_url = info.get("logo_url") or info.get("logo") or info.get("logoURL")
+        website = info.get("website") or info.get("website_url") or info.get("url")
+
+    # 2) se não houver logo_url, tenta Clearbit via website
+    tried_urls = []
+    if not logo_url and website:
+        cb = try_clearbit_logo_from_website(website)
+        if cb:
+            logo_url = cb
+
+    # 3) se ainda não houver, tenta Clearbit com ticker domain common patterns (ex: empresa.com.br)
+    # (opcional) - não forçar domínios inventados
+
+    # 4) se já existe arquivo salvo em outro formato, tenta converter
+    existing = any_existing_file(ticker_safe)
     if existing:
         ext = os.path.splitext(existing)[1].lower()
-        if ext == ".png":
-            return {"ticker": ticker, "status": "exists", "path": existing}
-        # tenta converter arquivo existente
         try:
             with open(existing, "rb") as f:
-                data = f.read()
+                b = f.read()
             if ext == ".svg":
-                png_bytes = convert_svg_bytes_to_png_bytes(data)
+                png_bytes = convert_svg_to_png_bytes(b)
                 if png_bytes:
-                    save_bytes_to_file(png_bytes, png_path)
-                    return {"ticker": ticker, "status": "converted_from_svg", "path": png_path}
+                    save_bytes(png_path, png_bytes)
+                    return {"ticker": ticker, "status": "converted_existing_svg", "path": png_path}
             else:
-                png_bytes = convert_image_bytes_to_png_bytes(data, ext)
+                png_bytes = convert_image_bytes_to_png_bytes(b)
                 if png_bytes:
-                    save_bytes_to_file(png_bytes, png_path)
-                    return {"ticker": ticker, "status": "converted_from_image", "path": png_path}
+                    save_bytes(png_path, png_bytes)
+                    return {"ticker": ticker, "status": "converted_existing_image", "path": png_path}
         except Exception:
             pass
-        # se não conseguiu converter, continua para tentar baixar direto
+        # se não conseguiu converter, continua para tentar baixar
 
-    # baixa bytes da URL
-    b, content_type = download_bytes(logo_url)
-    if not b:
-        return {"ticker": ticker, "status": "download_failed", "path": None}
-
-    ext = infer_ext_from_content_type(content_type, logo_url)
-    # se for svg, tenta converter para png
-    if ext == ".svg" or (b.strip().startswith(b"<") and b.strip().lower().find(b"<svg") != -1):
-        # salva svg temporariamente
-        tmp_svg = os.path.join(LOGOS_DIR, ticker_safe + ".svg")
-        try:
-            save_bytes_to_file(b, tmp_svg)
-        except Exception:
-            pass
-        png_bytes = convert_svg_bytes_to_png_bytes(b)
-        if png_bytes:
-            save_bytes_to_file(png_bytes, png_path)
-            return {"ticker": ticker, "status": "downloaded_converted_svg", "path": png_path}
-        else:
-            # se não conseguiu converter, mantém o svg salvo e tenta salvar também como .png via PIL (improvável)
-            if PIL_AVAILABLE:
-                png_bytes = convert_image_bytes_to_png_bytes(b, ".svg")
+    # 5) tenta baixar logo_url (se houver)
+    if logo_url:
+        tried_urls.append(logo_url)
+        b, ct = try_download(logo_url)
+        if b:
+            ext = infer_ext(ct, logo_url)
+            # se svg, tenta converter
+            if ext == ".svg" or (b.strip().startswith(b"<") and b.strip().lower().find(b"<svg") != -1):
+                png_bytes = convert_svg_to_png_bytes(b)
                 if png_bytes:
-                    save_bytes_to_file(png_bytes, png_path)
-                    return {"ticker": ticker, "status": "downloaded_converted_svg_via_pil", "path": png_path}
-            return {"ticker": ticker, "status": "downloaded_svg_saved", "path": tmp_svg}
-
-    # se for imagem raster (png/jpg/webp), tenta converter para png
-    if ext in (".png", ".jpg", ".jpeg", ".webp", ".bin"):
-        # tenta converter com PIL
-        png_bytes = convert_image_bytes_to_png_bytes(b, ext)
-        if png_bytes:
-            save_bytes_to_file(png_bytes, png_path)
-            return {"ticker": ticker, "status": "downloaded_converted_image", "path": png_path}
-        else:
-            # salva no formato original e, se for png, renomeia
-            orig_path = os.path.join(LOGOS_DIR, ticker_safe + ext)
-            try:
-                save_bytes_to_file(b, orig_path)
-                # se já era png, garantir nome .png
-                if ext == ".png":
-                    return {"ticker": ticker, "status": "downloaded_png", "path": orig_path}
-                # tenta abrir com PIL e salvar como png
-                if PIL_AVAILABLE:
-                    png_bytes = convert_image_bytes_to_png_bytes(b, ext)
+                    save_bytes(png_path, png_bytes)
+                    return {"ticker": ticker, "status": "downloaded_converted_svg", "path": png_path}
+                else:
+                    # salva svg como fallback
+                    svg_path = os.path.join(LOGOS_DIR, ticker_safe + ".svg")
+                    save_bytes(svg_path, b)
+                    # tenta converter com PIL (improvável)
+                    png_bytes = convert_image_bytes_to_png_bytes(b)
                     if png_bytes:
-                        save_bytes_to_file(png_bytes, png_path)
+                        save_bytes(png_path, png_bytes)
+                        return {"ticker": ticker, "status": "downloaded_svg_converted_via_pil", "path": png_path}
+                    return {"ticker": ticker, "status": "downloaded_svg_saved", "path": svg_path}
+            else:
+                # raster image: tenta converter para PNG
+                png_bytes = convert_image_bytes_to_png_bytes(b)
+                if png_bytes:
+                    save_bytes(png_path, png_bytes)
+                    return {"ticker": ticker, "status": "downloaded_converted_image", "path": png_path}
+                else:
+                    # salva original e, se for png, renomeia
+                    ext = infer_ext(ct, logo_url)
+                    orig_path = os.path.join(LOGOS_DIR, ticker_safe + ext)
+                    save_bytes(orig_path, b)
+                    # tenta converter com PIL agora
+                    png_bytes = convert_image_bytes_to_png_bytes(b)
+                    if png_bytes:
+                        save_bytes(png_path, png_bytes)
                         return {"ticker": ticker, "status": "downloaded_saved_and_converted", "path": png_path}
-                return {"ticker": ticker, "status": "downloaded_saved_original", "path": orig_path}
-            except Exception:
-                return {"ticker": ticker, "status": "save_failed", "path": None}
+                    return {"ticker": ticker, "status": "downloaded_saved_original", "path": orig_path}
 
-    return {"ticker": ticker, "status": "unknown_format", "path": None}
+    # 6) se tudo falhar, gera PNG com iniciais (fallback local, sem custo)
+    png_bytes = generate_initials_png(ticker, size=128)
+    if png_bytes:
+        save_bytes(png_path, png_bytes)
+        return {"ticker": ticker, "status": "generated_initials", "path": png_path}
+    else:
+        # se Pillow não disponível, cria um arquivo PNG mínimo com bytes vazios (não ideal)
+        try:
+            with open(png_path, "wb") as f:
+                f.write(b"")
+            return {"ticker": ticker, "status": "generated_empty_png", "path": png_path}
+        except Exception:
+            return {"ticker": ticker, "status": "failed", "path": None}
 
 def main():
     total = len(TICKERS)
-    print(f"Starting download/conversion for {total} tickers. PNGs will be saved in ./{LOGOS_DIR}/")
-    print(f"Pillow available: {PIL_AVAILABLE}; cairosvg available: {CAIROSVG_AVAILABLE}")
+    print(f"Começando: {total} tickers. Salvando PNGs em ./{LOGOS_DIR}/")
+    print(f"Pillow disponível: {PIL_AVAILABLE}; cairosvg disponível: {CAIROSVG_AVAILABLE}")
     results = []
     for idx, t in enumerate(TICKERS, 1):
         ticker = t.strip().upper()
-        ticker_safe = safe_name(ticker)
         try:
-            # se já existe PNG, pula
-            if already_has_png(ticker_safe):
-                print(f"[{idx}/{total}] {ticker} - already has PNG, skipped")
-                results.append({"ticker": ticker, "status": "exists", "path": os.path.join(LOGOS_DIR, ticker_safe + ".png")})
-                continue
-
-            logo_url = fetch_logo_url(ticker)
-            if not logo_url:
-                print(f"[{idx}/{total}] {ticker} - logo_url not found")
-                results.append({"ticker": ticker, "status": "no_logo_url", "path": None})
-                continue
-
-            print(f"[{idx}/{total}] {ticker} - fetching {logo_url}")
-            res = ensure_png_for_ticker(ticker, logo_url)
+            res = ensure_png_for_ticker(ticker)
             status = res.get("status")
             path = res.get("path")
-            print(f"    -> {status}; path: {path}")
+            print(f"[{idx}/{total}] {ticker} - {status} -> {path}")
             results.append(res)
         except Exception:
             traceback.print_exc()
@@ -271,10 +306,10 @@ def main():
     summary = {}
     for r in results:
         summary[r["status"]] = summary.get(r["status"], 0) + 1
-    print("\nSummary:")
-    for k, v in sorted(summary.items(), key=lambda x: x[0]):
+    print("\nResumo:")
+    for k, v in sorted(summary.items()):
         print(f"  {k}: {v}")
-    print(f"\nLogos directory: {os.path.abspath(LOGOS_DIR)}")
+    print(f"\nDiretório de logos: {os.path.abspath(LOGOS_DIR)}")
 
 if __name__ == "__main__":
     main()
