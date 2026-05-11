@@ -194,26 +194,14 @@ def obter_detalhes_ticker(ticker):
     try:
         info = yf.Ticker(f"{ticker}.SA").info
         name = info.get("shortName") or info.get("longName") or ticker
-        pl = info.get("trailingPE")
-        pvp = info.get("priceToBook")
-        dy = info.get("dividendYield")
-        roe = info.get("returnOnEquity")
         return {
             "name": name,
             "logo": info.get("logo_url"),
-            "pl": pl,
-            "pvp": pvp,
-            "dy": dy,
-            "roe": roe
         }
     except Exception:
         return {
             "name": ticker,
             "logo": None,
-            "pl": None,
-            "pvp": None,
-            "dy": None,
-            "roe": None
         }
 
 
@@ -530,10 +518,6 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
-            info["pl"],
-            info["pvp"],
-            info["dy"],
-            info["roe"],
             positive=True
         )
         for _, row in maiores_altas.iloc[1:7].iterrows():
@@ -551,10 +535,6 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
-            info["pl"],
-            info["pvp"],
-            info["dy"],
-            info["roe"],
             positive=False
         )
         for _, row in maiores_baixas.iloc[1:7].iterrows():
