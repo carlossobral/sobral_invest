@@ -174,16 +174,34 @@ st.markdown("## 📈 IBOVESPA")
 ibov_dados = obter_ibovespa()
 
 if ibov_dados:
-    col1, col2, col3 = st.columns(3)
+    # Div customizada com bordas curvas
+    st.markdown("""
+    <div style="
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        border-radius: 16px;
+        padding: 24px;
+        margin: 16px 0;
+        display: flex;
+        gap: 24px;
+        align-items: center;
+    ">
+    """, unsafe_allow_html=True)
     
-    with col1:
+    # Coluna esquerda - Métricas
+    col_left, col_right = st.columns([1, 1])
+    
+    with col_left:
+        st.markdown("### Métricas do Dia")
+        
+        # Métrica 1 - Cotação
         st.metric(
             "Cotação",
             f"{ibov_dados['preco']:,.0f}",
             delta=f"{ibov_dados['variacao_pontos']:+,.0f} pts"
         )
-    
-    with col2:
+        
+        # Métrica 2 - Variação
         variacao = ibov_dados["variacao_percentual"]
         cor = "🟢" if variacao >= 0 else "🔴"
         st.metric(
@@ -191,48 +209,53 @@ if ibov_dados:
             f"{variacao:+.2f}%",
             delta=cor
         )
-    
-    with col3:
+        
+        # Métrica 3 - Abertura
         st.metric(
             "Abertura",
             f"{ibov_dados['preço_abertura']:,.0f}",
             delta=""
         )
     
-    # Gráfico de 30 dias
-    st.markdown("### 📊 Últimos 30 dias")
-    hist_30d = obter_historico_ibovespa_30d()
+    with col_right:
+        # Gráfico pequeno dos últimos 30 dias
+        st.markdown("### 📊 Últimos 30 dias")
+        hist_30d = obter_historico_ibovespa_30d()
+        
+        if hist_30d is not None and not hist_30d.empty:
+            # Criar gráfico compacto
+            fig = px.line(
+                hist_30d,
+                x="Date",
+                y="Close",
+                title="",
+                labels={"Close": "Pontos", "Date": ""},
+                markers=False,
+                height=250
+            )
+            
+            # Estilizar o gráfico
+            fig.update_traces(
+                line=dict(color="#10b981", width=2)
+            )
+            
+            fig.update_layout(
+                hovermode="x unified",
+                template="plotly_dark",
+                xaxis_title="",
+                yaxis_title="",
+                font=dict(size=10),
+                margin=dict(l=20, r=20, t=20, b=20),
+                showlegend=False,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("⏳ Carregando gráfico...")
     
-    if hist_30d is not None and not hist_30d.empty:
-        # Criar gráfico com Plotly
-        fig = px.line(
-            hist_30d,
-            x="Date",
-            y="Close",
-            title="Evolução do IBOVESPA - Últimos 30 dias",
-            labels={"Close": "Fechamento", "Date": "Data"},
-            markers=False,
-            height=400
-        )
-        
-        # Estilizar o gráfico
-        fig.update_traces(
-            line=dict(color="#10b981", width=2)
-        )
-        
-        fig.update_layout(
-            hovermode="x unified",
-            template="plotly_dark",
-            xaxis_title="Data",
-            yaxis_title="Pontos",
-            font=dict(size=12),
-            margin=dict(l=50, r=50, t=50, b=50),
-            showlegend=False
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("⏳ Carregando gráfico histórico...")
+    st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.info("⏳ Carregando dados do IBOVESPA...")
 
