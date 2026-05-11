@@ -23,7 +23,6 @@ st.set_page_config(
 
 # ─── Helpers ───────────────────────────────────────────────────────────────
 
-@st.cache_data
 def obter_ibovespa():
     """Obtém dados do IBOVESPA (^BVSP) de hoje"""
     try:
@@ -50,7 +49,6 @@ def obter_ibovespa():
         return None
 
 
-@st.cache_data
 def obter_historico_ibovespa_30d():
     """Obtém histórico do IBOVESPA dos últimos 30 dias"""
     try:
@@ -70,7 +68,6 @@ def obter_historico_ibovespa_30d():
         return None
 
 
-@st.cache_data
 def obter_maiores_altas_baixas():
     """Obtém maiores altas e baixas do dia dos tickers B3"""
     try:
