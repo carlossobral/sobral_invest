@@ -336,8 +336,7 @@ if ibov_dados:
         )
 
     with col_right:
-        st.markdown("<div class='ibov-chart-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='ibov-chart-title'>Últimos 30 dias</div>", unsafe_allow_html=True)
+        st.markdown("**Últimos 30 dias**")
         hist_30d = obter_historico_ibovespa_30d()
 
         if hist_30d is not None and not hist_30d.empty:
@@ -367,7 +366,6 @@ if ibov_dados:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("⏳ Carregando gráfico...")
-        st.markdown("</div>", unsafe_allow_html=True)
 
 else:
     st.info("⏳ Carregando dados do IBOVESPA...")
