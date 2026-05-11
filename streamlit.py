@@ -194,33 +194,47 @@ def obter_detalhes_ticker(ticker):
     try:
         info = yf.Ticker(f"{ticker}.SA").info
         name = info.get("shortName") or info.get("longName") or ticker
+        pl = info.get("trailingPE")
+        pvp = info.get("priceToBook")
+        dy = info.get("dividendYield")
+        roe = info.get("returnOnEquity")
         return {
             "name": name,
             "logo": info.get("logo_url"),
+            "pl": pl,
+            "pvp": pvp,
+            "dy": dy,
+            "roe": roe
         }
     except Exception:
         return {
             "name": ticker,
             "logo": None,
+            "pl": None,
+            "pvp": None,
+            "dy": None,
+            "roe": None
         }
 
 
 def render_highlow_top_card(ticker, name, preco, variacao, pl, pvp, dy, roe, positive=True):
-    cor = "#22c55e" if positive else "#ef4444"
-    label = ''.join([part[0] for part in name.split()[:2]]).upper()
+    """
+    Card principal para Maiores Altas / Maiores Baixas.
+    Observação: removi a exibição de P/L, P/VP, DY e ROE conforme solicitado.
+    """
+    # Garante que name seja string
+    try:
+        name = str(name) if name is not None else str(ticker)
+    except Exception:
+        name = str(ticker)
+
+    label = ''.join([part[0] for part in name.split()[:2]]).upper() if isinstance(name, str) else ticker[:2].upper()
     logo_html = f"<div class='stock-logo'>{label}</div>"
-    
+
     return textwrap.dedent(f"""
     <div class='top-stock-card'>
         {logo_html}
         <div class='stock-name'>{name} - {ticker}</div>
-        <div class='stock-subtitle'>Principais indicadores</div>
-        <div class='metrics'>
-            <div class='metric-item'>P/L<span>{pl if pl is not None else '—'}</span></div>
-            <div class='metric-item'>P/VP<span>{pvp if pvp is not None else '—'}</span></div>
-            <div class='metric-item'>DY<span>{formatar_percentual_dec(dy)}</span></div>
-            <div class='metric-item'>ROE<span>{formatar_percentual_dec(roe)}</span></div>
-        </div>
         <div class='stock-footer'>
             <div class='stock-price'>R$ {preco:.2f}</div>
             <div class='stock-variation {'positive' if positive else 'negative'}'>{variacao:+.2f}%</div>
@@ -542,10 +556,13 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
-
+            info["pl"],
+            info["pvp"],
+            info["dy"],
+            info["roe"],
             positive=True
         )
-        for _, row in maiores_altas.iloc[1:10].iterrows():
+        for _, row in maiores_altas.iloc[1:7].iterrows():
             html += render_highlow_line(row["ticker"], row["preco"], row["variacao"], positive=True)
         html += "</div>"
         st.markdown(html, unsafe_allow_html=True)
@@ -560,9 +577,13 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
+            info["pl"],
+            info["pvp"],
+            info["dy"],
+            info["roe"],
             positive=False
         )
-        for _, row in maiores_baixas.iloc[1:10].iterrows():
+        for _, row in maiores_baixas.iloc[1:7].iterrows():
             html += render_highlow_line(row["ticker"], row["preco"], row["variacao"], positive=False)
         html += "</div>"
         st.markdown(html, unsafe_allow_html=True)
