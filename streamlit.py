@@ -542,6 +542,10 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
+            info["pl"],
+            info["pvp"],
+            info["dy"],
+            info["roe"],
             positive=True
         )
         for _, row in maiores_altas.iloc[1:7].iterrows():
