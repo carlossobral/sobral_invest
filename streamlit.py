@@ -105,12 +105,38 @@ def recalcular_valuation(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─── Busca de tickers (opcional para análise customizada) ───────────────────────────────────────────────────────
+ticker_options = []
+if os.path.exists("ativos.xlsx"):
+    try:
+        preview_df = pd.read_excel("ativos.xlsx", sheet_name="Ativos")
+        ticker_options = sorted(preview_df["Ticker"].dropna().astype(str).unique().tolist())
+    except Exception:
+        ticker_options = []
+
 col_left, col_search, col_right = st.columns([1, 2.5, 1])
 with col_search:
-    tickers_input = st.text_input("🔍", placeholder="PETR4, VALE3...", label_visibility="collapsed")
-    if tickers_input:
-        tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
-        if tickers:
+    st.write("### 🔎 Buscar ativos")
+    if ticker_options:
+        selected_tickers = st.multiselect(
+            "Selecione tickers",
+            options=ticker_options,
+            default=[],
+            help="Comece a digitar para filtrar. Use a lista suspensa para escolher seus tickers.",
+        )
+    else:
+        st.info("Nenhum ticker disponível para autocompletar. Gere o arquivo ativos.xlsx ou digite manualmente abaixo.")
+        selected_tickers = []
+
+    manual_input = st.text_input("Adicionar ticker manual", placeholder="PETR4, VALE3")
+    if manual_input:
+        selected_tickers += [t.strip().upper() for t in manual_input.split(",") if t.strip()]
+
+    submitted = st.button("Buscar")
+    if submitted:
+        tickers = [t.strip().upper() for t in selected_tickers if t.strip()]
+        if not tickers:
+            st.warning("Informe pelo menos um ticker válido.")
+        else:
             with st.spinner("Buscando dados e calculando indicadores..."):
                 resultados, _ = buscar_acoes_usebolsai(tickers)
 
