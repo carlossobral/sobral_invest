@@ -260,15 +260,6 @@ else:
         st.subheader("💰 Modelos de valuation")
         st.dataframe(df[["Ticker", "Graham", "Graham_BR", "Bazin", "Lynch_PEG", "AGF"]], use_container_width=True)
 
-    with st.expander("Sugestões de melhorias futuras", expanded=False):
-        st.markdown(
-            "- Comparador de até 5 ações com gráficos lado a lado.\n"
-            "- Filtro de ações por setor, liquidez e score.\n"
-            "- Agenda de dividendos dinâmica com dados reais.\n"
-            "- Relatórios de carteira e simulações de alocação.\n"
-            "- Assistente de IA para explicar cada ativo e responder perguntas."
-        )
-
     excel_data = gerar_excel_bytes(df)
     st.download_button(
         label="📥 Baixar relatório em Excel",
