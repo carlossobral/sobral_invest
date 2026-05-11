@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
+import textwrap
 import yfinance as yf
 from io import BytesIO
 import os
@@ -126,7 +127,7 @@ def render_card_acao(ticker, preco, variacao):
     cor_texto = '#10b981' if variacao >= 0 else '#ef4444'
     sinal = "+" if variacao >= 0 else ""
     
-    return f"""
+    return textwrap.dedent(f"""
     <div style="
         background-color: rgba({('16, 185, 129' if variacao >= 0 else '239, 68, 68')}, 0.08);
         border: 1px solid rgba({('16, 185, 129' if variacao >= 0 else '239, 68, 68')}, 0.3);
@@ -160,7 +161,7 @@ def render_card_acao(ticker, preco, variacao):
             </div>
         </div>
     </div>
-    """
+    """)
 
 
 def formatar_percentual_dec(valor):
@@ -207,7 +208,7 @@ def render_highlow_top_card(ticker, name, preco, variacao, pl, pvp, dy, roe, pos
     label = ''.join([part[0] for part in name.split()[:2]]).upper()
     logo_html = f"<div class='stock-logo'>{label}</div>"
     
-    return f"""
+    return textwrap.dedent(f"""
     <div class='top-stock-card'>
         {logo_html}
         <div class='stock-name'>{name} - {ticker}</div>
@@ -223,13 +224,13 @@ def render_highlow_top_card(ticker, name, preco, variacao, pl, pvp, dy, roe, pos
             <div class='stock-variation {'positive' if positive else 'negative'}'>{variacao:+.2f}%</div>
         </div>
     </div>
-    """
+    """)
 
 
 def render_highlow_line(ticker, preco, variacao, positive=True):
     cor_class = 'positive' if positive else 'negative'
     sinal = '+' if variacao >= 0 else ''
-    return f"""
+    return textwrap.dedent(f"""
     <div class='stock-line'>
         <div class='stock-info'>
             <div class='stock-badge'>{ticker}</div>
@@ -240,7 +241,7 @@ def render_highlow_line(ticker, preco, variacao, positive=True):
         </div>
         <div class='stock-variation {cor_class}'>{sinal}{variacao:.2f}%</div>
     </div>
-    """
+    """)
 
 
 # ─── PÁGINA INICIAL ───────────────────────────────────────────────────────────────
