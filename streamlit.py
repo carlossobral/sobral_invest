@@ -163,6 +163,86 @@ def render_card_acao(ticker, preco, variacao):
     """
 
 
+def formatar_percentual_dec(valor):
+    try:
+        if valor is None:
+            return "—"
+        valor = float(valor)
+    except Exception:
+        return "—"
+    if abs(valor) <= 1:
+        return f"{valor * 100:.2f}%"
+    return f"{valor:.2f}%"
+
+
+def obter_detalhes_ticker(ticker):
+    try:
+        info = yf.Ticker(f"{ticker}.SA").info
+        name = info.get("shortName") or info.get("longName") or ticker
+        pl = info.get("trailingPE")
+        pvp = info.get("priceToBook")
+        dy = info.get("dividendYield")
+        roe = info.get("returnOnEquity")
+        return {
+            "name": name,
+            "logo": info.get("logo_url"),
+            "pl": pl,
+            "pvp": pvp,
+            "dy": dy,
+            "roe": roe
+        }
+    except Exception:
+        return {
+            "name": ticker,
+            "logo": None,
+            "pl": None,
+            "pvp": None,
+            "dy": None,
+            "roe": None
+        }
+
+
+def render_highlow_top_card(ticker, name, preco, variacao, pl, pvp, dy, roe, positive=True):
+    cor = "#22c55e" if positive else "#ef4444"
+    label = ''.join([part[0] for part in name.split()[:2]]).upper()
+    logo_html = f"<div class='stock-logo'>{label}</div>"
+    
+    return f"""
+    <div class='top-stock-card'>
+        {logo_html}
+        <div class='stock-name'>{name} - {ticker}</div>
+        <div class='stock-subtitle'>Principais indicadores</div>
+        <div class='metrics'>
+            <div class='metric-item'>P/L<span>{pl if pl is not None else '—'}</span></div>
+            <div class='metric-item'>P/VP<span>{pvp if pvp is not None else '—'}</span></div>
+            <div class='metric-item'>DY<span>{formatar_percentual_dec(dy)}</span></div>
+            <div class='metric-item'>ROE<span>{formatar_percentual_dec(roe)}</span></div>
+        </div>
+        <div class='stock-footer'>
+            <div class='stock-price'>R$ {preco:.2f}</div>
+            <div class='stock-variation {'positive' if positive else 'negative'}'>{variacao:+.2f}%</div>
+        </div>
+    </div>
+    """
+
+
+def render_highlow_line(ticker, preco, variacao, positive=True):
+    cor_class = 'positive' if positive else 'negative'
+    sinal = '+' if variacao >= 0 else ''
+    return f"""
+    <div class='stock-line'>
+        <div class='stock-info'>
+            <div class='stock-badge'>{ticker}</div>
+            <div class='stock-meta'>
+                <div>{ticker}</div>
+                <span>R$ {preco:.2f}</span>
+            </div>
+        </div>
+        <div class='stock-variation {cor_class}'>{sinal}{variacao:.2f}%</div>
+    </div>
+    """
+
+
 # ─── PÁGINA INICIAL ───────────────────────────────────────────────────────────────
 
 st.markdown("# 📊 Sobral Invest")
@@ -301,6 +381,139 @@ else:
 
 st.markdown("---")
 
+st.markdown("""
+<style>
+.highlow-container {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+}
+.highlow-column {
+    background: #071218;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 24px;
+    padding: 22px;
+}
+.highlow-column h3 {
+    margin-top: 0;
+    margin-bottom: 18px;
+    font-size: 18px;
+}
+.highlow-column.positive h3 {
+    color: #22c55e;
+}
+.highlow-column.negative h3 {
+    color: #ef4444;
+}
+.top-stock-card {
+    background: #0e1a25;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 24px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+.stock-logo {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 800;
+    font-size: 18px;
+    margin-bottom: 18px;
+}
+.stock-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-bottom: 4px;
+}
+.stock-subtitle {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-bottom: 18px;
+}
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.metric-item {
+    color: #94a3b8;
+    font-size: 12px;
+}
+.metric-item span {
+    display: block;
+    margin-top: 6px;
+    color: #f8fafc;
+    font-weight: 700;
+    font-size: 14px;
+}
+.stock-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+.stock-price {
+    color: #f8fafc;
+    font-size: 18px;
+    font-weight: 700;
+}
+.stock-variation.positive {
+    color: #22c55e;
+}
+.stock-variation.negative {
+    color: #ef4444;
+}
+.stock-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-top: 1px solid rgba(255,255,255,0.05);
+}
+.stock-line:first-child {
+    border-top: none;
+}
+.stock-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.stock-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #f8fafc;
+    font-weight: 700;
+    font-size: 13px;
+}
+.stock-meta {
+    display: flex;
+    flex-direction: column;
+}
+.stock-meta div {
+    color: #f8fafc;
+    font-weight: 700;
+    font-size: 14px;
+}
+.stock-meta span,
+.stock-price-small {
+    color: #94a3b8;
+    font-size: 12px;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Seção Maiores Altas e Baixas
 st.markdown("## 📊 Maiores Altas / Maiores Baixas do Dia")
 
@@ -308,16 +521,48 @@ maiores_altas, maiores_baixas = obter_maiores_altas_baixas()
 
 if not maiores_altas.empty and not maiores_baixas.empty:
     col_altas, col_baixas = st.columns(2)
-    
+
     with col_altas:
-        st.markdown("### 🟢 Maiores Altas")
-        for _, row in maiores_altas.iterrows():
-            st.markdown(render_card_acao(row["ticker"], row["preco"], row["variacao"]), unsafe_allow_html=True)
-    
+        html = "<div class='highlow-column positive'>"
+        html += "<h3>Maiores Altas</h3>"
+        top = maiores_altas.iloc[0]
+        info = obter_detalhes_ticker(top["ticker"])
+        html += render_highlow_top_card(
+            top["ticker"],
+            info["name"],
+            top["preco"],
+            top["variacao"],
+            info["pl"],
+            info["pvp"],
+            info["dy"],
+            info["roe"],
+            positive=True
+        )
+        for _, row in maiores_altas.iloc[1:7].iterrows():
+            html += render_highlow_line(row["ticker"], row["preco"], row["variacao"], positive=True)
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
+
     with col_baixas:
-        st.markdown("### 🔴 Maiores Baixas")
-        for _, row in maiores_baixas.iterrows():
-            st.markdown(render_card_acao(row["ticker"], row["preco"], row["variacao"]), unsafe_allow_html=True)
+        html = "<div class='highlow-column negative'>"
+        html += "<h3>Maiores Baixas</h3>"
+        top = maiores_baixas.iloc[0]
+        info = obter_detalhes_ticker(top["ticker"])
+        html += render_highlow_top_card(
+            top["ticker"],
+            info["name"],
+            top["preco"],
+            top["variacao"],
+            info["pl"],
+            info["pvp"],
+            info["dy"],
+            info["roe"],
+            positive=False
+        )
+        for _, row in maiores_baixas.iloc[1:7].iterrows():
+            html += render_highlow_line(row["ticker"], row["preco"], row["variacao"], positive=False)
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
 else:
     st.info("⏳ Carregando dados das ações...")
 
