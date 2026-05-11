@@ -259,13 +259,6 @@ if ibov_dados:
     # CSS para o card e métricas
     st.markdown("""
     <style>
-    .ibov-card {
-        background: #071114;
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        border-radius: 24px;
-        padding: 24px;
-        margin: 18px 0;
-    }
     .ibov-title {
         font-size: 14px;
         font-weight: 600;
@@ -321,7 +314,6 @@ if ibov_dados:
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("<div class='ibov-card'>", unsafe_allow_html=True)
     col_left, col_right = st.columns([1.4, 1])
 
     with col_left:
@@ -377,7 +369,6 @@ if ibov_dados:
             st.info("⏳ Carregando gráfico...")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.info("⏳ Carregando dados do IBOVESPA...")
 
