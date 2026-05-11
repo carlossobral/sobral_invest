@@ -195,7 +195,11 @@ else:
                 "Ticker", "Segmento", "Cotacao", "PL", "PVP", "ROE", "DY", "Margem_Liquida",
                 "Divida_PL", "Liquidez_Corrente", "Score_SI", "Graham", "Graham_BR"
             ]
-            st.dataframe(comparacao_df[comparacao_cols].set_index("Ticker"), use_container_width=True)
+            comparacao_cols = [c for c in comparacao_cols if c in comparacao_df.columns]
+            if comparacao_cols:
+                st.dataframe(comparacao_df[comparacao_cols].set_index("Ticker"), use_container_width=True)
+            else:
+                st.info("Nenhuma coluna de comparação disponível para os ativos selecionados.")
 
             if indicador in comparacao_df.columns:
                 comparacao_plot = px.bar(
