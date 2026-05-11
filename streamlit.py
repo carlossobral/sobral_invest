@@ -310,6 +310,7 @@ if ibov_dados:
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 24px;
         padding: 16px;
+        min-height: 300px;
     }
     .ibov-chart-title {
         color: #94a3b8;
@@ -321,7 +322,7 @@ if ibov_dados:
     """, unsafe_allow_html=True)
 
     st.markdown("<div class='ibov-card'>", unsafe_allow_html=True)
-    col_left, col_right = st.columns([2, 1])
+    col_left, col_right = st.columns([1.4, 1])
 
     with col_left:
         st.markdown("<div class='ibov-title'>Ibovespa</div>", unsafe_allow_html=True)
@@ -355,7 +356,7 @@ if ibov_dados:
                 title="",
                 labels={"Close": "", "Date": ""},
                 markers=False,
-                height=220
+                height=300
             )
             fig.update_traces(line=dict(color="#10b981", width=2))
             fig.update_layout(
@@ -371,7 +372,7 @@ if ibov_dados:
                 xaxis=dict(showticklabels=False, showgrid=False, zeroline=False, visible=False),
                 yaxis=dict(showticklabels=False, showgrid=False, zeroline=False, visible=False)
             )
-            components.html(fig.to_html(full_html=False, include_plotlyjs='cdn'), height=240)
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("⏳ Carregando gráfico...")
         st.markdown("</div>", unsafe_allow_html=True)
