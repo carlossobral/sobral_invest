@@ -147,7 +147,7 @@ else:
 
     with st.container():
         st.subheader("🔎 Análise rápida de indicadores")
-        cols = ["Ticker", "Segmento", "PL", "PVP", "ROE", "DY", "Margem_Liquida", "Divida_PL", "Liquidez_Corrente", "Score_SI"]
+        cols = [c for c in ["Ticker", "Segmento", "PL", "PVP", "ROE", "DY", "Margem_Liquida", "Divida_PL", "Liquidez_Corrente", "Score_SI"] if c in df.columns]
         st.dataframe(df[cols], use_container_width=True)
 
     with st.expander("O que significam estes indicadores?", expanded=False):
