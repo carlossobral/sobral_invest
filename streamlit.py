@@ -100,20 +100,43 @@ def obter_maiores_altas_baixas():
 
 
 def render_card_acao(ticker, preco, variacao):
-    """Renderiza um card de ação com ticker, preço e variacao"""
-    cor = "🟢" if variacao >= 0 else "🔴"
+    """Renderiza um card de ação com ticker, preço e variação - estilo Tradar"""
+    cor_bg = '#10b981' if variacao >= 0 else '#ef4444'  # Verde ou vermelho
+    cor_texto = '#10b981' if variacao >= 0 else '#ef4444'
+    sinal = "+" if variacao >= 0 else ""
+    
     return f"""
     <div style="
-        background-color: {'#f0f8f0' if variacao >= 0 else '#f8f0f0'};
-        border-left: 4px solid {'#00cc44' if variacao >= 0 else '#cc0000'};
-        padding: 12px;
-        border-radius: 4px;
-        margin-bottom: 8px;
+        background-color: rgba({('16, 185, 129' if variacao >= 0 else '239, 68, 68')}, 0.08);
+        border: 1px solid rgba({('16, 185, 129' if variacao >= 0 else '239, 68, 68')}, 0.3);
+        padding: 14px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: all 0.2s ease;
     ">
-        <div style="font-weight: bold; font-size: 16px; margin-bottom: 4px;">{ticker}</div>
-        <div style="font-size: 14px; color: #666;">R$ {preco:.2f}</div>
-        <div style="font-size: 14px; font-weight: bold; color: {'#00cc44' if variacao >= 0 else '#cc0000'};">
-            {cor} {variacao:+.2f}%
+        <div style="flex: 1;">
+            <div style="font-weight: 700; font-size: 15px; color: #ffffff; margin-bottom: 4px;">
+                {ticker}
+            </div>
+            <div style="font-size: 13px; color: #9ca3af;">
+                R$ {preco:.2f}
+            </div>
+        </div>
+        <div style="
+            text-align: right;
+            min-width: 70px;
+        ">
+            <div style="
+                font-size: 18px;
+                font-weight: 700;
+                color: {cor_texto};
+                margin-bottom: 4px;
+            ">
+                {sinal}{variacao:.2f}%
+            </div>
         </div>
     </div>
     """
@@ -122,47 +145,53 @@ def render_card_acao(ticker, preco, variacao):
 # ─── PÁGINA INICIAL ───────────────────────────────────────────────────────────────
 
 st.markdown("# 📊 Sobral Invest")
-st.markdown("**Análise de ações da B3 com fundamentalismo e valuation**")
+st.markdown("**Acompanhe em tempo real o mercado da B3**")
 st.markdown("---")
 
 # Seção IBOVESPA
-col_ibov_left, col_ibov_center, col_ibov_right = st.columns([1, 2, 1])
+st.markdown("## 📈 IBOVESPA")
 
-with col_ibov_center:
-    st.markdown("### 📈 IBOVESPA")
-    ibov_dados = obter_ibovespa()
+ibov_dados = obter_ibovespa()
+
+if ibov_dados:
+    col1, col2, col3, col4 = st.columns(4)
     
-    if ibov_dados:
-        cor = "🟢" if ibov_dados["variacao_percentual"] >= 0 else "🔴"
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric(
-                "Pontos",
-                f"{ibov_dados['preco']:,.0f}",
-                f"{ibov_dados['variacao_pontos']:+,.0f}"
-            )
-        
-        with col2:
-            st.metric(
-                "Variação",
-                f"{ibov_dados['variacao_percentual']:+.2f}%",
-                delta=f"{cor}"
-            )
-        
-        with col3:
-            st.metric(
-                "Abertura",
-                f"{ibov_dados['preço_abertura']:,.0f}",
-                ""
-            )
-    else:
-        st.info("Carregando dados do IBOVESPA...")
+    with col1:
+        st.metric(
+            "Cotação",
+            f"{ibov_dados['preco']:,.0f}",
+            delta=f"{ibov_dados['variacao_pontos']:+,.0f} pts"
+        )
+    
+    with col2:
+        variacao = ibov_dados["variacao_percentual"]
+        cor = "🟢" if variacao >= 0 else "🔴"
+        st.metric(
+            "Variação",
+            f"{variacao:+.2f}%",
+            delta=cor
+        )
+    
+    with col3:
+        st.metric(
+            "Abertura",
+            f"{ibov_dados['preço_abertura']:,.0f}",
+            delta=""
+        )
+    
+    with col4:
+        st.metric(
+            "Mínima/Máxima",
+            "D",
+            delta=""
+        )
+else:
+    st.info("⏳ Carregando dados do IBOVESPA...")
 
 st.markdown("---")
 
 # Seção Maiores Altas e Baixas
-st.markdown("### 📊 Maiores Altas / Maiores Baixas")
+st.markdown("## 📊 Maiores Altas / Maiores Baixas do Dia")
 
 maiores_altas, maiores_baixas = obter_maiores_altas_baixas()
 
@@ -170,21 +199,21 @@ if not maiores_altas.empty and not maiores_baixas.empty:
     col_altas, col_baixas = st.columns(2)
     
     with col_altas:
-        st.markdown("#### 🟢 Maiores Altas do Dia")
+        st.markdown("### 🟢 Maiores Altas")
         for _, row in maiores_altas.iterrows():
             st.markdown(render_card_acao(row["ticker"], row["preco"], row["variacao"]), unsafe_allow_html=True)
     
     with col_baixas:
-        st.markdown("#### 🔴 Maiores Baixas do Dia")
+        st.markdown("### 🔴 Maiores Baixas")
         for _, row in maiores_baixas.iterrows():
             st.markdown(render_card_acao(row["ticker"], row["preco"], row["variacao"]), unsafe_allow_html=True)
 else:
-    st.info("Carregando dados das ações...")
+    st.info("⏳ Carregando dados das ações...")
 
 st.markdown("---")
 
 # Seção Busca de Ticker (análise detalhada)
-st.markdown("### 🔎 Buscar ativo para análise detalhada")
+st.markdown("## 🔎 Buscar Ativo para Análise Detalhada")
 
 ticker_options = []
 if os.path.exists("ativos.xlsx"):
@@ -196,11 +225,11 @@ if os.path.exists("ativos.xlsx"):
 
 if ticker_options:
     selected_ticker = st.selectbox(
-        "Selecione um ticker para análise completa",
+        "Digite ou selecione um ticker",
         options=[""] + ticker_options,
         index=0,
-        help="Selecione um ticker para ver indicadores, valuation e comparações."
+        placeholder="Ex: PETR4, VALE3, ITUB4..."
     )
 else:
-    st.info("Nenhum ticker disponível. Execute `app.py` para gerar análise da B3.")
+    st.info("📁 Nenhum ticker disponível. Execute `app.py` para gerar análise da B3.")
     selected_ticker = ""
