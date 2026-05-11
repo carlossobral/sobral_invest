@@ -194,18 +194,30 @@ def obter_detalhes_ticker(ticker):
     try:
         info = yf.Ticker(f"{ticker}.SA").info
         name = info.get("shortName") or info.get("longName") or ticker
+        pl = info.get("trailingPE")
+        pvp = info.get("priceToBook")
+        dy = info.get("dividendYield")
+        roe = info.get("returnOnEquity")
         return {
             "name": name,
             "logo": info.get("logo_url"),
+            "pl": pl,
+            "pvp": pvp,
+            "dy": dy,
+            "roe": roe
         }
     except Exception:
         return {
             "name": ticker,
             "logo": None,
+            "pl": None,
+            "pvp": None,
+            "dy": None,
+            "roe": None
         }
 
 
-def render_highlow_top_card(ticker, name, preco, variacao, positive=True):
+def render_highlow_top_card(ticker, name, preco, variacao, pl, pvp, dy, roe, positive=True):
     cor = "#22c55e" if positive else "#ef4444"
     label = ''.join([part[0] for part in name.split()[:2]]).upper()
     logo_html = f"<div class='stock-logo'>{label}</div>"
@@ -214,6 +226,13 @@ def render_highlow_top_card(ticker, name, preco, variacao, positive=True):
     <div class='top-stock-card'>
         {logo_html}
         <div class='stock-name'>{name} - {ticker}</div>
+        <div class='stock-subtitle'>Principais indicadores</div>
+        <div class='metrics'>
+            <div class='metric-item'>P/L<span>{pl if pl is not None else '—'}</span></div>
+            <div class='metric-item'>P/VP<span>{pvp if pvp is not None else '—'}</span></div>
+            <div class='metric-item'>DY<span>{formatar_percentual_dec(dy)}</span></div>
+            <div class='metric-item'>ROE<span>{formatar_percentual_dec(roe)}</span></div>
+        </div>
         <div class='stock-footer'>
             <div class='stock-price'>R$ {preco:.2f}</div>
             <div class='stock-variation {'positive' if positive else 'negative'}'>{variacao:+.2f}%</div>
@@ -281,14 +300,6 @@ if ibov_dados:
         gap: 16px;
         margin-top: 10px;
     }
-    .ibov-change-pill {
-        background: rgba(16, 185, 129, 0.15);
-        color: #10b981;
-        border-radius: 999px;
-        padding: 10px 16px;
-        font-weight: 700;
-        display: inline-block;
-    }
     .ibov-change-text {
         color: #94a3b8;
         font-weight: 600;
@@ -321,12 +332,37 @@ if ibov_dados:
         variacao = ibov_dados["variacao_percentual"]
         variacao_pontos = ibov_dados["variacao_pontos"]
         sinal = "+" if variacao >= 0 else ""
-        cor_classe = "ibov-change-pill"
+
+        # Define cores dinamicamente para percentual e pontos
+        cor_variacao = "#10b981" if variacao >= 0 else "#ef4444"
+        bg_variacao = "rgba(16,185,129,0.15)" if variacao >= 0 else "rgba(239,68,68,0.15)"
+
         st.markdown(
-            "<div class='ibov-change'>"
-            f"<div class='{cor_classe}'>{sinal}{variacao:.2f}%</div>"
-            f"<div class='ibov-change-text'>{sinal}{variacao_pontos:,.2f} pts</div>"
-            "</div>",
+            f"""
+            <div class='ibov-change'>
+                <div style="
+                    background:{bg_variacao};
+                    color:{cor_variacao};
+                    border-radius:999px;
+                    padding:10px 16px;
+                    font-weight:700;
+                    display:inline-block;
+                ">
+                    {sinal}{variacao:.2f}%
+                </div>
+                <div style="
+                    background:{bg_variacao};
+                    color:{cor_variacao};
+                    border-radius:999px;
+                    padding:10px 16px;
+                    font-weight:700;
+                    display:inline-block;
+                ">
+                    {sinal}{variacao_pontos:,.2f} pts
+                </div>
+                <div class='ibov-change-text' style="margin-left:8px;">Última abertura: R$ {ibov_dados.get('preço_abertura', '—'):.2f}</div>
+            </div>
+            """,
             unsafe_allow_html=True
         )
 
@@ -518,6 +554,10 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
+            info["pl"],
+            info["pvp"],
+            info["dy"],
+            info["roe"],
             positive=True
         )
         for _, row in maiores_altas.iloc[1:7].iterrows():
@@ -535,6 +575,10 @@ if not maiores_altas.empty and not maiores_baixas.empty:
             info["name"],
             top["preco"],
             top["variacao"],
+            info["pl"],
+            info["pvp"],
+            info["dy"],
+            info["roe"],
             positive=False
         )
         for _, row in maiores_baixas.iloc[1:7].iterrows():
