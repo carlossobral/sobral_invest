@@ -51,9 +51,13 @@ def obter_dados_yfinance(ticker):
         net_debt = (total_debt - total_cash) if (total_debt or total_cash) else None
 
         # LPA e VPA
-        lpa = info.get("trailingEps")
-        shares = info.get("sharesOutstanding") or 1
-        vpa = (equity / shares) if equity and shares else None
+        lpa = info.get("trailingEps") or info.get("epsTrailingTwelveMonths")
+        book_value = info.get("bookValue")
+        if book_value and book_value > 0:
+            vpa = book_value
+        else:
+            shares = info.get("sharesOutstanding")
+            vpa = (equity / shares) if equity and shares else None
 
         # ROIC calculado
         roic = _calcular_roic(info)

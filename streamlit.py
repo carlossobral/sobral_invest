@@ -80,6 +80,30 @@ def carregar_dados_excel():
             return None
     return None
 
+
+def recalcular_valuation(df: pd.DataFrame) -> pd.DataFrame:
+    if "LPA" in df.columns and "VPA" in df.columns:
+        df["Graham"] = df.apply(lambda row: calcular_graham(row["LPA"], row["VPA"]), axis=1)
+    if all(col in df.columns for col in ["Graham", "ROE", "Divida_PL", "Margem_Liquida", "Receita_CAGR"]):
+        df["Graham_BR"] = df.apply(
+            lambda row: calcular_graham_br(
+                row["Graham"],
+                row["ROE"],
+                row["Divida_PL"],
+                row["Margem_Liquida"],
+                row["Receita_CAGR"]
+            ),
+            axis=1
+        )
+    if "DY" in df.columns:
+        df["Bazin"] = df["DY"].apply(calcular_bazin)
+    if "PL" in df.columns and "Lucro_CAGR" in df.columns:
+        df["Lynch_PEG"] = df.apply(lambda row: calcular_lynch(row["PL"], row["Lucro_CAGR"]), axis=1)
+    if "DY" in df.columns and "Lucro_CAGR" in df.columns:
+        df["AGF"] = df.apply(lambda row: calcular_agf(row["DY"], row["Lucro_CAGR"]), axis=1)
+    return df
+
+
 # ─── Busca de tickers (opcional para análise customizada) ───────────────────────────────────────────────────────
 col_left, col_search, col_right = st.columns([1, 2.5, 1])
 with col_search:
@@ -124,6 +148,7 @@ df = st.session_state.get("dados_ativos")
 if df is None:
     df = carregar_dados_excel()
     if df is not None:
+        df = recalcular_valuation(df)
         st.session_state["dados_ativos"] = df
 
 if df is None or df.empty:
