@@ -127,12 +127,9 @@ with col_search:
         st.info("Nenhum ticker disponível para autocompletar. Gere o arquivo ativos.xlsx antes de usar a busca.")
         selected_ticker = ""
 
-    submitted = st.button("Buscar")
-    if submitted:
+    if selected_ticker:
         ticker = selected_ticker.strip().upper()
-        if not ticker:
-            st.warning("Selecione um ticker válido para buscar.")
-        else:
+        if st.session_state.get("last_search_ticker") != ticker:
             with st.spinner("Buscando dados e calculando indicadores..."):
                 resultados, _ = buscar_acoes_usebolsai([ticker])
 
@@ -164,6 +161,9 @@ with col_search:
                     })
 
                 st.session_state["dados_ativos"] = pd.DataFrame(dados)
+                st.session_state["last_search_ticker"] = ticker
+    else:
+        st.info("Selecione um ticker para buscar seus dados.")
 
 # Se não fez busca, carrega dados do Excel
 df = st.session_state.get("dados_ativos")
