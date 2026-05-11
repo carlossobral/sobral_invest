@@ -23,7 +23,7 @@ st.set_page_config(
 
 @st.cache_data
 def obter_ibovespa():
-    """Obtém dados do IBOVESPA (^BVSP)"""
+    """Obtém dados do IBOVESPA (^BVSP) de hoje"""
     try:
         ibov = yf.Ticker("^BVSP")
         hist = ibov.history(period="1d")
@@ -45,6 +45,26 @@ def obter_ibovespa():
         }
     except Exception as e:
         print(f"Erro ao obter IBOVESPA: {e}")
+        return None
+
+
+@st.cache_data
+def obter_historico_ibovespa_30d():
+    """Obtém histórico do IBOVESPA dos últimos 30 dias"""
+    try:
+        ibov = yf.Ticker("^BVSP")
+        hist = ibov.history(period="30d")
+        
+        if hist.empty:
+            return None
+        
+        # Reset index para ter data como coluna
+        hist = hist.reset_index()
+        hist["Date"] = pd.to_datetime(hist["Date"]).dt.strftime("%d/%m")
+        
+        return hist
+    except Exception as e:
+        print(f"Erro ao obter histórico IBOVESPA: {e}")
         return None
 
 
@@ -185,6 +205,41 @@ if ibov_dados:
             "D",
             delta=""
         )
+    
+    # Gráfico de 30 dias
+    st.markdown("### 📊 Últimos 30 dias")
+    hist_30d = obter_historico_ibovespa_30d()
+    
+    if hist_30d is not None and not hist_30d.empty:
+        # Criar gráfico com Plotly
+        fig = px.line(
+            hist_30d,
+            x="Date",
+            y="Close",
+            title="Evolução do IBOVESPA - Últimos 30 dias",
+            labels={"Close": "Fechamento", "Date": "Data"},
+            markers=False,
+            height=400
+        )
+        
+        # Estilizar o gráfico
+        fig.update_traces(
+            line=dict(color="#10b981", width=2)
+        )
+        
+        fig.update_layout(
+            hovermode="x unified",
+            template="plotly_dark",
+            xaxis_title="Data",
+            yaxis_title="Pontos",
+            font=dict(size=12),
+            margin=dict(l=50, r=50, t=50, b=50),
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("⏳ Carregando gráfico histórico...")
 else:
     st.info("⏳ Carregando dados do IBOVESPA...")
 
