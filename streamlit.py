@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import yfinance as yf
@@ -174,96 +175,126 @@ st.markdown("## 📈 IBOVESPA")
 ibov_dados = obter_ibovespa()
 
 if ibov_dados:
-    # Div customizada com bordas curvas
+    # CSS para o card e métricas
     st.markdown("""
-    <div style="
-        background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-        border-radius: 16px;
+    <style>
+    .ibov-card {
+        background: #071114;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        border-radius: 24px;
         padding: 24px;
-        margin: 16px 0;
+        margin: 18px 0;
+    }
+    .ibov-title {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: #94a3b8;
+        margin-bottom: 18px;
+    }
+    .ibov-value {
+        font-size: 64px;
+        font-weight: 800;
+        color: #ffffff;
+        line-height: 0.9;
+        margin-bottom: 18px;
+    }
+    .ibov-value span {
+        font-size: 22px;
+        font-weight: 600;
+        color: #6b7280;
+        margin-left: 8px;
+    }
+    .ibov-change {
         display: flex;
-        gap: 24px;
         align-items: center;
-    ">
+        gap: 16px;
+        margin-top: 10px;
+    }
+    .ibov-change-pill {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-weight: 700;
+        display: inline-block;
+    }
+    .ibov-change-text {
+        color: #94a3b8;
+        font-weight: 600;
+    }
+    .ibov-chart-card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 24px;
+        padding: 16px;
+    }
+    .ibov-chart-title {
+        color: #94a3b8;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 14px;
+    }
+    </style>
     """, unsafe_allow_html=True)
-    
-    # Coluna esquerda - Métricas
-    col_left, col_right = st.columns([1, 1])
-    
+
+    st.markdown("<div class='ibov-card'>", unsafe_allow_html=True)
+    col_left, col_right = st.columns([2, 1])
+
     with col_left:
-        st.markdown("### Métricas do Dia")
-        
-        # Métrica 1 - Cotação
-        st.metric(
-            "Cotação",
-            f"{ibov_dados['preco']:,.0f}",
-            delta=f"{ibov_dados['variacao_pontos']:+,.0f} pts"
+        st.markdown("<div class='ibov-title'>Ibovespa</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='ibov-value'>{ibov_dados['preco']:,.2f}<span>pts</span></div>",
+            unsafe_allow_html=True
         )
-        
-        # Métrica 2 - Variação
+
         variacao = ibov_dados["variacao_percentual"]
-        cor = "🟢" if variacao >= 0 else "🔴"
-        st.metric(
-            "Variação",
-            f"{variacao:+.2f}%",
-            delta=cor
+        variacao_pontos = ibov_dados["variacao_pontos"]
+        sinal = "+" if variacao >= 0 else ""
+        cor_classe = "ibov-change-pill"
+        st.markdown(
+            "<div class='ibov-change'>"
+            f"<div class='{cor_classe}'>{sinal}{variacao:.2f}%</div>"
+            f"<div class='ibov-change-text'>{sinal}{variacao_pontos:,.2f} pts</div>"
+            "</div>",
+            unsafe_allow_html=True
         )
-        
-        # Métrica 3 - Abertura
-        st.metric(
-            "Abertura",
-            f"{ibov_dados['preço_abertura']:,.0f}",
-            delta=""
-        )
-    
+
     with col_right:
-        # Gráfico pequeno dos últimos 30 dias
-        st.markdown("### 📊 Últimos 30 dias")
+        st.markdown("<div class='ibov-chart-card'>", unsafe_allow_html=True)
+        st.markdown("<div class='ibov-chart-title'>Últimos 30 dias</div>", unsafe_allow_html=True)
         hist_30d = obter_historico_ibovespa_30d()
-        
+
         if hist_30d is not None and not hist_30d.empty:
-            # Criar gráfico compacto
             fig = px.line(
                 hist_30d,
                 x="Date",
                 y="Close",
                 title="",
-                labels={"Close": "Pontos", "Date": ""},
+                labels={"Close": "", "Date": ""},
                 markers=False,
-                height=250
+                height=220
             )
-            
-            # Estilizar o gráfico
-            fig.update_traces(
-                line=dict(color="#10b981", width=2)
-            )
-            
+            fig.update_traces(line=dict(color="#10b981", width=2))
             fig.update_layout(
                 hovermode="x unified",
                 template="plotly_dark",
                 xaxis_title="",
                 yaxis_title="",
                 font=dict(size=10),
-                margin=dict(l=20, r=20, t=20, b=20),
+                margin=dict(l=0, r=0, t=0, b=0),
                 showlegend=False,
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(
-                    showticklabels=False,  # Remove labels do eixo X
-                    showgrid=False,
-                    zeroline=False
-                ),
-                yaxis=dict(
-                    showgrid=False,
-                    zeroline=False
-                )
+                xaxis=dict(showticklabels=False, showgrid=False, zeroline=False, visible=False),
+                yaxis=dict(showticklabels=False, showgrid=False, zeroline=False, visible=False)
             )
-            
-            st.plotly_chart(fig, use_container_width=True)
+            components.html(fig.to_html(full_html=False, include_plotlyjs='cdn'), height=240)
         else:
             st.info("⏳ Carregando gráfico...")
-    
+        st.markdown("</div>", unsafe_allow_html=True)
+
     st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.info("⏳ Carregando dados do IBOVESPA...")
