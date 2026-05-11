@@ -217,7 +217,7 @@ def obter_detalhes_ticker(ticker):
         }
 
 
-def render_highlow_top_card(ticker, name, preco, variacao, pl, pvp, dy, roe, positive=True):
+def render_highlow_top_card(ticker, name, preco, variacao, positive=True):
     cor = "#22c55e" if positive else "#ef4444"
     label = ''.join([part[0] for part in name.split()[:2]]).upper()
     logo_html = f"<div class='stock-logo'>{label}</div>"
@@ -226,13 +226,6 @@ def render_highlow_top_card(ticker, name, preco, variacao, pl, pvp, dy, roe, pos
     <div class='top-stock-card'>
         {logo_html}
         <div class='stock-name'>{name} - {ticker}</div>
-        <div class='stock-subtitle'>Principais indicadores</div>
-        <div class='metrics'>
-            <div class='metric-item'>P/L<span>{pl if pl is not None else '—'}</span></div>
-            <div class='metric-item'>P/VP<span>{pvp if pvp is not None else '—'}</span></div>
-            <div class='metric-item'>DY<span>{formatar_percentual_dec(dy)}</span></div>
-            <div class='metric-item'>ROE<span>{formatar_percentual_dec(roe)}</span></div>
-        </div>
         <div class='stock-footer'>
             <div class='stock-price'>R$ {preco:.2f}</div>
             <div class='stock-variation {'positive' if positive else 'negative'}'>{variacao:+.2f}%</div>
