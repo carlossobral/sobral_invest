@@ -71,7 +71,10 @@ st.markdown("---")
 def carregar_dados_excel():
     if os.path.exists("ativos.xlsx"):
         try:
-            return pd.read_excel("ativos.xlsx", sheet_name="Ativos")
+            df = pd.read_excel("ativos.xlsx", sheet_name="Ativos")
+            if "Score_BH" in df.columns and "Score_SI" not in df.columns:
+                df = df.rename(columns={"Score_BH": "Score_SI"})
+            return df
         except Exception as e:
             st.warning(f"Erro ao carregar ativos.xlsx: {e}")
             return None
@@ -106,7 +109,7 @@ with col_search:
                     dados.append({
                         "Ticker": r.get("Ticker", "N/A"),
                         **ind,
-                        "Score_BH": score,
+                        "Score_SI": score,
                         "Graham": graham,
                         "Graham_BR": graham_br,
                         "Bazin": bazin,
@@ -131,20 +134,20 @@ else:
 
     with st.container():
         st.subheader("📌 Destaques rápidos")
-        melhor_score = df.sort_values("Score_BH", ascending=False).iloc[0]
+        melhor_score = df.sort_values("Score_SI", ascending=False).iloc[0]
         maior_dy = df.sort_values("DY", ascending=False).iloc[0]
         melhor_roe = df.sort_values("ROE", ascending=False).iloc[0]
         menor_pl = df[df["PL"] > 0].sort_values("PL", ascending=True).iloc[0]
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Melhor Score BH", melhor_score["Ticker"], f"{melhor_score['Score_BH']} pts")
+        c1.metric("Melhor Score SI", melhor_score["Ticker"], f"{melhor_score['Score_SI']} pts")
         c2.metric("Maior Dividend Yield", maior_dy["Ticker"], formatar_percentual(maior_dy["DY"]))
         c3.metric("Melhor ROE", melhor_roe["Ticker"], formatar_percentual(melhor_roe["ROE"]))
         c4.metric("Menor PL (vivo)", menor_pl["Ticker"], f"{menor_pl['PL']:.2f}")
 
     with st.container():
         st.subheader("🔎 Análise rápida de indicadores")
-        cols = ["Ticker", "PL", "PVP", "ROE", "DY", "Margem_Liquida", "Divida_PL", "Liquidez_Corrente", "Score_BH"]
+        cols = ["Ticker", "PL", "PVP", "ROE", "DY", "Margem_Liquida", "Divida_PL", "Liquidez_Corrente", "Score_SI"]
         st.dataframe(df[cols], use_container_width=True)
 
     with st.expander("O que significam estes indicadores?", expanded=False):
@@ -165,7 +168,7 @@ else:
 
         tab1, tab2 = st.tabs(["Ranking Score", "Radar de Indicadores"])
         with tab1:
-            st.dataframe(df.sort_values("Score_BH", ascending=False).head(20), use_container_width=True)
+            st.dataframe(df.sort_values("Score_SI", ascending=False).head(20), use_container_width=True)
 
         with tab2:
             radar_ind = px.line_polar(df.head(10), r="ROE", theta="Ticker", line_close=True)
@@ -181,7 +184,7 @@ else:
         )
         indicador = st.selectbox(
             "Indicador para gráfico comparativo",
-            options=["DY", "ROE", "PL", "PVP", "Score_BH", "Liquidez_Corrente", "Divida_PL"],
+            options=["DY", "ROE", "PL", "PVP", "Score_SI", "Liquidez_Corrente", "Divida_PL"],
             index=0,
             help="Escolha o indicador que será exibido no gráfico de barras."
         )
@@ -190,7 +193,7 @@ else:
             comparacao_df = df[df["Ticker"].isin(comparacao_selecionadas)].copy()
             comparacao_cols = [
                 "Ticker", "Cotacao", "PL", "PVP", "ROE", "DY", "Margem_Liquida",
-                "Divida_PL", "Liquidez_Corrente", "Score_BH", "Graham", "Graham_BR"
+                "Divida_PL", "Liquidez_Corrente", "Score_SI", "Graham", "Graham_BR"
             ]
             st.dataframe(comparacao_df[comparacao_cols].set_index("Ticker"), use_container_width=True)
 
@@ -207,7 +210,7 @@ else:
                 st.plotly_chart(comparacao_plot, use_container_width=True)
 
             if len(comparacao_df) > 1:
-                radar_metrics = [m for m in ["PL", "PVP", "ROE", "DY", "Score_BH"] if m in comparacao_df.columns]
+                radar_metrics = [m for m in ["PL", "PVP", "ROE", "DY", "Score_SI"] if m in comparacao_df.columns]
                 radar_df = comparacao_df.melt(
                     id_vars=["Ticker"],
                     value_vars=radar_metrics,
