@@ -6,7 +6,8 @@ from valuation import (
     calcular_graham_br,
     calcular_bazin,
     calcular_lynch,
-    calcular_agf
+    calcular_agf_medio,
+    calcular_agf_projetivo,
 )
 from checklist import checklist_buy_hold
 from export_excel import salvar_excel
@@ -39,47 +40,58 @@ ativos = [
     "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
 ]
 
-# Busca dados (cache → yfinance + UsebolsaI top 160)
+# ── Busca dados (cache → yfinance + UsebolsaI top 160) ───────────
 todos_dados, _ = buscar_acoes_usebolsai(ativos)
 
-# Processa cada ativo
+# ── Processa cada ativo ───────────────────────────────────────────
 dados_finais = []
+
 for data in todos_dados:
     ticker = data.get("Ticker", "N/A")
     try:
         ind = calcular_indicadores(data)
 
-        graham    = calcular_graham(ind.get("LPA"), ind.get("VPA")) or 0
-        graham_br = calcular_graham_br(
-            graham,
-            ind.get("ROE"),
-            ind.get("Divida_PL"),
-            ind.get("Margem_Liquida"),
-            ind.get("Receita_CAGR")
-        ) or 0
-        bazin  = calcular_bazin(ind.get("DY")) or 0
-        lynch  = calcular_lynch(ind.get("PL"), ind.get("Lucro_CAGR")) or 0
-        agf    = calcular_agf(ind.get("DY"), ind.get("Lucro_CAGR")) or 0
+        lpa          = ind.get("LPA")
+        vpa          = ind.get("VPA")
+        dpa          = ind.get("DPA")          # Dividendo Por Ação anual
+        lucro_cagr   = ind.get("Lucro_CAGR")   # CAGR lucros 5 anos
+        receita_cagr = ind.get("Receita_CAGR")
 
+        # ── Valuation ────────────────────────────────────────────
+        graham         = calcular_graham(lpa, vpa) or 0
+        graham_br      = calcular_graham_br(lpa, lucro_cagr) or 0
+        bazin          = calcular_bazin(dpa) or 0
+        lynch          = calcular_lynch(lpa, lucro_cagr) or 0
+        agf_medio      = calcular_agf_medio(dpa) or 0      # usa DPA atual como proxy
+        agf_projetivo  = calcular_agf_projetivo(dpa) or 0  # DPA projetado = DPA atual
+
+        # ── Checklist Buy & Hold (9 critérios) ───────────────────
         _, score = checklist_buy_hold(ind)
 
         dados_finais.append({
-            "Ticker":    ticker,
+            "Ticker":        ticker,
             **ind,
-            "Graham":    graham,
-            "Graham_BR": graham_br,
-            "Bazin":     bazin,
-            "Lynch_PEG": lynch,
-            "AGF":       agf,
-            "Score_SI":  score
+            "Graham":        graham,
+            "Graham_BR":     graham_br,
+            "Bazin":         bazin,
+            "Lynch":         lynch,
+            "AGF_Medio":     agf_medio,
+            "AGF_Projetivo": agf_projetivo,
+            "Score_SI":      score,
         })
+
     except Exception as e:
         print(f"⚠️ Erro ao processar {ticker}: {e}")
 
-# Exporta
+# ── Exporta ───────────────────────────────────────────────────────
 df = pd.DataFrame(dados_finais)
 salvar_excel(df)
+
 print(f"\n✅ Excel gerado com {len(df)} ativos!")
 if not df.empty:
-    cols = [c for c in ["Ticker", "Segmento", "Cotacao", "PL", "ROE", "Score_SI"] if c in df.columns]
+    cols = [c for c in [
+        "Ticker", "Segmento", "Cotacao", "PL", "ROE",
+        "Graham", "Graham_BR", "Bazin", "Lynch",
+        "AGF_Medio", "AGF_Projetivo", "Score_SI"
+    ] if c in df.columns]
     print(df[cols].head(10).to_string())
