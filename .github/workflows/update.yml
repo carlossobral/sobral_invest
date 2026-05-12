@@ -1,17 +1,13 @@
 name: Atualizar Planilha
-
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * *'   # Executa todos os dias às 03:00 no horário de Brasília (UTC-3)
-
 permissions:
   contents: write
-
 jobs:
   atualizar:
     runs-on: ubuntu-latest
-
     steps:
       - name: Clonar repositório
         uses: actions/checkout@v5
@@ -27,6 +23,46 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Buscar taxa Selic (API Banco Central)
+        run: |
+          python - <<'EOF'
+          import requests, json
+          from datetime import date
+
+          URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
+
+          try:
+              r = requests.get(URL, timeout=10)
+              r.raise_for_status()
+              dados = r.json()
+              selic_diaria = float(dados[0]["valor"])
+              selic_anual  = round(selic_diaria * 252 * 100, 2)
+
+              # Validação básica
+              if not (2.0 <= selic_anual <= 30.0):
+                  raise ValueError(f"Selic fora do intervalo esperado: {selic_anual}")
+
+              payload = {"selic": selic_anual, "data": str(date.today())}
+              with open("selic.json", "w", encoding="utf-8") as f:
+                  json.dump(payload, f)
+
+              print(f"✅ Selic atualizada: {selic_anual}% a.a. ({date.today()})")
+
+          except Exception as e:
+              print(f"⚠️ Erro ao buscar Selic: {e}")
+
+              # Mantém o selic.json anterior se já existir
+              import os
+              if os.path.exists("selic.json"):
+                  print("⚠️ Mantendo selic.json anterior.")
+              else:
+                  # Cria fallback caso não exista nenhum arquivo ainda
+                  fallback = {"selic": 13.25, "data": str(date.today()), "fallback": True}
+                  with open("selic.json", "w", encoding="utf-8") as f:
+                      json.dump(fallback, f)
+                  print("⚠️ selic.json criado com valor de fallback: 13.25%")
+          EOF
 
       - name: Executar aplicação
         env:
