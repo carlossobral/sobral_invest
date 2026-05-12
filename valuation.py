@@ -1,59 +1,192 @@
+"""
+valuation.py — Métodos de Preço Teto e Valor Justo
+====================================================
+    1. Graham Clássico  → √(22,5 × LPA × VPA)
+    2. Graham BR        → LPA × (8,5 + 2g) × (4,4 ÷ Selic)
+    3. Bazin            → DPA ÷ 7%
+    4. Peter Lynch      → LPA × Crescimento(%)
+    5. AGF Médio        → Média DPA 7 anos ÷ 7%
+    6. AGF Projetivo    → DPA projetado ÷ 7%
+
+A Selic é lida do selic.json gerado pelo GitHub Actions (update.yml)
+todos os dias via API do Banco Central. Sem config.py, sem chamadas
+em runtime.
+"""
+
+import json
+import os
+
+# ── Parâmetros ────────────────────────────────────────────────────
+BAZIN_TAXA      = 0.07
+AGF_TAXA        = 0.07
+AGF_ANOS        = 7
+GRAHAM_BR_G_MAX = 15.0   # crescimento máximo no Graham BR (%)
+SELIC_FALLBACK  = 13.25  # usado apenas se selic.json não existir
+
+
+def _obter_selic() -> float:
+    """Lê a Selic do selic.json gravado pelo GitHub Actions."""
+    try:
+        caminho = os.path.join(os.path.dirname(__file__), "selic.json")
+        with open(caminho, "r", encoding="utf-8") as f:
+            dados = json.load(f)
+        selic = float(dados["selic"])
+        if 2.0 <= selic <= 30.0:
+            return selic
+    except Exception:
+        pass
+    return SELIC_FALLBACK
+
+
+# ─────────────────────────────────────────────────────────────────
+# 1. GRAHAM CLÁSSICO
+# ─────────────────────────────────────────────────────────────────
 def calcular_graham(lpa, vpa):
     try:
-        lpa = lpa or 0
-        vpa = vpa or 0
+        lpa = _f(lpa)
+        vpa = _f(vpa)
         if lpa <= 0 or vpa <= 0:
             return 0
         return (22.5 * lpa * vpa) ** 0.5
-    except:
+    except Exception:
         return 0
 
-def calcular_graham_br(graham, roe, divida_pl, margem_liquida, crescimento_receita):
-    try:
-        graham = graham or 0
-        roe = roe or 0
-        divida_pl = divida_pl or 0
-        margem_liquida = margem_liquida or 0
-        crescimento_receita = crescimento_receita or 0
-        fator = 1
-        if roe > 0.15:
-            fator += 0.10
-        if divida_pl < 0.5:
-            fator += 0.10
-        if margem_liquida > 0.10:
-            fator += 0.05
-        if crescimento_receita > 0:
-            fator += 0.05
-        return graham * fator
-    except:
-        return 0
 
-def calcular_bazin(dividendos_anuais):
+# ─────────────────────────────────────────────────────────────────
+# 2. GRAHAM BR
+# ─────────────────────────────────────────────────────────────────
+def calcular_graham_br(lpa, crescimento):
+    """
+    lpa         → Lucro Por Ação (R$)
+    crescimento → CAGR de lucros (%, ex: 15 para 15% ou 0.15)
+    """
     try:
-        dividendos_anuais = dividendos_anuais or 0
-        if dividendos_anuais <= 0:
+        lpa         = _f(lpa)
+        crescimento = _f(crescimento)
+        selic       = _obter_selic()
+
+        if lpa <= 0 or selic <= 0:
             return 0
-        return dividendos_anuais / 0.07
-    except:
+
+        if crescimento <= 1:
+            crescimento = crescimento * 100
+
+        g = min(crescimento, GRAHAM_BR_G_MAX)
+        return lpa * (8.5 + 2 * g) * (4.4 / selic)
+    except Exception:
         return 0
 
-def calcular_lynch(pl, crescimento):
+
+# ─────────────────────────────────────────────────────────────────
+# 3. BAZIN
+# ─────────────────────────────────────────────────────────────────
+def calcular_bazin(dpa):
+    """dpa → Dividendo Por Ação anual (R$)"""
     try:
-        pl = pl or 0
-        crescimento = crescimento or 0
-        if crescimento == 0:
+        dpa = _f(dpa)
+        if dpa <= 0:
             return 0
-        return pl / crescimento
-    except:
+        return dpa / BAZIN_TAXA
+    except Exception:
         return 0
 
-def calcular_agf(dividendo_atual, crescimento_dividendos):
+
+# ─────────────────────────────────────────────────────────────────
+# 4. PETER LYNCH
+# ─────────────────────────────────────────────────────────────────
+def calcular_lynch(lpa, crescimento):
+    """
+    lpa         → Lucro Por Ação (R$)
+    crescimento → crescimento esperado de lucros (% ou decimal)
+    Preço justo quando PEG = 1: Preço = LPA × g
+    """
     try:
-        dividendo_atual = dividendo_atual or 0
-        crescimento_dividendos = crescimento_dividendos or 0
-        dividendo_futuro = dividendo_atual * ((1 + crescimento_dividendos) ** 5)
-        if dividendo_futuro <= 0:
+        lpa         = _f(lpa)
+        crescimento = _f(crescimento)
+
+        if lpa <= 0 or crescimento <= 0:
             return 0
-        return dividendo_futuro / 0.07
-    except:
+
+        if crescimento <= 1:
+            crescimento = crescimento * 100
+
+        return lpa * crescimento
+    except Exception:
         return 0
+
+
+# ─────────────────────────────────────────────────────────────────
+# 5. AGF MÉDIO
+# ─────────────────────────────────────────────────────────────────
+def calcular_agf_medio(historico_dpa):
+    """
+    historico_dpa → lista de DPA dos últimos 7 anos
+                    ou um único float (DPA médio já calculado)
+    Fórmula: Média DPA (7 anos) ÷ 7%
+    """
+    try:
+        if isinstance(historico_dpa, (list, tuple)):
+            valores = [_f(v) for v in historico_dpa if _f(v) > 0]
+            if not valores:
+                return 0
+            valores = valores[-AGF_ANOS:]
+            media_dpa = sum(valores) / len(valores)
+        else:
+            media_dpa = _f(historico_dpa)
+
+        if media_dpa <= 0:
+            return 0
+        return media_dpa / AGF_TAXA
+    except Exception:
+        return 0
+
+
+# ─────────────────────────────────────────────────────────────────
+# 6. AGF PROJETIVO
+# ─────────────────────────────────────────────────────────────────
+def calcular_agf_projetivo(dpa_projetado):
+    """
+    dpa_projetado → DPA projetado para o ano atual (R$)
+    Fórmula: DPA projetado ÷ 7%
+    """
+    try:
+        dpa = _f(dpa_projetado)
+        if dpa <= 0:
+            return 0
+        return dpa / AGF_TAXA
+    except Exception:
+        return 0
+
+
+# ─────────────────────────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────────────────────────
+def calcular_upside(preco_atual, preco_teto):
+    """Retorna upside (+) ou downside (-) em %."""
+    try:
+        p = _f(preco_atual)
+        t = _f(preco_teto)
+        if p <= 0 or t <= 0:
+            return None
+        return ((t - p) / p) * 100
+    except Exception:
+        return None
+
+
+def classificar_upside(pct):
+    """Retorna (label, valor_formatado) para exibir no Streamlit."""
+    if pct is None:
+        return "—", "—"
+    if pct >= 20:
+        return "🟢 Compra", f"+{pct:.1f}%"
+    if pct >= 0:
+        return "🟡 Atenção", f"+{pct:.1f}%"
+    return "🔴 Acima do teto", f"{pct:.1f}%"
+
+
+def _f(val):
+    """Converte para float com segurança."""
+    try:
+        return float(val) if val is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
