@@ -7,9 +7,13 @@ class ParserNegociacaoB3:
     """
     Parser para arquivo de Negociacao do Canal do Investidor B3.
     Detecta automaticamente as colunas e converte valores numéricos corretamente.
+
+    REGRAS:
+    - Exercicio de opcao → Contabiliza como operacao de acoes (ativo-base)
+    - Opcoes (compra/venda) → Derivativos, nao consolidam na carteira
+    - Futuros/CDBs → Ignorados
     """
 
-    # Mapeamento flexível de colunas
     MAPEAMENTO_COLUNAS = {
         'data': ['Data do Negocio', 'Data do Negócio', 'Data', 'DATA', 'Data Negócio', 'Data Negocio'],
         'tipo_movimentacao': ['Tipo de Movimentacao', 'Tipo de Movimentação', 'Tipo Movimentacao', 'Tipo Movimentação', 'TIPO', 'Movimentação', 'Movimentacao'],
@@ -26,13 +30,12 @@ class ParserNegociacaoB3:
     def __init__(self, caminho_arquivo: str):
         self.caminho = caminho_arquivo
         self.df: Optional[pd.DataFrame] = None
-        self.operacoes: List[Dict] = []
-        self.operacoes_opcoes: List[Dict] = []
+        self.operacoes: List[Dict] = []  # Acoes + exercicios de opcoes
+        self.operacoes_opcoes: List[Dict] = []  # Derivativos (compra/venda de opcoes)
         self.ignorados: List[Dict] = []
         self.colunas_detectadas: Dict[str, str] = {}
 
     def _detectar_colunas(self, df: pd.DataFrame) -> Dict[str, str]:
-        """Detecta automaticamente quais colunas correspondem aos campos esperados."""
         colunas_arquivo = list(df.columns)
         colunas_detectadas = {}
 
@@ -51,43 +54,24 @@ class ParserNegociacaoB3:
         return colunas_detectadas
 
     def _converter_numero(self, valor) -> float:
-        """
-        Converte valor numérico do formato brasileiro para float.
-        Suporta: "25,30", "2.530,00", "R$ 1.234,56", "1234.56"
-        """
         if pd.isna(valor):
             return 0.0
 
         if isinstance(valor, (int, float)):
             return float(valor)
 
-        # Converter para string e limpar
         s = str(valor).strip()
-
-        # Remover R$, espaços, etc.
         s = s.replace('R$', '').replace(' ', '').replace('%', '')
 
-        # Detectar formato
-        # Se tem vírgula e ponto: "2.530,00" → brasileiro
-        # Se tem só vírgula: "25,30" → brasileiro
-        # Se tem só ponto: "25.30" → americano
-        # Se não tem nenhum: "2530" → inteiro
-
         if ',' in s and '.' in s:
-            # Formato brasileiro com milhar: "2.530,00"
-            s = s.replace('.', '')  # Remove separador de milhar
-            s = s.replace(',', '.')  # Converte decimal
+            s = s.replace('.', '')
+            s = s.replace(',', '.')
         elif ',' in s:
-            # Pode ser "25,30" (brasileiro) ou "2530" (americano com vírgula de milhar)
-            # Se vírgula está a 2-3 posições do final, é decimal brasileiro
             partes = s.split(',')
             if len(partes) == 2 and len(partes[1]) <= 2:
-                # Decimal brasileiro: "25,30" → "25.30"
                 s = s.replace(',', '.')
             else:
-                # Milhar americano: "1,234" → "1234"
                 s = s.replace(',', '')
-        # Se só tem ponto, assume americano: "25.30" → mantém
 
         try:
             return float(s)
@@ -95,36 +79,66 @@ class ParserNegociacaoB3:
             return 0.0
 
     def _validar_preco(self, preco: float, valor: float, qtd: int) -> float:
-        """
-        Valida e corrige o preço unitário.
-        Se preço * qtd não bate com valor, tenta corrigir.
-        """
         if preco <= 0 or qtd <= 0 or valor <= 0:
             return preco
 
-        # Calcular preço esperado
         preco_esperado = valor / qtd
 
-        # Se o preço informado é muito diferente do esperado, usar o esperado
         if preco_esperado > 0:
             razao = preco / preco_esperado if preco_esperado > 0 else 0
 
-            # Se razão está entre 0.5 e 2.0, o preço está razoável
             if 0.5 <= razao <= 2.0:
                 return preco
 
-            # Se preço é 100x maior (ex: 2530 ao invés de 25.30)
             if razao > 50:
                 return preco / 100
 
-            # Se preço é 100x menor
             if razao < 0.02:
                 return preco * 100
 
         return preco
 
+    def _mapear_exercicio_para_ativo_base(self, ticker: str) -> Tuple[str, str]:
+        """
+        Mapeia exercicio de opcao para ativo-base.
+        Ex: BBASQ245E → BBAS3 (acao base)
+        Retorna: (ativo_base, tipo_exercicio)
+        """
+        ticker = ticker.upper().strip()
+
+        # Remover sufixo E (exercicio europeu) ou A (americano)
+        if ticker.endswith('E') or ticker.endswith('A'):
+            ticker_opcao = ticker[:-1]
+        else:
+            ticker_opcao = ticker
+
+        # Regra de mapeamento B3:
+        # Opcoes: [PREFIXO 4 letras][TIPO 1 letra][STRIKE 3-5 digitos]
+        # Ativo base: [PREFIXO 4 letras][NUMERO 1 digito]
+
+        if len(ticker_opcao) >= 6:
+            prefixo = ticker_opcao[:4]
+            # O último caractere antes do strike é o tipo (CALL/PUT)
+            # O dígito do ativo base geralmente é o último número do ticker original
+            # ou inferido pelo padrão
+
+            # Tentar extrair digito do ativo base do ticker da opcao
+            # Regra comum: opcao GGBRE203 → acao GGBR4
+            # O digito é geralmente o último caractere do ticker original da acao
+
+            # Para simplificar, usamos heurística:
+            # Se ticker da opcao tem 6+ chars, o ativo base é prefixo + ultimo digito encontrado
+            digitos = [c for c in ticker_opcao if c.isdigit()]
+            if digitos:
+                digito = digitos[-1]  # Ultimo digito
+                return f"{prefixo}{digito}", "EXERCICIO"
+            else:
+                # Fallback: tentar com digito 3 (mais comum)
+                return f"{prefixo}3", "EXERCICIO"
+
+        return ticker, "EXERCICIO"
+
     def carregar(self) -> 'ParserNegociacaoB3':
-        """Carrega o arquivo Excel e detecta colunas."""
         try:
             df = pd.read_excel(self.caminho)
             df = df.dropna(how='all')
@@ -151,14 +165,12 @@ class ParserNegociacaoB3:
         return self
 
     def _get_valor(self, row, campo: str):
-        """Obtém valor de uma coluna de forma segura."""
         col = self.colunas_detectadas.get(campo)
         if col and col in row.index:
             return row[col]
         return None
 
     def _limpar_ticker(self, ticker: str) -> str:
-        """Limpa e normaliza o ticker."""
         if pd.isna(ticker):
             return ""
         ticker = str(ticker).strip().upper()
@@ -167,7 +179,6 @@ class ParserNegociacaoB3:
         return ticker
 
     def _classificar_mercado(self, mercado: str) -> str:
-        """Classifica o tipo de mercado."""
         if pd.isna(mercado):
             return "DESCONHECIDO"
 
@@ -189,7 +200,6 @@ class ParserNegociacaoB3:
             return "OUTRO"
 
     def _determinar_direcao(self, row) -> str:
-        """Determina se é compra ou venda."""
         tipo = str(self._get_valor(row, 'tipo_movimentacao') or '').upper()
 
         if 'COMPRA' in tipo:
@@ -219,7 +229,6 @@ class ParserNegociacaoB3:
         return 'DESCONHECIDO'
 
     def parse(self) -> 'ParserNegociacaoB3':
-        """Processa todas as linhas do arquivo."""
         if self.df is None:
             raise ValueError("Arquivo não carregado. Execute carregar() primeiro.")
 
@@ -231,29 +240,22 @@ class ParserNegociacaoB3:
 
                 mercado_raw = self._get_valor(row, 'mercado') or ''
                 tipo_mercado = self._classificar_mercado(mercado_raw)
-
                 direcao = self._determinar_direcao(row)
 
-                # Converter quantidade
                 qtd_raw = self._get_valor(row, 'quantidade')
                 qtd = int(self._converter_numero(qtd_raw))
 
-                # Converter preço
                 preco_raw = self._get_valor(row, 'preco')
                 preco = self._converter_numero(preco_raw)
 
-                # Converter valor
                 valor_raw = self._get_valor(row, 'valor')
                 valor = self._converter_numero(valor_raw)
 
-                # Validar e corrigir preço
                 preco = self._validar_preco(preco, abs(valor), qtd)
 
-                # Recalcular valor se necessário
                 if valor == 0 and preco > 0 and qtd > 0:
                     valor = preco * qtd
 
-                # Obter data
                 data = self._get_valor(row, 'data')
                 if data and pd.notna(data):
                     try:
@@ -276,14 +278,53 @@ class ParserNegociacaoB3:
                     'instituicao': str(self._get_valor(row, 'instituicao') or ''),
                 }
 
-                # Classificar operação
-                if tipo_mercado in ['ACAO']:
+                # ============================================================
+                # REGRA PRINCIPAL: Exercicio de opcao → Contabiliza como ACAO
+                # ============================================================
+                if tipo_mercado == "EXERCICIO":
+                    # Mapear para ativo base
+                    ativo_base, _ = self._mapear_exercicio_para_ativo_base(ticker)
+
+                    # Determinar direcao pelo tipo de exercicio
+                    # Exercicio de PUT → VENDA de acoes (investidor vende acoes ao strike)
+                    # Exercicio de CALL → COMPRA de acoes (investidor compra acoes ao strike)
+                    # Usar o preco como strike
+
+                    if 'PUT' in str(mercado_raw).upper() or 'VENDA' in str(mercado_raw).upper():
+                        direcao_exercicio = 'VENDA'
+                    elif 'CALL' in str(mercado_raw).upper() or 'COMPRA' in str(mercado_raw).upper():
+                        direcao_exercicio = 'COMPRA'
+                    else:
+                        # Inferir pelo tipo de opcao no ticker ou usar direcao original
+                        direcao_exercicio = direcao
+
+                    operacao_acao = {
+                        'data': data,
+                        'ticker': ativo_base,
+                        'tipo_mercado': 'ACAO',  # Contabiliza como acao!
+                        'mercado_raw': f"EXERCICIO_OPCAO → {ativo_base}",
+                        'direcao': direcao_exercicio,
+                        'quantidade': qtd,
+                        'preco': preco,  # Strike vira preco da acao
+                        'valor': abs(valor),
+                        'instituicao': str(self._get_valor(row, 'instituicao') or ''),
+                        'origem': f"Exercicio de opcao: {ticker}",
+                    }
+
+                    self.operacoes.append(operacao_acao)
+
+                elif tipo_mercado in ['ACAO']:
                     self.operacoes.append(operacao)
+
                 elif tipo_mercado in ['OPCAO_CALL', 'OPCAO_PUT']:
+                    # Derivativos - nao consolidam na carteira principal
                     self.operacoes_opcoes.append(operacao)
-                elif tipo_mercado in ['EXERCICIO', 'FUTURO', 'RENDA_FIXA']:
+
+                elif tipo_mercado in ['FUTURO', 'RENDA_FIXA']:
                     self.ignorados.append({**operacao, 'motivo': f'Tipo ignorado: {tipo_mercado}'})
+
                 else:
+                    # Tentar identificar se é acao por padrao do ticker
                     if len(ticker) >= 5 and ticker[-1].isdigit() and not any(x in ticker for x in ['11', '12', '13']):
                         self.operacoes.append(operacao)
                     else:
@@ -299,7 +340,6 @@ class ParserNegociacaoB3:
         return self
 
     def get_resumo_acoes(self) -> pd.DataFrame:
-        """Retorna DataFrame com posições consolidadas de ações."""
         if not self.operacoes:
             return pd.DataFrame()
 
@@ -318,9 +358,12 @@ class ParserNegociacaoB3:
             saldo = qtd_compras - qtd_vendas
 
             if saldo > 0:
-                # Preço médio ponderado das compras
                 custo_total = (compras['quantidade'] * compras['preco']).sum()
                 preco_medio = custo_total / qtd_compras if qtd_compras > 0 else 0
+
+                # Verificar se veio de exercicio de opcao
+                origens = ops_ticker['origem'].dropna().unique() if 'origem' in ops_ticker.columns else []
+                tem_exercicio = len(origens) > 0
 
                 resumo.append({
                     'Ticker': ticker,
@@ -330,12 +373,13 @@ class ParserNegociacaoB3:
                     'Classe': 'ACAO',
                     'Total Compras': int(qtd_compras),
                     'Total Vendas': int(qtd_vendas),
+                    'Exercício Opção': '✅' if tem_exercicio else '—',
+                    'Detalhes': '; '.join(origens) if tem_exercicio else '—',
                 })
 
         return pd.DataFrame(resumo)
 
     def get_operacoes_opcoes_df(self) -> pd.DataFrame:
-        """Retorna DataFrame com operações de opções."""
         if not self.operacoes_opcoes:
             return pd.DataFrame()
 
