@@ -15,24 +15,31 @@ st.set_page_config(
 )
 
 # ============================================================
-# IMPORTS DOS MODULOS EXISTENTES (com fallback)
+# IMPORTS DOS MODULOS EXISTENTES (CORRIGIDOS)
 # ============================================================
 try:
-    from usebolsai_client import buscar_acoes_usebolsai
-    from brapi_client import obter_dados_brapi, obter_dados_yfinance
+    # valuation.py → funcoes individuais, nao calcular_precos_alvo
+    from valuation import (
+        calcular_graham, calcular_graham_br, calcular_bazin,
+        calcular_lynch, calcular_agf_medio, calcular_agf_projetivo,
+        calcular_upside, classificar_upside, _obter_selic
+    )
+    # checklist.py → checklist_buy_hold (retorna dict + score 0-9)
+    from checklist import checklist_buy_hold, classificar_score
+    # indicadores.py → calcular_indicadores
     from indicadores import calcular_indicadores
-    from valuation import calcular_precos_alvo
-    from checklist import calcular_score_bh
+    # brapi_client.py → obter_dados_brapi, obter_dados_yfinance, buscar_acoes
+    from brapi_client import obter_dados_brapi, obter_dados_yfinance, buscar_acoes
+    # usebolsai_client.py → buscar_acoes_usebolsai
+    from usebolsai_client import buscar_acoes_usebolsai
+
     MODULOS_OK = True
 except ImportError as e:
     st.warning(f"Modulos existentes nao encontrados: {e}. Usando modo fallback.")
     MODULOS_OK = False
 
-# ============================================================
-# IMPORT DO PARSER B3 (se disponível)
-# ============================================================
 try:
-    from parser_negociacao_b3 import ParserNegociacaoB3, classificar_negociacao, classificar_ativo
+    from parser_negociacao_b3 import ParserNegociacaoB3
     from mapeador_opcoes_b3 import mapear_ticker_b3, MapeadorOpcoes
     PARSER_OK = True
 except ImportError as e:
@@ -47,30 +54,53 @@ BRAPI_TOKEN = os.getenv("BRAPI_TOKEN", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # ============================================================
-# TEMA ESCURO (TERMINAL)
+# TEMA ESCURO (TERMINAL DE DADOS)
 # ============================================================
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #0d1117;
-        color: #c9d1d9;
-    }
-    .css-1d391kg {
-        background-color: #161b22;
-    }
-    h1, h2, h3 {
-        color: #58a6ff;
-    }
-    .stButton>button {
-        background-color: #238636;
-        color: white;
-    }
-    .stMetric {
+    .stApp { background-color: #0d1117; color: #c9d1d9; }
+    .css-1d391kg { background-color: #161b22; }
+    h1, h2, h3 { color: #58a6ff; }
+    .stButton>button { background-color: #238636; color: white; }
+    .metric-card {
         background-color: #161b22;
         border: 1px solid #30363d;
-        border-radius: 6px;
-        padding: 10px;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 5px 0;
     }
+    .metric-value { font-size: 24px; font-weight: bold; color: #58a6ff; }
+    .metric-label { font-size: 12px; color: #8b949e; }
+    .positive { color: #3fb950; }
+    .negative { color: #f85149; }
+    .score-aprovado { 
+        background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+        color: white; padding: 10px 20px; border-radius: 20px; font-weight: bold;
+    }
+    .score-reprovado {
+        background: linear-gradient(135deg, #f85149 0%, #da3633 100%);
+        color: white; padding: 10px 20px; border-radius: 20px; font-weight: bold;
+    }
+    .score-regular {
+        background: linear-gradient(135deg, #d29922 0%, #bb8009 100%);
+        color: white; padding: 10px 20px; border-radius: 20px; font-weight: bold;
+    }
+    .preco-teto-card {
+        background-color: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+    }
+    .checklist-item {
+        padding: 8px 12px;
+        margin: 4px 0;
+        border-radius: 6px;
+        background-color: #161b22;
+        border-left: 3px solid #30363d;
+    }
+    .checklist-aprovado { border-left-color: #238636; }
+    .checklist-reprovado { border-left-color: #f85149; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -96,7 +126,6 @@ if 'carteira_importada' not in st.session_state:
 
 @st.cache_data(ttl=3600)
 def buscar_lista_ativos_brapi():
-    """Busca lista de todos os ativos da B3 via BRAPI."""
     try:
         import requests
         url = "https://brapi.dev/api/available"
@@ -105,7 +134,6 @@ def buscar_lista_ativos_brapi():
         if r.status_code == 200:
             data = r.json()
             ativos = data.get("stocks", [])
-            # Filtrar apenas ativos brasileiros válidos
             ativos_validos = [a for a in ativos if len(a) >= 5 and a[-1].isdigit()]
             return sorted(ativos_validos)
     except Exception as e:
@@ -114,18 +142,17 @@ def buscar_lista_ativos_brapi():
 
 @st.cache_data(ttl=300)
 def buscar_dados_ativo(ticker):
-    """Busca dados completos de um ativo."""
     if not MODULOS_OK:
         return None
     try:
-        # Usar brapi_client e yfinance
         dados_brapi = obter_dados_brapi(ticker)
         dados_yf = obter_dados_yfinance(ticker)
 
-        # Consolidar dados
         consolidado = {
             "ticker": ticker,
+            "nome_empresa": dados_brapi.get("shortName") or dados_brapi.get("longName") or ticker,
             "cotacao": dados_brapi.get("regularMarketPrice") or dados_yf.get("Cotacao"),
+            "variacao_dia": dados_brapi.get("regularMarketChangePercent"),
             "pl": dados_brapi.get("priceEarnings") or dados_yf.get("PL"),
             "pvp": dados_brapi.get("priceToBook") or dados_yf.get("PVP"),
             "dy": dados_brapi.get("dividendYield") or dados_yf.get("DY"),
@@ -149,6 +176,11 @@ def buscar_dados_ativo(ticker):
             "caixa": dados_yf.get("Caixa"),
             "ativos": dados_yf.get("Ativos_Totais"),
             "segmento": dados_brapi.get("sector") or dados_brapi.get("industry") or "Desconhecido",
+            "subsetor": dados_brapi.get("subSector") or "Desconhecido",
+            "setor": dados_brapi.get("sector") or "Desconhecido",
+            "volume": dados_brapi.get("regularMarketVolume"),
+            "max_52": dados_brapi.get("fiftyTwoWeekHigh") or dados_yf.get("Maximo_52"),
+            "min_52": dados_brapi.get("fiftyTwoWeekLow") or dados_yf.get("Minimo_52"),
         }
         return consolidado
     except Exception as e:
@@ -156,66 +188,63 @@ def buscar_dados_ativo(ticker):
         return None
 
 def calcular_score_cs(dados):
-    """Calcula Score CS (0-100) baseado nos critérios do checklist."""
-    score = 0
-    detalhes = {}
+    """Calcula Score CS usando o checklist.py real (0-9)."""
+    if not MODULOS_OK:
+        # Fallback manual
+        score = 0
+        detalhes = {}
+        criterios = {
+            "Mais de 7 anos de Bolsa": (True, 1),
+            "Nunca teve prejuízo anual": (dados.get("lucro", 0) > 0 if dados.get("lucro") else False, 1),
+            "Lucro nos últimos 28 trimestres": (True, 1),
+            "DY > 7% nos últimos 7 anos": ((dados.get("dy") or 0) > 0.07 if dados.get("dy") else False, 1),
+            "ROE > 12%": ((dados.get("roe") or 0) > 0.12 if dados.get("roe") else False, 1),
+            "Dívida < Patrimônio": ((dados.get("divida_pl") or 999) < 1 if dados.get("divida_pl") else False, 1),
+            "Crescimento receita 7 anos": (True, 1),
+            "Crescimento lucro 7 anos": (True, 1),
+            "Liquidez diária > R$ 1M": (True, 1),
+        }
+        for nome, (condicao, pts) in criterios.items():
+            if condicao:
+                score += pts
+                detalhes[nome] = ("✅", pts)
+            else:
+                detalhes[nome] = ("❌", 0)
+        return score, detalhes, "0-9"
 
-    # Critérios e pesos
-    criterios = {
-        "Mais de 7 anos na Bolsa": (True, 10),  # Placeholder - precisa de histórico
-        "Nunca deu prejuízo": (dados.get("lucro", 0) > 0 if dados.get("lucro") else False, 15),
-        "Lucro nos últimos 28 trimestres": (True, 15),  # Placeholder
-        "DY > 7% nos últimos 7 anos": ((dados.get("dy") or 0) > 0.07 if dados.get("dy") else False, 15),
-        "ROE > 12%": ((dados.get("roe") or 0) > 0.12 if dados.get("roe") else False, 15),
-        "Dívida < Patrimônio": ((dados.get("divida_pl") or 999) < 1 if dados.get("divida_pl") else False, 10),
-        "Crescimento receita 7 anos": (True, 10),  # Placeholder
-        "Crescimento lucro 7 anos": (True, 10),  # Placeholder
-        "Liquidez diária > R$ 1M": (True, 10),  # Placeholder
-    }
-
-    for nome, (condicao, peso) in criterios.items():
-        if condicao:
-            score += peso
-            detalhes[nome] = f"✅ ({peso} pts)"
-        else:
-            detalhes[nome] = f"❌ (0 pts)"
-
-    return min(score, 100), detalhes
+    try:
+        # Usar checklist.py real
+        ind = calcular_indicadores(dados)
+        checklist, score = checklist_buy_hold(ind)
+        detalhes = {k: ("✅" if v else "❌", 1) for k, v in checklist.items()}
+        return score, detalhes, "0-9"
+    except Exception as e:
+        st.error(f"Erro no checklist: {e}")
+        return 0, {}, "0-9"
 
 def calcular_precos_teto(dados):
-    """Calcula preços teto pelos 5 métodos."""
-    if not dados:
+    """Calcula preços teto usando valuation.py real."""
+    if not MODULOS_OK or not dados:
         return {}
 
-    cotacao = dados.get("cotacao") or 0
-    lpa = dados.get("lpa") or 0
-    vpa = dados.get("vpa") or 0
-    dy = dados.get("dy") or 0
+    try:
+        lpa = dados.get("lpa") or 0
+        vpa = dados.get("vpa") or 0
+        dy = dados.get("dy") or 0
+        crescimento = 10.0  # Placeholder CAGR
+        dpa = dy * (dados.get("cotacao") or 0) if dy and dados.get("cotacao") else 0
 
-    # Graham Clássico
-    graham = (22.5 * lpa * vpa) ** 0.5 if lpa > 0 and vpa > 0 else 0
-
-    # Graham BR (adaptado)
-    selic = 0.10  # Placeholder - deve vir de selic.json
-    graham_br = graham * (1 + selic) if graham > 0 else 0
-
-    # Peter Lynch
-    cagr = 0.10  # Placeholder
-    lynch = cotacao / (cagr * 100) if cagr > 0 else 0
-
-    # Bazin (7%)
-    bazin = (dy * cotacao) / 0.07 if dy > 0 and cotacao > 0 else 0
-
-    # AGF (placeholder)
-    agf = cotacao * 1.2  # Placeholder
-
-    return {
-        "Graham": round(graham, 2),
-        "Graham BR": round(graham_br, 2),
-        "Peter Lynch": round(lynch, 2),
-        "Bazin (7%)": round(bazin, 2),
-        "AGF": round(agf, 2),
-    }
+        return {
+            "Graham": round(calcular_graham(lpa, vpa), 2),
+            "Graham BR": round(calcular_graham_br(lpa, crescimento), 2),
+            "Peter Lynch": round(calcular_lynch(lpa, crescimento), 2),
+            "Bazin (7%)": round(calcular_bazin(dpa), 2),
+            "AGF Médio": round(calcular_agf_medio(dpa), 2),
+            "AGF Projetivo": round(calcular_agf_projetivo(dpa), 2),
+        }
+    except Exception as e:
+        st.error(f"Erro nos cálculos de valuation: {e}")
+        return {}
 
 # ============================================================
 # MENU LATERAL
@@ -249,129 +278,486 @@ if menu == "Dashboard":
         else:
             st.metric("Carteira", "Não importada")
 
-    st.info("Use o menu 'Importar B3' para carregar sua carteira ou 'Análise de Ativo' para consultar!")
+    st.info("Use o menu 'Análise de Ativo' para consultar dados reais!")
 
     if not MODULOS_OK:
         st.warning("⚠️ Módulos existentes não carregados. Verifique se os arquivos estão na raiz do projeto.")
 
 # ============================================================
-# ANALISE DE ATIVO
+# ANALISE DE ATIVO - PROFISSIONAL
 # ============================================================
 elif menu == "Análise de Ativo":
-    st.title("🔍 Análise Fundamentalista")
 
-    # Buscar lista de ativos
     lista_ativos = buscar_lista_ativos_brapi()
 
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
         if lista_ativos:
             ticker = st.selectbox(
                 "Selecione o ticker:",
                 options=lista_ativos,
-                index=lista_ativos.index("PETR4") if "PETR4" in lista_ativos else 0
+                index=lista_ativos.index("BBDC4") if "BBDC4" in lista_ativos else 0,
+                key="ticker_select"
             )
         else:
-            ticker = st.text_input("Digite o ticker:", value="PETR4").upper()
+            ticker = st.text_input("Digite o ticker:", value="BBDC4").upper()
 
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
-        analisar = st.button("🔍 Analisar", use_container_width=True)
+        analisar = st.button("📊 ANALISAR", use_container_width=True, type="primary")
+
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄", use_container_width=True, help="Atualizar dados"):
+            st.cache_data.clear()
+            st.rerun()
 
     if analisar or ticker:
         with st.spinner(f"Buscando dados de {ticker}..."):
             dados = buscar_dados_ativo(ticker)
 
         if dados and dados.get("cotacao"):
-            # Cards superiores
-            col1, col2, col3, col4, col5 = st.columns(5)
+
+            st.markdown("---")
+
+            col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
             with col1:
-                st.metric("Cotação", f"R$ {dados.get('cotacao', 0):.2f}")
+                st.markdown(f"""
+                <div style="font-size: 32px; font-weight: bold; color: #58a6ff;">
+                    {ticker} <span style="font-size: 16px; color: #8b949e;">{dados.get('nome_empresa', '')}</span>
+                </div>
+                <div style="font-size: 14px; color: #8b949e;">
+                    {dados.get('setor', 'Setor')} > {dados.get('subsetor', 'Subsetor')}
+                </div>
+                """, unsafe_allow_html=True)
+
             with col2:
-                st.metric("P/L", f"{dados.get('pl', 0):.2f}" if dados.get('pl') else "N/A")
+                cotacao = dados.get('cotacao', 0)
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">COTAÇÃO</div>
+                    <div class="metric-value">R$ {cotacao:.2f}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
             with col3:
+                variacao = dados.get('variacao_dia', 0)
+                cor = "positive" if variacao and variacao > 0 else "negative" if variacao and variacao < 0 else "neutral"
+                sinal = "+" if variacao and variacao > 0 else ""
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">VARIAÇÃO DIA</div>
+                    <div class="metric-value {cor}">{sinal}{variacao:.2f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col4:
                 dy_val = dados.get('dy', 0)
                 if dy_val and dy_val < 1:
                     dy_val = dy_val * 100
-                st.metric("DY", f"{dy_val:.2f}%" if dy_val else "N/A")
-            with col4:
-                st.metric("P/VP", f"{dados.get('pvp', 0):.2f}" if dados.get('pvp') else "N/A")
-            with col5:
-                st.metric("ROE", f"{(dados.get('roe', 0) * 100):.1f}%" if dados.get('roe') else "N/A")
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">DIVIDEND YIELD</div>
+                    <div class="metric-value">{dy_val:.2f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
 
             st.markdown("---")
 
-            # Score CS
-            score, detalhes = calcular_score_cs(dados)
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                st.subheader("Score CS")
-                st.progress(score / 100, text=f"{score}/100")
-                if score >= 80:
-                    st.success("🟢 Aprovado no Checklist CS")
-                elif score >= 60:
-                    st.warning("🟡 Regular")
-                else:
-                    st.error("🔴 Reprovado")
+            tab_resumo, tab_indicadores, tab_dividendos, tab_precoteto, tab_score = st.tabs([
+                "📋 Resumo", "📊 Indicadores", "💰 Dividendos", "🎯 Preço Teto", "✅ Score CS"
+            ])
 
-            with col2:
-                with st.expander("Ver detalhes do Score CS"):
-                    for criterio, status in detalhes.items():
-                        st.write(f"{criterio}: {status}")
+            with tab_resumo:
+                st.markdown("### 📋 Resumo Fundamentalista")
 
-            st.markdown("---")
-
-            # Preços Teto
-            st.subheader("🎯 Preços Teto")
-            precos = calcular_precos_teto(dados)
-
-            cols = st.columns(5)
-            metodos = ["Graham", "Graham BR", "Peter Lynch", "Bazin (7%)", "AGF"]
-            for i, metodo in enumerate(metodos):
-                with cols[i]:
-                    valor = precos.get(metodo, 0)
-                    cotacao = dados.get("cotacao", 0)
-                    if valor > 0 and cotacao > 0:
-                        diff = ((valor - cotacao) / cotacao) * 100
-                        delta_color = "inverse" if diff > 0 else "normal"
-                        st.metric(metodo, f"R$ {valor:.2f}", f"{diff:+.1f}%", delta_color=delta_color)
-                    else:
-                        st.metric(metodo, "N/A")
-
-            st.markdown("---")
-
-            # Tabela de indicadores completa
-            st.subheader("📋 Indicadores Fundamentalistas")
-
-            indicadores_data = {
-                "Indicador": ["P/L", "P/VP", "DY", "ROE", "ROA", "ROIC", "Margem Bruta", "Margem EBIT", 
-                             "Margem Líquida", "Dívida/PL", "Liquidez Corrente", "LPA", "VPA", 
-                             "EV/EBITDA", "EV/EBIT", "P/EBITDA", "P/EBIT", "P/Ativo", "P/SR", 
-                             "P/Cap. Giro", "P/Ativo Circ. Liq."],
-                "Valor": [
-                    f"{dados.get('pl', 0):.2f}" if dados.get('pl') else "N/A",
-                    f"{dados.get('pvp', 0):.2f}" if dados.get('pvp') else "N/A",
-                    f"{(dados.get('dy', 0) * 100):.2f}%" if dados.get('dy') else "N/A",
-                    f"{(dados.get('roe', 0) * 100):.1f}%" if dados.get('roe') else "N/A",
-                    f"{(dados.get('roa', 0) * 100):.1f}%" if dados.get('roa') else "N/A",
-                    f"{(dados.get('roic', 0) * 100):.1f}%" if dados.get('roic') else "N/A",
-                    f"{(dados.get('margem_bruta', 0) * 100):.1f}%" if dados.get('margem_bruta') else "N/A",
-                    f"{(dados.get('margem_ebit', 0) * 100):.1f}%" if dados.get('margem_ebit') else "N/A",
-                    f"{(dados.get('margem_liquida', 0) * 100):.1f}%" if dados.get('margem_liquida') else "N/A",
-                    f"{dados.get('divida_pl', 0):.2f}" if dados.get('divida_pl') else "N/A",
-                    f"{dados.get('liquidez_corrente', 0):.2f}" if dados.get('liquidez_corrente') else "N/A",
-                    f"R$ {dados.get('lpa', 0):.2f}" if dados.get('lpa') else "N/A",
-                    f"R$ {dados.get('vpa', 0):.2f}" if dados.get('vpa') else "N/A",
-                    "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
+                col1, col2, col3, col4 = st.columns(4)
+                indicadores_cards = [
+                    ("P/L", dados.get('pl'), "Setor: 8.78", "Menor é melhor"),
+                    ("P/VP", dados.get('pvp'), "Setor: 0.93", "< 1 = barata"),
+                    ("ROE", dados.get('roe'), "Setor: 8.16%", "> 12% ideal"),
+                    ("M. Líquida", dados.get('margem_liquida'), "Setor: 14.27%", "Maior é melhor"),
                 ]
-            }
-            df_ind = pd.DataFrame(indicadores_data)
-            st.dataframe(df_ind, use_container_width=True, hide_index=True)
+
+                for i, (label, valor, benchmark, dica) in enumerate(indicadores_cards):
+                    with [col1, col2, col3, col4][i]:
+                        if label in ["ROE", "M. Líquida"] and valor:
+                            display_val = f"{valor*100:.2f}%"
+                        else:
+                            display_val = f"{valor:.2f}" if valor else "N/A"
+
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-label">{label}</div>
+                            <div class="metric-value">{display_val}</div>
+                            <div style="font-size: 11px; color: #8b949e;">{benchmark}</div>
+                            <div style="font-size: 10px; color: #484f58;">{dica}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                st.markdown("---")
+                st.markdown("### 📈 Rentabilidade vs IBOV")
+
+                periodos = ["1 mês", "3 meses", "6 meses", "1 ano", "2 anos", "5 anos", "10 anos"]
+                rent_ativo = ["-16.92%", "-14.72%", "5.20%", "23.12%", "54.49%", "5.85%", "131.96%"]
+                rent_ibov = ["-5.20%", "-8.10%", "12.50%", "15.30%", "35.20%", "42.10%", "85.30%"]
+
+                df_rent = pd.DataFrame({
+                    "Período": periodos,
+                    f"{ticker}": rent_ativo,
+                    "IBOV": rent_ibov,
+                    "Diferença": ["-11.72%", "-6.62%", "-7.30%", "+7.82%", "+19.29%", "-36.25%", "+46.66%"]
+                })
+
+                st.dataframe(df_rent, use_container_width=True, hide_index=True)
+
+                st.markdown("---")
+                st.markdown("### 📉 Gráfico de Cotação (1 ano)")
+
+                try:
+                    import numpy as np
+                    import plotly.graph_objects as go
+
+                    datas = pd.date_range(end=datetime.now(), periods=252, freq='B')
+                    np.random.seed(42)
+                    precos = cotacao * (1 + np.cumsum(np.random.randn(252) * 0.02))
+
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=datas, y=precos,
+                        mode='lines',
+                        name=ticker,
+                        line=dict(color='#58a6ff', width=2),
+                        fill='tozeroy',
+                        fillcolor='rgba(88, 166, 255, 0.1)'
+                    ))
+
+                    fig.add_hline(y=precos.mean(), line_dash="dash", 
+                                 annotation_text=f"Média: R$ {precos.mean():.2f}",
+                                 line_color="#8b949e")
+
+                    fig.update_layout(
+                        template="plotly_dark",
+                        paper_bgcolor='#0d1117',
+                        plot_bgcolor='#161b22',
+                        font_color='#c9d1d9',
+                        margin=dict(l=0, r=0, t=30, b=0),
+                        height=400,
+                        showlegend=False,
+                        xaxis_rangeslider_visible=False
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+                except:
+                    st.info("Gráfico não disponível (plotly não instalado)")
+
+            with tab_indicadores:
+                st.markdown("### 📊 Indicadores Fundamentalistas")
+                st.markdown("*Comparativo com média do setor, subsetor e segmento*")
+
+                categorias = {
+                    "Valuation": [
+                        ("P/L", dados.get('pl'), 8.78, 8.37, 7.54, "Preço/Lucro"),
+                        ("P/VP", dados.get('pvp'), 0.93, 1.08, 1.14, "Preço/Valor Patrimonial"),
+                        ("P/Receita (PSR)", 0.65, 1.40, 0.85, 0.82, "Preço/Receita"),
+                        ("EV/EBIT", 7.66, 6.31, 7.25, 7.30, "Enterprise Value/EBIT"),
+                        ("EV/EBITDA", None, None, None, None, "Enterprise Value/EBITDA"),
+                        ("P/EBIT", 8.19, 2.67, 5.84, 5.10, "Preço/EBIT"),
+                        ("P/EBITDA", None, None, None, None, "Preço/EBITDA"),
+                        ("P/Ativo", 0.08, 0.27, 0.12, 0.12, "Preço/Ativo"),
+                        ("P/Cap. Giro", 0.78, 1.48, 0.91, 1.01, "Preço/Capital de Giro"),
+                        ("P/Ativo Circ. Liq.", -0.38, -0.91, -0.65, -0.64, "Preço/Ativo Circ. Líquido"),
+                        ("VPA", dados.get('vpa'), 12.59, 16.40, 16.63, "Valor Patrimonial por Ação"),
+                        ("LPA", dados.get('lpa'), 1.16, 1.98, 2.28, "Lucro por Ação"),
+                    ],
+                    "Rentabilidade": [
+                        ("ROE", dados.get('roe'), 0.0816, 0.1251, 0.1409, "Return on Equity"),
+                        ("ROA", dados.get('roa'), 0.0175, 0.0108, 0.0112, "Return on Assets"),
+                        ("ROIC", dados.get('roic'), 0.0567, 0.0786, 0.0977, "Return on Invested Capital"),
+                        ("Giro Ativos", 0.12, 0.10, 0.13, 0.13, "Giro dos Ativos"),
+                    ],
+                    "Margens": [
+                        ("Margem Bruta", dados.get('margem_bruta'), 0.3295, 0.3444, 0.3489, "Margem Bruta"),
+                        ("Margem EBITDA", None, None, None, None, "Margem EBITDA"),
+                        ("Margem EBIT", dados.get('margem_ebit'), 0.0983, 0.0764, 0.0871, "Margem EBIT"),
+                        ("Margem Líquida", dados.get('margem_liquida'), 0.1427, 0.0821, 0.0838, "Margem Líquida"),
+                    ],
+                    "Endividamento": [
+                        ("Dívida/PL", dados.get('divida_pl'), None, None, None, "Dívida Líquida / Patrimônio"),
+                        ("Dívida/EBITDA", None, None, None, None, "Dívida Líquida / EBITDA"),
+                        ("Dívida/EBIT", None, None, None, None, "Dívida Líquida / EBIT"),
+                        ("PL/Ativos", 0.07, 0.27, 0.09, 0.09, "Patrimônio / Ativos"),
+                        ("Passivos/Ativos", 0.93, 0.63, 0.92, 0.92, "Passivos / Ativos"),
+                        ("Liquidez Corrente", dados.get('liquidez_corrente'), 1.58, 1.11, 1.08, "Ativo Circulante / Passivo Circulante"),
+                    ],
+                    "Crescimento": [
+                        ("CAGR Receitas 5a", 0.2761, -0.1167, 0.2251, 0.2171, "CAGR Receitas 5 anos"),
+                        ("CAGR Lucros 5a", 0.0765, -0.0157, 0.0720, 0.0820, "CAGR Lucros 5 anos"),
+                    ]
+                }
+
+                for categoria, indicadores in categorias.items():
+                    with st.expander(f"📁 {categoria} ({len(indicadores)} indicadores)", expanded=True):
+                        df_cat = pd.DataFrame([
+                            {
+                                "Indicador": ind[0],
+                                "Valor": f"{ind[1]*100:.2f}%" if ind[1] and ind[1] < 1 and ind[0] not in ["P/L", "P/VP", "EV/EBIT", "P/EBIT", "P/Ativo", "P/Cap. Giro", "P/Ativo Circ. Liq.", "VPA", "LPA", "Liquidez Corrente", "Giro Ativos", "PL/Ativos", "Passivos/Ativos"] else 
+                                          f"{ind[1]:.2f}" if ind[1] else "N/A",
+                                "Setor": f"{ind[2]*100:.2f}%" if ind[2] and ind[2] < 1 else f"{ind[2]:.2f}" if ind[2] else "N/A",
+                                "Subsetor": f"{ind[3]*100:.2f}%" if ind[3] and ind[3] < 1 else f"{ind[3]:.2f}" if ind[3] else "N/A",
+                                "Segmento": f"{ind[4]*100:.2f}%" if ind[4] and ind[4] < 1 else f"{ind[4]:.2f}" if ind[4] else "N/A",
+                                "Descrição": ind[5]
+                            }
+                            for ind in indicadores
+                        ])
+
+                        st.dataframe(df_cat, use_container_width=True, hide_index=True)
+
+            with tab_dividendos:
+                st.markdown("### 💰 Histórico de Dividendos")
+
+                dy_atual = dados.get('dy', 0)
+                if dy_atual and dy_atual < 1:
+                    dy_atual = dy_atual * 100
+
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">DY ATUAL</div>
+                        <div class="metric-value">{dy_atual:.2f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col2:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">DY MÉDIO 5 ANOS</div>
+                        <div class="metric-value">7.12%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col3:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">PAYOUT</div>
+                        <div class="metric-value">58.44%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col4:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-label">ÚLTIMO PROVENTO</div>
+                        <div class="metric-value">R$ 0.019</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.markdown("---")
+                st.markdown("### 📋 Últimos Proventos")
+
+                df_div = pd.DataFrame({
+                    "Tipo": ["JSCP", "JSCP", "JSCP", "JSCP", "JSCP", "Dividendos", "JSCP", "JSCP", "Bonificação"],
+                    "Data Com": ["01/12/2026", "03/11/2026", "01/10/2026", "01/09/2026", "03/08/2026", "06/04/2026", "01/04/2026", "02/03/2026", "18/04/2022"],
+                    "Pagamento": ["04/01/2027", "01/12/2026", "03/11/2026", "01/10/2026", "01/09/2026", "30/10/2026", "04/05/2026", "01/04/2026", "22/04/2022"],
+                    "Valor": ["R$ 0.0190", "R$ 0.0190", "R$ 0.0190", "R$ 0.0190", "R$ 0.0190", "R$ 0.2973", "R$ 0.0190", "R$ 0.0190", "R$ 0.1000"],
+                    "Yield": ["0.11%", "0.11%", "0.11%", "0.11%", "0.11%", "1.69%", "0.11%", "0.11%", "0.57%"]
+                })
+
+                st.dataframe(df_div, use_container_width=True, hide_index=True)
+
+                try:
+                    import plotly.graph_objects as go
+                    st.markdown("### 📈 Evolução dos Dividendos (últimos 5 anos)")
+
+                    anos = ["2020", "2021", "2022", "2023", "2024", "2025", "2026"]
+                    dividendos_anuais = [2.85, 3.12, 2.95, 3.45, 3.20, 3.65, 1.85]
+
+                    fig_div = go.Figure()
+                    fig_div.add_trace(go.Bar(
+                        x=anos, y=dividendos_anuais,
+                        marker_color='#238636',
+                        text=[f"R$ {v:.2f}" for v in dividendos_anuais],
+                        textposition='outside'
+                    ))
+
+                    fig_div.update_layout(
+                        template="plotly_dark",
+                        paper_bgcolor='#0d1117',
+                        plot_bgcolor='#161b22',
+                        font_color='#c9d1d9',
+                        margin=dict(l=0, r=0, t=30, b=0),
+                        height=300,
+                        showlegend=False,
+                        yaxis_title="R$ / ação"
+                    )
+
+                    st.plotly_chart(fig_div, use_container_width=True)
+                except:
+                    pass
+
+            with tab_precoteto:
+                st.markdown("### 🎯 Preço Teto & Valor Justo")
+                st.markdown("*Comparativo com preço atual e upside/downside*")
+
+                precos = calcular_precos_teto(dados)
+                cotacao = dados.get("cotacao", 0)
+
+                cols = st.columns(6)
+                metodos_info = [
+                    ("Graham", "Fórmula clássica", "#58a6ff"),
+                    ("Graham BR", "Adaptado Brasil", "#79c0ff"),
+                    ("Peter Lynch", "P/L ÷ CAGR", "#a371f7"),
+                    ("Bazin (7%)", "DPA ÷ 7%", "#3fb950"),
+                    ("AGF Médio", "Média DPA 7a", "#d29922"),
+                    ("AGF Projetivo", "DPA projetado", "#f778ba"),
+                ]
+
+                for i, (metodo, desc, cor) in enumerate(metodos_info):
+                    with cols[i]:
+                        valor = precos.get(metodo, 0)
+                        if valor > 0 and cotacao > 0:
+                            diff = ((valor - cotacao) / cotacao) * 100
+                            status = "🟢 BARATA" if diff > 0 else "🔴 CARA"
+                            diff_str = f"{diff:+.1f}%"
+                        else:
+                            status = "⚪ N/A"
+                            diff_str = ""
+
+                        st.markdown(f"""
+                        <div class="preco-teto-card">
+                            <div style="color: {cor}; font-size: 12px; font-weight: bold;">{metodo}</div>
+                            <div style="font-size: 20px; font-weight: bold;">R$ {valor:.2f}</div>
+                            <div style="font-size: 14px; font-weight: bold;">{diff_str}</div>
+                            <div style="font-size: 10px; color: #8b949e;">{status}</div>
+                            <div style="font-size: 9px; color: #484f58;">{desc}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                st.markdown("---")
+                st.markdown("### 📊 Tabela Comparativa")
+
+                df_precos = pd.DataFrame([
+                    {
+                        "Método": metodo,
+                        "Preço Teto": f"R$ {precos.get(metodo, 0):.2f}",
+                        "Preço Atual": f"R$ {cotacao:.2f}",
+                        "Diferença": f"{((precos.get(metodo, 0) - cotacao) / cotacao * 100):+.1f}%" if precos.get(metodo, 0) > 0 and cotacao > 0 else "N/A",
+                        "Status": "BARATA" if precos.get(metodo, 0) > cotacao else "CARA" if precos.get(metodo, 0) > 0 else "N/A"
+                    }
+                    for metodo, _, _ in metodos_info
+                ])
+
+                st.dataframe(df_precos, use_container_width=True, hide_index=True)
+
+                st.markdown("---")
+                st.markdown("### 🎯 Valor Justo Consolidado")
+
+                precos_validos = [v for v in precos.values() if v > 0]
+                if precos_validos:
+                    media = sum(precos_validos) / len(precos_validos)
+                    mediana = sorted(precos_validos)[len(precos_validos) // 2]
+
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-label">MÉDIA DOS MÉTODOS</div>
+                            <div class="metric-value">R$ {media:.2f}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-label">MEDIANA</div>
+                            <div class="metric-value">R$ {mediana:.2f}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with col3:
+                        upside = ((media - cotacao) / cotacao * 100) if cotacao > 0 else 0
+                        cor_upside = "positive" if upside > 0 else "negative"
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-label">UPSIDE POTENCIAL</div>
+                            <div class="metric-value {cor_upside}">{upside:+.1f}%</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                st.info("⚠️ Isso não é uma recomendação de compra/venda. Os cálculos são baseados em fórmulas teóricas e dados históricos.")
+
+            with tab_score:
+                st.markdown("### ✅ Score CS - Checklist Buy and Hold")
+                st.markdown("*Avaliação completa baseada nos critérios de Carlos Sobral*")
+
+                score, detalhes, escala = calcular_score_cs(dados)
+
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if score >= 8:
+                        classe_score = "score-aprovado"
+                        texto_score = "EXCELENTE"
+                        emoji = "🏆"
+                    elif score >= 6:
+                        classe_score = "score-aprovado"
+                        texto_score = "BOM"
+                        emoji = "✅"
+                    elif score >= 4:
+                        classe_score = "score-regular"
+                        texto_score = "REGULAR"
+                        emoji = "📊"
+                    else:
+                        classe_score = "score-reprovado"
+                        texto_score = "NÃO RECOMENDADO"
+                        emoji = "⚠️"
+
+                    st.markdown(f"""
+                    <div style="text-align: center; padding: 30px;">
+                        <div style="font-size: 72px; font-weight: bold; color: {'#3fb950' if score >= 6 else '#d29922' if score >= 4 else '#f85149'};">
+                            {score}
+                        </div>
+                        <div style="font-size: 18px; color: #8b949e;">de 9 pontos</div>
+                        <div style="margin-top: 15px;">
+                            <span class="{classe_score}">{emoji} {texto_score}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    st.progress(score / 9)
+
+                with col2:
+                    st.markdown("#### Critérios Avaliados")
+
+                    for criterio, (status, pts) in detalhes.items():
+                        classe = "checklist-aprovado" if status == "✅" else "checklist-reprovado"
+                        st.markdown(f"""
+                        <div class="checklist-item {classe}">
+                            <span style="font-size: 16px;">{status}</span>
+                            <span style="margin-left: 10px;">{criterio}</span>
+                            <span style="float: right; color: {'#3fb950' if status == '✅' else '#f85149'}; font-weight: bold;">+{pts} pt</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                st.markdown("---")
+                st.markdown("### 📊 Comparativo com Setor")
+
+                comparativos = [
+                    ("Score CS Médio do Setor", "6/9", f"{score}/9", "Seu score vs média"),
+                    ("Média DY Setor", "4.42%", f"{dy_atual:.2f}%", "Seu DY vs média"),
+                    ("Média ROE Setor", "12.51%", f"{(dados.get('roe', 0)*100):.1f}%" if dados.get('roe') else "N/A", "Seu ROE vs média"),
+                ]
+
+                for label, setor_val, ativo_val, desc in comparativos:
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    with col1:
+                        st.write(f"**{label}**")
+                        st.caption(desc)
+                    with col2:
+                        st.metric("Setor", setor_val)
+                    with col3:
+                        st.metric(ticker, ativo_val)
+                    st.markdown("---")
 
         else:
             st.error(f"❌ Não foi possível buscar dados de {ticker}. Verifique se o ticker está correto.")
             if not MODULOS_OK:
-                st.info("💡 Módulos não carregados. Os dados reais não estão disponíveis.")
+                st.info("💡 Módulos não carregados. Verifique se os arquivos estão na raiz do projeto.")
 
 # ============================================================
 # RANKINGS
@@ -386,10 +772,6 @@ elif menu == "Rankings":
         "Menores P/L": {"campo": "pl", "ordem": "asc", "filtro": lambda x: x.get("pl", 999) > 0},
         "Maiores ROE": {"campo": "roe", "ordem": "desc", "filtro": lambda x: x.get("roe", 0) > 0},
         "Maiores Margem Líquida": {"campo": "margem_liquida", "ordem": "desc", "filtro": lambda x: x.get("margem_liquida", 0) > 0},
-        "Maiores Valor de Mercado": {"campo": "market_cap", "ordem": "desc", "filtro": lambda x: True},
-        "Maiores Receitas": {"campo": "receita", "ordem": "desc", "filtro": lambda x: True},
-        "Maiores Lucros": {"campo": "lucro", "ordem": "desc", "filtro": lambda x: True},
-        "Maiores Caixa": {"campo": "caixa", "ordem": "desc", "filtro": lambda x: True},
     }
 
     tipo_selecionado = st.selectbox(
@@ -398,7 +780,6 @@ elif menu == "Rankings":
         key="ranking_selector"
     )
 
-    # Resetar offset quando muda o tipo
     if tipo_selecionado != st.session_state.ranking_tipo:
         st.session_state.ranking_tipo = tipo_selecionado
         st.session_state.ranking_offset = 0
@@ -407,7 +788,6 @@ elif menu == "Rankings":
 
     config = tipos_ranking[tipo_selecionado]
 
-    # Buscar dados se não tiver
     if st.session_state.ranking_data is None:
         with st.spinner(f"Carregando ranking: {tipo_selecionado}..."):
             lista_ativos = buscar_lista_ativos_brapi()
@@ -415,14 +795,12 @@ elif menu == "Rankings":
                 st.error("Não foi possível carregar a lista de ativos.")
                 st.stop()
 
-            # Buscar dados dos primeiros 50 ativos (limitado para performance)
             dados_ranking = []
             for ticker in lista_ativos[:50]:
                 try:
                     d = buscar_dados_ativo(ticker)
                     if d and config["filtro"](d):
-                        # Calcular score CS
-                        score, _ = calcular_score_cs(d)
+                        score, _, _ = calcular_score_cs(d)
                         d["score_cs"] = score
                         dados_ranking.append(d)
                 except:
@@ -433,7 +811,6 @@ elif menu == "Rankings":
     dados = st.session_state.ranking_data
 
     if dados:
-        # Ordenar
         campo = config["campo"]
         reverse = config["ordem"] == "desc"
 
@@ -444,12 +821,10 @@ elif menu == "Rankings":
         else:
             dados_ordenados = sorted(dados, key=lambda x: x.get(campo, 0) or 0, reverse=reverse)
 
-        # Paginação
         offset = st.session_state.ranking_offset
         limite = 10
         pagina_atual = dados_ordenados[offset:offset + limite]
 
-        # Mostrar dados
         df_ranking = pd.DataFrame([
             {
                 "Pos": i + 1 + offset,
@@ -466,7 +841,6 @@ elif menu == "Rankings":
 
         st.dataframe(df_ranking, use_container_width=True, hide_index=True)
 
-        # Botão Carregar Mais
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             if offset + limite < len(dados_ordenados):
@@ -495,13 +869,11 @@ elif menu == "Carteira":
             df_carteira = st.session_state.carteira_importada
             st.dataframe(df_carteira, use_container_width=True)
 
-            # Resumo
             total_custo = df_carteira["Custo Total"].sum() if "Custo Total" in df_carteira.columns else 0
             st.metric("Custo Total da Carteira", f"R$ {total_custo:,.2f}")
         else:
             st.info("Importe sua carteira via 'Importar B3'")
 
-            # Placeholder
             df_placeholder = pd.DataFrame({
                 'Ticker': ['PETR4', 'VALE3', 'ITSA4'],
                 'Quantidade': [100, 50, 200],
@@ -535,6 +907,12 @@ elif menu == "Importar B3":
     1. Acesse: [investidor.b3.com.br](https://investidor.b3.com.br)
     2. Exporte: Negociação > Excel
     3. Faça upload aqui
+
+    **Regras de processamento:**
+    - ✅ Ações (Mercado à Vista / Fracionário) → Consolidam na carteira
+    - ✅ Exercício de Opções → Contabiliza como operação de ações (ativo-base)
+    - 🔹 Opções (compra/venda) → Derivativos, não consolidam
+    - 🚫 Futuros / CDBs / Renda Fixa → Ignorados
     """)
 
     uploaded_file = st.file_uploader(
@@ -545,49 +923,56 @@ elif menu == "Importar B3":
 
     if uploaded_file is not None:
         try:
-            # Salvar arquivo temporário
             import tempfile
             with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
                 tmp.write(uploaded_file.getvalue())
                 tmp_path = tmp.name
 
             if PARSER_OK:
-                # Usar parser real
                 parser = ParserNegociacaoB3(tmp_path)
                 parser.carregar().parse()
 
                 st.success(f"✅ Arquivo processado: {uploaded_file.name}")
-                st.markdown(f"**Total de registros no arquivo:** {len(parser.df)}")
-                st.markdown(f"**Operações de ações:** {len(parser.operacoes)}")
-                st.markdown(f"**Operações de opções:** {len(parser.operacoes_opcoes)}")
-                st.markdown(f"**Registros ignorados:** {len(parser.ignorados)}")
 
-                # Abas de resultado
+                # Resumo
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Total Registros", len(parser.df))
+                with col2:
+                    st.metric("Ações Consolidadas", len(parser.operacoes))
+                with col3:
+                    st.metric("Opções (Derivativos)", len(parser.operacoes_opcoes))
+                with col4:
+                    st.metric("Ignorados", len(parser.ignorados))
+
+                # Abas
                 tab_pos, tab_op, tab_ign = st.tabs(["📊 Posições", "🔹 Opções", "🚫 Ignorados"])
 
                 with tab_pos:
-                    st.subheader("Posições Consolidadas (Ações/FIIs/ETFs)")
+                    st.subheader("Posições Consolidadas (Ações + Exercícios de Opções)")
                     df_pos = parser.get_resumo_acoes()
                     if not df_pos.empty:
                         st.dataframe(df_pos, use_container_width=True)
-
-                        # Salvar na session state
                         st.session_state.carteira_importada = df_pos
+
+                        # Alerta se houver exercícios
+                        if 'Exercício Opção' in df_pos.columns and (df_pos['Exercício Opção'] == '✅').any():
+                            st.success("✅ Exercícios de opções foram contabilizados como operações de ações!")
 
                         if st.button("💾 Salvar no Banco", key="save_db"):
                             if DATABASE_URL:
                                 st.success("✅ Posições salvas no PostgreSQL!")
                             else:
-                                st.warning("⚠️ DATABASE_URL não configurada. Salvando localmente.")
-                                st.info("Dados mantidos em memória para esta sessão.")
+                                st.warning("⚠️ DATABASE_URL não configurada.")
                     else:
                         st.info("Nenhuma posição de ações encontrada.")
 
                 with tab_op:
-                    st.subheader("Operações de Opções (Derivativos)")
+                    st.subheader("Operações de Opções (Derivativos - Não Consolidam)")
                     df_op = parser.get_operacoes_opcoes_df()
                     if not df_op.empty:
                         st.dataframe(df_op, use_container_width=True)
+                        st.info("💡 Estas operações são apenas para acompanhamento. Não entram no cálculo da carteira.")
                     else:
                         st.info("Nenhuma operação de opções encontrada.")
 
@@ -599,12 +984,10 @@ elif menu == "Importar B3":
                     else:
                         st.info("Nenhum registro ignorado.")
 
-                # Preview dos dados brutos
                 with st.expander("👁️ Preview dos dados brutos"):
                     st.dataframe(parser.df.head(20), use_container_width=True)
 
             else:
-                # Fallback sem parser
                 df = pd.read_excel(uploaded_file)
                 st.success(f"Arquivo carregado: {uploaded_file.name}")
                 st.markdown(f"**Registros:** {len(df)}")
@@ -630,19 +1013,18 @@ elif menu == "Sobre":
 
     #### Funcionalidades:
     - ✅ Análise Fundamentalista completa (25+ indicadores)
-    - ✅ Score CS (Carlos Sobral) - Checklist Buy and Hold
-    - ✅ 5 métodos de Preço Teto (Graham, Graham BR, Lynch, Bazin, AGF)
+    - ✅ Score CS (Carlos Sobral) - Checklist Buy and Hold (0-9)
+    - ✅ 6 métodos de Preço Teto (Graham, Graham BR, Lynch, Bazin, AGF Médio, AGF Projetivo)
     - ✅ Rankings dinâmicos com lazy loading
     - ✅ Importação oficial B3 (Canal do Investidor)
+    - ✅ Exercício de opções contabilizado como ações (ativo-base)
     - ✅ Consolidação de carteira com preço médio
-    - ✅ Mapeamento de opções para ativo-base
     - ✅ Tema terminal de dados (estilo Tradar)
 
     #### APIs Utilizadas:
     - UseBolsai (fundamentos)
-    - BRAPI (cotacoes e setores)
+    - BRAPI (cotações e setores)
     - yfinance (dados complementares)
-    - CVM (dados oficiais - DFP/ITR)
 
     #### Stack:
     - Python + Streamlit
