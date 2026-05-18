@@ -1,18 +1,32 @@
-pandas
-numpy
-requests
-yfinance
-openpyxl
-xlsxwriter
-python-dotenv
-streamlit
-matplotlib
-plotly
-schedule
-gunicorn
-streamlit==1.35.0
-pandas==2.2.2
-openpyxl==3.1.2
-SQLAlchemy==2.0.30
-psycopg2-binary==2.9.9
+# Sobral Invest — Dependencias
+# Compativel com Python 3.14 (Render)
+
+# Core
+pandas==2.2.3
+numpy==2.2.4
 requests==2.32.3
+
+# APIs / Dados
+yfinance==0.2.55
+
+# Excel
+openpyxl==3.1.5
+xlsxwriter==3.2.2
+
+# Web App
+streamlit==1.44.0
+
+# Banco de Dados
+SQLAlchemy==2.0.40
+psycopg2-binary==2.9.10
+
+# Config
+python-dotenv==1.1.0
+
+# Visualizacao
+matplotlib==3.10.1
+plotly==6.0.1
+
+# Utilitarios
+schedule==1.2.2
+gunicorn==23.0.0
