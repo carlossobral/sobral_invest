@@ -1,23 +1,32 @@
-name: Atualizar Planilha
+name: Atualizar Planilha Sobral Invest
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'   # Executa todos os dias às 03:00 no horário de Brasília (UTC-3)
+    - cron: '0 6 * * *'  # 03:00 BRT (UTC-3)
+
 permissions:
   contents: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   atualizar:
     runs-on: ubuntu-latest
+    timeout-minutes: 45  # Limite de 45 minutos
+
     steps:
       - name: Clonar repositório
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Configurar Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'  # Cache de dependências
 
       - name: Instalar dependências
         run: |
@@ -25,57 +34,110 @@ jobs:
           pip install -r requirements.txt
 
       - name: Buscar taxa Selic (API Banco Central)
+        id: selic
         run: |
           python - <<'EOF'
-          import requests, json
+          import requests
+          import json
           from datetime import date
 
           URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
 
           try:
-              r = requests.get(URL, timeout=10)
+              r = requests.get(URL, timeout=15)
               r.raise_for_status()
               dados = r.json()
               selic_diaria = float(dados[0]["valor"])
-              selic_anual  = round(selic_diaria * 252 * 100, 2)
+              selic_anual = round(selic_diaria * 252, 4)  # Taxa diária -> anual
 
-              # Validação básica
+              # Validação
               if not (2.0 <= selic_anual <= 30.0):
-                  raise ValueError(f"Selic fora do intervalo esperado: {selic_anual}")
+                  raise ValueError(f"Selic fora do intervalo: {selic_anual}%")
 
               payload = {"selic": selic_anual, "data": str(date.today())}
               with open("selic.json", "w", encoding="utf-8") as f:
                   json.dump(payload, f)
 
-              print(f"✅ Selic atualizada: {selic_anual}% a.a. ({date.today()})")
+              print(f"✅ Selic atualizada: {selic_anual}% a.a.")
 
           except Exception as e:
               print(f"⚠️ Erro ao buscar Selic: {e}")
 
-              # Mantém o selic.json anterior se já existir
-              import os
+              # Mantém anterior ou cria fallback
               if os.path.exists("selic.json"):
-                  print("⚠️ Mantendo selic.json anterior.")
+                  print("⚠️ Mantendo selic.json anterior")
               else:
-                  # Cria fallback caso não exista nenhum arquivo ainda
                   fallback = {"selic": 13.25, "data": str(date.today()), "fallback": True}
                   with open("selic.json", "w", encoding="utf-8") as f:
                       json.dump(fallback, f)
-                  print("⚠️ selic.json criado com valor de fallback: 13.25%")
+                  print("⚠️ Criado selic.json com fallback: 13.25%")
           EOF
 
-      - name: Executar aplicação
+      - name: Executar coletor de dados
+        id: coletor
         env:
           BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
           USEBOLSAI_API_KEY: ${{ secrets.USEBOLSAI_API_KEY }}
         run: |
+          echo "🚀 Iniciando coleta de dados..."
           python app.py
+          echo "✅ Coleta finalizada"
+
+      - name: Verificar arquivos gerados
+        id: verificar
+        run: |
+          if [ -f "ativos.xlsx" ]; then
+            echo "✅ ativos.xlsx encontrado"
+            ls -lh ativos.xlsx
+          else
+            echo "❌ ativos.xlsx NÃO encontrado"
+            exit 1
+          fi
+
+          if [ -f "ativos.csv" ]; then
+            echo "✅ ativos.csv encontrado"
+            ls -lh ativos.csv
+          fi
 
       - name: Commit arquivos atualizados
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add .
-          git diff --cached --quiet || git commit -m "Atualização automática"
-          git pull --rebase https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Adicionar apenas arquivos relevantes
+          git add ativos.xlsx ativos.csv selic.json
+
+          # Verificar se há mudanças
+          if git diff --cached --quiet; then
+            echo "ℹ️ Nenhuma mudança detectada"
+            exit 0
+          fi
+
+          # Commit com timestamp
+          git commit -m "🤖 Atualização automática - $(date +'%Y-%m-%d %H:%M')"
+
+          # Push com retry
+          for i in 1 2 3; do
+            git pull --rebase https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git main && break
+            echo "⚠️ Tentativa $i falhou, retry..."
+            sleep 5
+          done
+
           git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+          echo "✅ Push realizado com sucesso"
+
+      - name: Resumo da execução
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "📊 RESUMO DA EXECUÇÃO"
+          echo "=========================================="
+          echo "Data: $(date)"
+          echo "Status SELIC: ${{ steps.selic.outcome }}"
+          echo "Status Coletor: ${{ steps.coletor.outcome }}"
+          echo "Status Verificação: ${{ steps.verificar.outcome }}"
+
+          if [ -f "ativos.xlsx" ]; then
+            echo "Tamanho ativos.xlsx: $(ls -lh ativos.xlsx | awk '{print $5}')"
+          fi
+          echo "=========================================="
