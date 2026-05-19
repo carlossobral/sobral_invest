@@ -32,7 +32,10 @@ class MFinanceClient:
     def get_all_symbols(self) -> List[str]:
         """Retorna lista de todos os tickers disponíveis"""
         data = self._get("/stocks/symbols/")
-        return [item.get("symbol", "") for item in data if item.get("symbol")]
+        # A API retorna lista de strings diretamente: ["PETR4", "VALE3", ...]
+        if isinstance(data, list):
+            return [s for s in data if isinstance(s, str) and s]
+        return []
 
     def get_stocks_batch(self, symbols: List[str]) -> List[Dict]:
         """Busca dados básicos de múltiplos tickers (batch)"""
@@ -78,6 +81,10 @@ class MFinanceClient:
         """
         symbols = self.get_all_symbols()
         print(f"Total de tickers disponíveis: {len(symbols)}")
+
+        if not symbols:
+            print("⚠️ Nenhum ticker encontrado!")
+            return []
 
         all_data = []
 
