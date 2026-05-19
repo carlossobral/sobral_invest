@@ -172,7 +172,7 @@ def pagina_inicial():
     </div>
     """
     import streamlit.components.v1 as components
-    components.html(tv_ibov, height=300)
+    components.html(tv_ibov, height=500)
 
     st.markdown("---")
 
