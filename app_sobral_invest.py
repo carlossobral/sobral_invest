@@ -107,32 +107,30 @@ def get_selic() -> float:
 
 
 # ==================== YFINANCE - IBovespa e Altas/Baixas ====================
-def get_ibov_yfinance() -> Dict[str, Any]:
-    """Busca dados do Ibovespa via yfinance."""
+def get_ibov_hgbrasil() -> Dict[str, Any]:
+    """Busca dados do Ibovespa via HG Brasil API (gratuita)."""
     try:
-        import yfinance as yf
-        ibov = yf.Ticker("^BVSP")
-        hist = ibov.history(period="1d")
+        import requests
+        # HG Brasil API - endpoint finance (gratuito, sem key necessária para dados básicos)
+        r = requests.get("https://api.hgbrasil.com/finance", timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            results = data.get("results", {})
+            stocks = results.get("stocks", {})
 
-        if not hist.empty:
-            last_close = hist["Close"].iloc[-1]
-            last_open = hist["Open"].iloc[-1]
-            variacao = ((last_close - last_open) / last_open) * 100
-
-            # Historico para grafico
-            hist_30d = ibov.history(period="30d")
-
-            return {
-                "valor": last_close,
-                "variacao": variacao,
-                "abertura": last_open,
-                "historico": hist_30d,
-                "status": "aberto" if variacao != 0 else "fechado"
-            }
+            if "IBOVESPA" in stocks:
+                ibov = stocks["IBOVESPA"]
+                return {
+                    "valor": ibov.get("points", 176975.82),
+                    "variacao": ibov.get("variation", -0.17),
+                    "abertura": ibov.get("points", 176975.82) * (1 - ibov.get("variation", -0.17)/100),
+                    "historico": None,  # HG não fornece histórico no plano free
+                    "status": "aberto" if ibov.get("variation", 0) != 0 else "fechado"
+                }
     except Exception as e:
-        st.warning(f"yfinance indisponivel: {e}")
+        st.warning(f"HG Brasil indisponivel para IBOV: {e}")
 
-    # Fallback: usar dados do ativos.xlsx
+    # Fallback: usar dados estáticos
     return {
         "valor": 176975.82,
         "variacao": -0.17,
@@ -142,24 +140,25 @@ def get_ibov_yfinance() -> Dict[str, Any]:
     }
 
 
-def get_maiores_altas_baixas_yfinance() -> Dict[str, List[Dict]]:
-    """Busca maiores altas e baixas do dia via yfinance."""
+def get_maiores_altas_baixas_hgbrasil() -> Dict[str, List[Dict]]:
+    """Busca maiores altas e baixas do dia via HG Brasil API."""
     try:
-        import yfinance as yf
+        import requests
+        import time
 
-        # Lista de tickers para verificar (top 50 mais liquidos)
+        # Lista de tickers prioritários (top 50 mais líquidos)
         tickers = [
-            "PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "ABEV3.SA",
-            "WEGE3.SA", "BBAS3.SA", "BPAC11.SA", "ITSA4.SA", "B3SA3.SA",
-            "RAIZ4.SA", "PRIO3.SA", "VBBR3.SA", "EQTL3.SA", "SUZB3.SA",
-            "RAIL3.SA", "GGBR4.SA", "CMIG4.SA", "CPLE6.SA", "CSNA3.SA",
-            "USIM5.SA", "GOAU4.SA", "JBSS3.SA", "BRFS3.SA", "MRFG3.SA",
-            "AZUL4.SA", "GOLL4.SA", "CVCB3.SA", "MULT3.SA", "CYRE3.SA",
-            "EZTC3.SA", "JHSF3.SA", "MRVE3.SA", "TRIS3.SA", "TEND3.SA",
-            "ALPA4.SA", "AMAR3.SA", "GUAR3.SA", "LREN3.SA", "MGLU3.SA",
-            "PETZ3.SA", "ALSO3.SA", "BRAP4.SA", "CCRO3.SA", "ECOR3.SA",
-            "EMBR3.SA", "ENBR3.SA", "ENEV3.SA", "EGIE3.SA", "TAEE11.SA",
-            "TRPL4.SA", "SAPR11.SA", "SBSP3.SA", "CSMG3.SA", "AESB3.SA"
+            "PETR4", "VALE3", "ITUB4", "BBDC4", "ABEV3",
+            "WEGE3", "BBAS3", "BPAC11", "ITSA4", "B3SA3",
+            "RAIZ4", "PRIO3", "VBBR3", "EQTL3", "SUZB3",
+            "RAIL3", "GGBR4", "CMIG4", "CPLE3", "CSNA3",
+            "USIM5", "GOAU4", "JBSS3", "BRFS3", "MRFG3",
+            "AZUL4", "GOLL4", "CVCB3", "MULT3", "CYRE3",
+            "EZTC3", "JHSF3", "MRVE3", "TRIS3", "TEND3",
+            "ALPA4", "AMAR3", "GUAR3", "LREN3", "MGLU3",
+            "PETZ3", "ALSO3", "BRAP4", "CCRO3", "ECOR3",
+            "EMBR3", "ENBR3", "ENEV3", "EGIE3", "TAEE11",
+            "TRPL4", "SAPR11", "SBSP3", "CSMG3", "AESB3"
         ]
 
         altas = []
@@ -167,27 +166,32 @@ def get_maiores_altas_baixas_yfinance() -> Dict[str, List[Dict]]:
 
         for ticker in tickers:
             try:
-                stock = yf.Ticker(ticker)
-                hist = stock.history(period="1d")
+                # HG Brasil API - stock_price (gratuito, até 10 requests/dia sem key)
+                r = requests.get(f"https://api.hgbrasil.com/finance/stock_price?key=free&symbol={ticker}", timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    results = data.get("results", {})
 
-                if not hist.empty:
-                    close = hist["Close"].iloc[-1]
-                    open_price = hist["Open"].iloc[-1]
-                    variacao = ((close - open_price) / open_price) * 100
-                    volume = hist["Volume"].iloc[-1]
+                    if ticker in results:
+                        stock = results[ticker]
+                        change = stock.get("change_percent", 0)
+                        price = stock.get("price", 0)
+                        name = stock.get("name", ticker)
 
-                    info = {
-                        "ticker": ticker.replace(".SA", ""),
-                        "nome": stock.info.get("longName", ticker),
-                        "preco": close,
-                        "variacao": variacao,
-                        "volume": volume
-                    }
+                        info = {
+                            "ticker": ticker,
+                            "nome": name,
+                            "preco": price,
+                            "variacao": change,
+                            "volume": stock.get("volume", 0)
+                        }
 
-                    if variacao > 0:
-                        altas.append(info)
-                    elif variacao < 0:
-                        baixas.append(info)
+                        if change > 0:
+                            altas.append(info)
+                        elif change < 0:
+                            baixas.append(info)
+
+                time.sleep(0.2)  # Respeitar rate limit
             except:
                 continue
 
@@ -198,7 +202,7 @@ def get_maiores_altas_baixas_yfinance() -> Dict[str, List[Dict]]:
         return {"altas": altas, "baixas": baixas}
 
     except Exception as e:
-        st.warning(f"yfinance indisponivel para altas/baixas: {e}")
+        st.warning(f"HG Brasil indisponivel para altas/baixas: {e}")
 
     # Fallback: usar dados do ativos.xlsx
     return {"altas": [], "baixas": []}
@@ -211,7 +215,7 @@ def pagina_inicial():
 
     # IBOVESPA via yfinance
     st.markdown("---")
-    ibov_data = get_ibov_yfinance()
+    ibov_data = get_ibov_hgbrasil()
 
     col_ibov, col_chart = st.columns([1, 1.5])
 
@@ -253,14 +257,14 @@ def pagina_inicial():
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Grafico do Ibovespa indisponivel (yfinance bloqueado no servidor)")
+            st.info("Grafico do Ibovespa indisponivel (API indisponivel no momento)")
 
     st.markdown("---")
 
     # MAIORES ALTAS E BAIXAS via yfinance
     st.markdown("## 📊 Maiores Altas / Maiores Baixas")
 
-    altas_baixas = get_maiores_altas_baixas_yfinance()
+    altas_baixas = get_maiores_altas_baixas_hgbrasil()
 
     col_altas, col_baixas = st.columns(2)
 
@@ -284,7 +288,7 @@ def pagina_inicial():
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.info("Dados de altas indisponiveis (yfinance bloqueado no servidor)")
+            st.info("Dados de altas indisponiveis (API indisponivel no momento)")
 
     with col_baixas:
         st.markdown("<h3 style='color: #ef4444;'>Maiores Baixas</h3>", unsafe_allow_html=True)
@@ -306,7 +310,7 @@ def pagina_inicial():
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.info("Dados de baixas indisponiveis (yfinance bloqueado no servidor)")
+            st.info("Dados de baixas indisponiveis (API indisponivel no momento)")
 
     st.markdown("---")
 
