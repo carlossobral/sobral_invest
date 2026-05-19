@@ -162,7 +162,7 @@ def pagina_inicial():
         "autosize": true,
         "dateFormat": "dd/MM/yyyy",
         "width": "960",
-        "height": "300",
+        "height": "400",
         "noTimeScale": false,
         "hideDateRanges": false,
         "hideMarketStatus": false,
@@ -172,7 +172,7 @@ def pagina_inicial():
     </div>
     """
     import streamlit.components.v1 as components
-    components.html(tv_ibov, height=300)
+    components.html(tv_ibov, height=410)
 
     st.markdown("---")
 
@@ -203,12 +203,12 @@ def pagina_inicial():
         "belowLineFillColorFallingBottom": "rgba(41, 98, 255, 0)",
         "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
         "width": "100%",
-        "height": "600"
+        "height": "400"
       }
       </script>
     </div>
     """
-    components.html(tv_hotlists, height=620)
+    components.html(tv_hotlists, height=410)
 
     st.markdown("---")
 
