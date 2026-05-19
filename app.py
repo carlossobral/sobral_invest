@@ -1,97 +1,255 @@
+"""
+Sobral Invest - Coletor de Dados
+Busca todos os ativos do MFinance, calcula valuation e score,
+e gera ativos.xlsx com 1 aba "Dados"
+"""
+import os
+import sys
+import json
 import pandas as pd
-from usebolsai_client import buscar_acoes_usebolsai
-from indicadores import calcular_indicadores
+from datetime import datetime
+
+# Adicionar diretório atual ao path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from mfinance_client import MFinanceClient, parse_mfinance_data
 from valuation import (
-    calcular_graham,
-    calcular_graham_br,
-    calcular_bazin,
-    calcular_lynch,
-    calcular_agf_medio,
-    calcular_agf_projetivo,
+    calcular_graham, calcular_graham_br, calcular_bazin,
+    calcular_lynch, calcular_agf_medio, calcular_agf_projetivo
 )
 from checklist import checklist_buy_hold
-from export_excel import salvar_excel
+from indicadores import calcular_indicadores
+from brapi_client import obter_dados_brapi
 
-ativos = [
-    "AALR3","ABCB4","ABEV3","AERI3","AGRO3","AGXY3","ALLD3","ALOS3","ALPA4","ALPK3",
-    "ALUP11","ALUP4","AMAR3","AMBP3","AMER3","AMOB3","ANIM3","ARML3","ASAI3","ATED3",
-    "AURA33","AURE3","AZEV4","AZTE3","AZZA3","B3SA3","BAZA3","BBAS3","BBDC3","BBDC4",
-    "BBSE3","BEEF3","BEES4","BGIP4","BHIA3","BIOM3","BLAU3","BMEB4","BMGB4","BMOB3",
-    "BPAC11","BRAP3","BRAP4","BRAV3","BRBI11","BRKM3","BRKM5","BRSR6","BRST3","BSLI4",
-    "CAMB3","CAML3","CASH3","CBAV3","CEAB3","CGRA4","CLSC4","CMIG3","CMIG4","CMIN3",
-    "COCE5","COGN3","CPFE3","CPLE3","CSAN3","CSED3","CSMG3","CSNA3","CURY3","CVCB3",
-    "CXSE3","CYRE3","DASA3","DESK3","DEXP3","DEXP4","DIRR3","DMVF3","DOTZ3","DXCO3",
-    "EALT4","ECOR3","EGIE3","EMAE4","ENEV3","ENGI11","ENGI3","ENJU3","EQPA3","EQTL3",
-    "ESPA3","EUCA3","EUCA4","EVEN3","EZTC3","FESA4","FHER3","FICT3","FIQE3","FLRY3",
-    "FRAS3","G2DI33","GFSA3","GGBR3","GGBR4","GGPS3","GMAT3","GOAU3","GOAU4","GRND3",
-    "HAPV3","HBOR3","HBRE3","HBSA3","HYPE3","IFCM3","IGTI11","IGTI3","INTB3","IRBR3",
-    "ISAE4","ITSA4","ITUB4","JALL3","JHSF3","JSLG3","KEPL3","KLBN11","KLBN4","LAND3",
-    "LAVV3","LEVE3","LIGT3","LJQQ3","LOGG3","LOGN3","LPSB3","LREN3","LUPA3","LWSA3",
-    "MATD3","MBRF3","MDIA3","MDNE3","MEAL3","MELK3","MGLU3","MILS3","MLAS3","MOTV3",
-    "MOVI3","MRVE3","MTRE3","MULT3","MYPK3","NATU3","NEOE3","NGRD3","ODPV3","OFSA3",
-    "OIBR3","ONCO3","OPCT3","ORVR3","PCAR3","PDGR3","PDTC3","PETR3","PETR4","PFRM3",
-    "PGMN3","PINE4","PLPL3","PMAM3","PNVL3","POMO3","POMO4","POSI3","PRIO3","PRNR3",
-    "PSSA3","PTBL3","PTNT4","QUAL3","RADL3","RAIL3","RAIZ4","RANI3","RAPT3","RAPT4",
-    "RCSL4","RDOR3","RECV3","RENT3","ROMI3","SANB11","SAPR11","SAPR4","SBFG3","SBSP3",
-    "SCAR3","SEER3","SEQL3","SHOW3","SHUL4","SIMH3","SLCE3","SMFT3","SMTO3","SOJA3",
-    "SUZB3","SYNE3","TAEE11","TAEE4","TCSA3","TECN3","TEND3","TFCO4","TGMA3","TIMS3",
-    "TOTS3","TPIS3","TRAD3","TRIS3","TTEN3","TUPY3","UCAS3","UGPA3","UNIP6","USIM3",
-    "USIM5","VALE3","VAMO3","VBBR3","VITT3","VIVA3","VIVR3","VIVT3","VLID3","VSTE3",
-    "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
-]
 
-# ── Busca dados (cache → yfinance + UsebolsaI top 160) ───────────
-todos_dados, _ = buscar_acoes_usebolsai(ativos)
-
-# ── Processa cada ativo ───────────────────────────────────────────
-dados_finais = []
-
-for data in todos_dados:
-    ticker = data.get("Ticker", "N/A")
+def carregar_selic() -> float:
+    """Carrega taxa SELIC do selic.json"""
     try:
-        ind = calcular_indicadores(data)
+        with open("selic.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return float(data.get("selic_atual", 0.1075))
+    except Exception:
+        return 0.1075  # Fallback 10.75%
 
-        lpa          = ind.get("LPA")
-        vpa          = ind.get("VPA")
-        dpa          = ind.get("DPA")          # Dividendo Por Ação anual
-        lucro_cagr   = ind.get("Lucro_CAGR")   # CAGR lucros 5 anos
-        receita_cagr = ind.get("Receita_CAGR")
 
-        # ── Valuation ────────────────────────────────────────────
-        graham         = calcular_graham(lpa, vpa) or 0
-        graham_br      = calcular_graham_br(lpa, lucro_cagr) or 0
-        bazin          = calcular_bazin(dpa) or 0
-        lynch          = calcular_lynch(lpa, lucro_cagr) or 0
-        agf_medio      = calcular_agf_medio(dpa) or 0      # usa DPA atual como proxy
-        agf_projetivo  = calcular_agf_projetivo(dpa) or 0  # DPA projetado = DPA atual
+def complementar_com_brapi(df: pd.DataFrame, brapi_token: str = "") -> pd.DataFrame:
+    """
+    Complementa dados do MFinance com BRAPI para campos faltantes:
+    - Beta, Media_50d, Media_200d
+    - FCO, FCL
+    - Recomendacao_Analysts, Preco_Alvo_Medio
+    """
+    print("\nComplementando com BRAPI...")
 
-        # ── Checklist Buy & Hold (9 critérios) ───────────────────
-        _, score = checklist_buy_hold(ind)
+    for idx, row in df.iterrows():
+        ticker = row["Ticker"]
+        try:
+            brapi_data = obter_dados_brapi(ticker, token=brapi_token)
+            if brapi_data:
+                info = brapi_data.get("results", [{}])[0]
 
-        dados_finais.append({
-            "Ticker":        ticker,
-            **ind,
-            "Graham":        graham,
-            "Graham_BR":     graham_br,
-            "Bazin":         bazin,
-            "Lynch":         lynch,
-            "AGF_Medio":     agf_medio,
-            "AGF_Projetivo": agf_projetivo,
-            "Score_SI":      score,
-        })
+                # Atualizar campos se disponíveis
+                if not row["Beta"] and info.get("beta"):
+                    df.at[idx, "Beta"] = info["beta"]
+                if not row["Media_50d"] and info.get("fiftyDayAverage"):
+                    df.at[idx, "Media_50d"] = info["fiftyDayAverage"]
+                if not row["Media_200d"] and info.get("twoHundredDayAverage"):
+                    df.at[idx, "Media_200d"] = info["twoHundredDayAverage"]
+                if not row["FCO"] and info.get("operatingCashflow"):
+                    df.at[idx, "FCO"] = info["operatingCashflow"]
+                if not row["FCL"] and info.get("freeCashflow"):
+                    df.at[idx, "FCL"] = info["freeCashflow"]
+                if not row["Recomendacao_Analysts"] and info.get("recommendationKey"):
+                    df.at[idx, "Recomendacao_Analysts"] = info["recommendationKey"]
+                if not row["Qtd_Analysts"] and info.get("numberOfAnalystOpinions"):
+                    df.at[idx, "Qtd_Analysts"] = info["numberOfAnalystOpinions"]
+                if not row["Preco_Alvo_Medio"] and info.get("targetMeanPrice"):
+                    df.at[idx, "Preco_Alvo_Medio"] = info["targetMeanPrice"]
+        except Exception as e:
+            print(f"  Erro BRAPI {ticker}: {e}")
+            continue
 
-    except Exception as e:
-        print(f"⚠️ Erro ao processar {ticker}: {e}")
+    return df
 
-# ── Exporta ───────────────────────────────────────────────────────
-df = pd.DataFrame(dados_finais)
-salvar_excel(df)
 
-print(f"\n✅ Excel gerado com {len(df)} ativos!")
-if not df.empty:
-    cols = [c for c in [
-        "Ticker", "Segmento", "Cotacao", "PL", "ROE",
-        "Graham", "Graham_BR", "Bazin", "Lynch",
-        "AGF_Medio", "AGF_Projetivo", "Score_SI"
-    ] if c in df.columns]
-    print(df[cols].head(10).to_string())
+def calcular_valuation_e_score(df: pd.DataFrame, selic: float) -> pd.DataFrame:
+    """
+    Calcula preços alvo (Graham, Bazin, etc.) e Score CS para cada ativo
+    """
+    print("\nCalculando valuation e Score CS...")
+
+    graham_list = []
+    graham_br_list = []
+    bazin_list = []
+    lynch_list = []
+    agf_medio_list = []
+    agf_proj_list = []
+    score_list = []
+
+    for idx, row in df.iterrows():
+        ticker = row["Ticker"]
+
+        # Preparar dados para valuation
+        dados_val = {
+            "lpa": row["LPA"],
+            "vpa": row["VPA"],
+            "dy": row["DY"] / 100 if row["DY"] else 0,
+            "cotacao": row["Cotacao"],
+            "pl": row["PL"],
+            "pvp": row["PVP"],
+            "roic": row["ROIC"] / 100 if row["ROIC"] else 0,
+            "margem_liquida": row["Margem_Liquida"] / 100 if row["Margem_Liquida"] else 0,
+            "divida_patrimonio": row["Divida_PL"],
+            "cagr_receitas": row["Receita_CAGR"] / 100 if row["Receita_CAGR"] else 0,
+            "cagr_lucros": row["Lucro_CAGR"] / 100 if row["Lucro_CAGR"] else 0,
+        }
+
+        # Calcular preços alvo
+        try:
+            graham = calcular_graham(dados_val)
+            graham_br = calcular_graham_br(dados_val, selic)
+            bazin = calcular_bazin(dados_val)
+            lynch = calcular_lynch(dados_val)
+            agf_medio = calcular_agf_medio(dados_val, selic)
+            agf_proj = calcular_agf_projetivo(dados_val, selic)
+        except Exception as e:
+            print(f"  Erro valuation {ticker}: {e}")
+            graham = graham_br = bazin = lynch = agf_medio = agf_proj = 0
+
+        graham_list.append(graham)
+        graham_br_list.append(graham_br)
+        bazin_list.append(bazin)
+        lynch_list.append(lynch)
+        agf_medio_list.append(agf_medio)
+        agf_proj_list.append(agf_proj)
+
+        # Calcular Score CS
+        try:
+            dados_check = {
+                "ticker": ticker,
+                "roe": row["ROE"],
+                "dy": row["DY"],
+                "divida_patrimonio": row["Divida_PL"],
+                "margem_liquida": row["Margem_Liquida"],
+                "roic": row["ROIC"],
+                "cagr_receitas": row["Receita_CAGR"],
+                "cagr_lucros": row["Lucro_CAGR"],
+                "pl": row["PL"],
+                "pvp": row["PVP"],
+                "liquidez_corrente": row["Liquidez_Corrente"],
+            }
+            score_result = checklist_buy_hold(dados_check)
+            score = score_result.get("score", 0)
+        except Exception as e:
+            print(f"  Erro score {ticker}: {e}")
+            score = 0
+
+        score_list.append(score)
+
+    df["Graham"] = graham_list
+    df["Graham_BR"] = graham_br_list
+    df["Bazin"] = bazin_list
+    df["Lynch"] = lynch_list
+    df["AGF_Medio"] = agf_medio_list
+    df["AGF_Projetivo"] = agf_proj_list
+    df["Score_CS"] = score_list
+
+    return df
+
+
+def main():
+    print("=" * 70)
+    print("SOBRAL INVEST - COLETOR DE DADOS")
+    print(f"Início: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 70)
+
+    # 1. Carregar SELIC
+    selic = carregar_selic()
+    print(f"\nSELIC atual: {selic*100:.2f}%")
+
+    # 2. Buscar todos os ativos do MFinance
+    print("\n[1/4] Buscando ativos do MFinance...")
+    client = MFinanceClient(delay=0.3)
+    raw_data = client.get_all_stocks_full(batch_size=50)
+    print(f"Ativos coletados: {len(raw_data)}")
+
+    # 3. Parsear dados
+    print("\n[2/4] Parseando dados...")
+    parsed = parse_mfinance_data(raw_data)
+    df = pd.DataFrame(parsed)
+    print(f"Registros parseados: {len(df)}")
+
+    # 4. Complementar com BRAPI (campos faltantes)
+    print("\n[3/4] Complementando com BRAPI...")
+    brapi_token = os.getenv("BRAPI_TOKEN", "")
+    df = complementar_com_brapi(df, brapi_token)
+
+    # 5. Calcular valuation e Score CS
+    print("\n[4/4] Calculando valuation e Score CS...")
+    df = calcular_valuation_e_score(df, selic)
+
+    # 6. Ordenar colunas
+    colunas_ordem = [
+        # IDENTIFICAÇÃO
+        "Ticker", "Nome_Empresa", "Nome_Curto", "CNPJ", "Segmento_Listagem",
+        # COTAÇÃO
+        "Cotacao", "Abertura", "Maxima", "Minima", "Variacao", 
+        "Volume", "Volume_Medio", "Qtd_Acoes",
+        # VALUATION
+        "PL", "PVP", "PSR", "P_EBIT", "P_EBITDA", 
+        "EV_EBIT", "EV_EBITDA", "DY", "DY_TTM", "Payout",
+        # RENTABILIDADE
+        "ROE", "ROA", "ROIC", 
+        "Margem_Bruta", "Margem_EBIT", "Margem_EBITDA", "Margem_Liquida",
+        # ENDIVIDAMENTO
+        "Divida_PL", "Divida_Liquida", "DL_EBITDA", "DL_EBIT", "Liquidez_Corrente",
+        # EFICIÊNCIA
+        "Giro_Ativos", "Receita_CAGR", "Lucro_CAGR",
+        # FINANCEIROS
+        "Market_Cap", "Receita_TTM", "Lucro_Liquido", "Patrimonio",
+        "EBITDA", "EBIT", "FCO", "FCL", "Caixa",
+        # TÉCNICO
+        "Maxima_52s", "Minima_52s", "Media_50d", "Media_200d", "Beta",
+        # CLASSIFICAÇÃO
+        "Setor", "SubSetor", "Segmento", "Descricao",
+        # VALUATION CS
+        "Graham", "Graham_BR", "Bazin", "Lynch", "AGF_Medio", "AGF_Projetivo",
+        # SCORE
+        "Score_CS",
+        # ANALYSTS
+        "Recomendacao_Analysts", "Qtd_Analysts", "Preco_Alvo_Medio",
+    ]
+
+    # Garantir que todas as colunas existam
+    for col in colunas_ordem:
+        if col not in df.columns:
+            df[col] = 0 if col not in ["Nome_Empresa", "Nome_Curto", "CNPJ", 
+                                         "Segmento_Listagem", "Setor", "SubSetor", 
+                                         "Segmento", "Descricao", "Recomendacao_Analysts"] else ""
+
+    df = df[colunas_ordem]
+
+    # 7. Salvar Excel (1 aba apenas)
+    print("\nSalvando ativos.xlsx...")
+    with pd.ExcelWriter("ativos.xlsx", engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Dados", index=False)
+
+    # 8. Salvar CSV backup
+    df.to_csv("ativos.csv", index=False, encoding="utf-8-sig")
+
+    # 9. Estatísticas
+    print("\n" + "=" * 70)
+    print("RESUMO")
+    print("=" * 70)
+    print(f"Total de ativos: {len(df)}")
+    print(f"Colunas: {len(df.columns)}")
+    print(f"Score CS médio: {df['Score_CS'].mean():.2f}")
+    print(f"Score CS max: {df['Score_CS'].max()}")
+    print(f"Score CS min: {df['Score_CS'].min()}")
+    print(f"Arquivos gerados: ativos.xlsx, ativos.csv")
+    print(f"Fim: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 70)
+
+
+if __name__ == "__main__":
+    main()
