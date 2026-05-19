@@ -203,12 +203,12 @@ def pagina_inicial():
         "belowLineFillColorFallingBottom": "rgba(41, 98, 255, 0)",
         "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
         "width": "960",
-        "height": "400"
+        "height": "550"
       }
       </script>
     </div>
     """
-    components.html(tv_hotlists, height=410)
+    components.html(tv_hotlists, height=560)
 
     st.markdown("---")
 
