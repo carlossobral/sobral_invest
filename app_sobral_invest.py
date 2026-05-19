@@ -1,6 +1,6 @@
 """
 app_sobral_invest.py - SOBRAL Invest v4.0
-Dashboard com yfinance para Ibovespa e Maiores Altas/Baixas
+Dashboard com TradingView Widgets
 """
 
 import os
@@ -106,211 +106,109 @@ def get_selic() -> float:
         return 10.75
 
 
-# ==================== YFINANCE - IBovespa e Altas/Baixas ====================
-def get_ibov_hgbrasil() -> Dict[str, Any]:
-    """Busca dados do Ibovespa via HG Brasil API (gratuita)."""
-    try:
-        import requests
-        # HG Brasil API - endpoint finance (gratuito, sem key necessária para dados básicos)
-        r = requests.get("https://api.hgbrasil.com/finance", timeout=15)
-        if r.status_code == 200:
-            data = r.json()
-            results = data.get("results", {})
-            stocks = results.get("stocks", {})
-
-            if "IBOVESPA" in stocks:
-                ibov = stocks["IBOVESPA"]
-                return {
-                    "valor": ibov.get("points", 176975.82),
-                    "variacao": ibov.get("variation", -0.17),
-                    "abertura": ibov.get("points", 176975.82) * (1 - ibov.get("variation", -0.17)/100),
-                    "historico": None,  # HG não fornece histórico no plano free
-                    "status": "aberto" if ibov.get("variation", 0) != 0 else "fechado"
-                }
-    except Exception as e:
-        st.warning(f"HG Brasil indisponivel para IBOV: {e}")
-
-    # Fallback: usar dados estáticos
-    return {
-        "valor": 176975.82,
-        "variacao": -0.17,
-        "abertura": 177283.83,
-        "historico": None,
-        "status": "fallback"
-    }
-
-
-def get_maiores_altas_baixas_hgbrasil() -> Dict[str, List[Dict]]:
-    """Busca maiores altas e baixas do dia via HG Brasil API."""
-    try:
-        import requests
-        import time
-
-        # Lista de tickers prioritários (top 50 mais líquidos)
-        tickers = [
-            "PETR4", "VALE3", "ITUB4", "BBDC4", "ABEV3",
-            "WEGE3", "BBAS3", "BPAC11", "ITSA4", "B3SA3",
-            "RAIZ4", "PRIO3", "VBBR3", "EQTL3", "SUZB3",
-            "RAIL3", "GGBR4", "CMIG4", "CPLE3", "CSNA3",
-            "USIM5", "GOAU4", "JBSS3", "BRFS3", "MRFG3",
-            "AZUL4", "GOLL4", "CVCB3", "MULT3", "CYRE3",
-            "EZTC3", "JHSF3", "MRVE3", "TRIS3", "TEND3",
-            "ALPA4", "AMAR3", "GUAR3", "LREN3", "MGLU3",
-            "PETZ3", "ALSO3", "BRAP4", "CCRO3", "ECOR3",
-            "EMBR3", "ENBR3", "ENEV3", "EGIE3", "TAEE11",
-            "TRPL4", "SAPR11", "SBSP3", "CSMG3", "AESB3"
-        ]
-
-        altas = []
-        baixas = []
-
-        for ticker in tickers:
-            try:
-                # HG Brasil API - stock_price (gratuito, até 10 requests/dia sem key)
-                r = requests.get(f"https://api.hgbrasil.com/finance/stock_price?key=free&symbol={ticker}", timeout=10)
-                if r.status_code == 200:
-                    data = r.json()
-                    results = data.get("results", {})
-
-                    if ticker in results:
-                        stock = results[ticker]
-                        change = stock.get("change_percent", 0)
-                        price = stock.get("price", 0)
-                        name = stock.get("name", ticker)
-
-                        info = {
-                            "ticker": ticker,
-                            "nome": name,
-                            "preco": price,
-                            "variacao": change,
-                            "volume": stock.get("volume", 0)
-                        }
-
-                        if change > 0:
-                            altas.append(info)
-                        elif change < 0:
-                            baixas.append(info)
-
-                time.sleep(0.2)  # Respeitar rate limit
-            except:
-                continue
-
-        # Ordenar
-        altas = sorted(altas, key=lambda x: x["variacao"], reverse=True)[:7]
-        baixas = sorted(baixas, key=lambda x: x["variacao"])[:7]
-
-        return {"altas": altas, "baixas": baixas}
-
-    except Exception as e:
-        st.warning(f"HG Brasil indisponivel para altas/baixas: {e}")
-
-    # Fallback: usar dados do ativos.xlsx
-    return {"altas": [], "baixas": []}
-
-
 # ==================== PAGINA INICIAL - DASHBOARD ====================
 def pagina_inicial():
     st.markdown('<div class="main-header">📈 SOBRAL Invest</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Acompanhe em tempo real o mercado da B3</div>', unsafe_allow_html=True)
 
-    # IBOVESPA via yfinance
-    st.markdown("---")
-    ibov_data = get_ibov_hgbrasil()
-
-    col_ibov, col_chart = st.columns([1, 1.5])
-
-    with col_ibov:
-        st.markdown(f"""
-        <div class="ibov-card">
-            <div style="font-size: 0.9rem; color: #888; margin-bottom: 0.5rem;">Ibovespa</div>
-            <div class="ibov-value">{ibov_data["valor"]:,.2f}</div>
-            <div style="font-size: 0.9rem; color: #888;">pts</div>
-            <div class="ibov-var" style="color: {'#10b981' if ibov_data['variacao'] >= 0 else '#ef4444'};">
-                {'+' if ibov_data['variacao'] >= 0 else ''}{ibov_data['variacao']:.2f}% ({ibov_data['variacao'] * ibov_data['valor'] / 100:,.0f} pts)
-            </div>
-            <div style="font-size: 0.8rem; color: #666; margin-top: 1rem;">
-                {'Mercado aberto' if ibov_data['status'] == 'aberto' else 'Mercado fechado' if ibov_data['status'] == 'fechado' else 'Dados de fallback'}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_chart:
-        if ibov_data["historico"] is not None:
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=ibov_data["historico"].index,
-                y=ibov_data["historico"]["Close"],
-                mode='lines',
-                line=dict(color='#10b981', width=2),
-                fill='tozeroy',
-                fillcolor='rgba(16,185,129,0.1)'
-            ))
-            fig.update_layout(
-                template='plotly_dark',
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=0, r=0, t=0, b=0),
-                showlegend=False,
-                xaxis=dict(showgrid=False, showticklabels=False),
-                yaxis=dict(showgrid=False, showticklabels=False),
-                height=250
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Grafico do Ibovespa indisponivel (API indisponivel no momento)")
-
+    # IBOVESPA - TradingView Symbol Overview Widget
     st.markdown("---")
 
-    # MAIORES ALTAS E BAIXAS via yfinance
+    tv_ibov = """
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <div class="tradingview-widget-copyright"><a href="https://br.tradingview.com/" rel="noopener nofollow" target="_blank"><span class="blue-text">Track all markets on TradingView</span></a></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
+      {
+        "lineWidth": 2,
+        "lineType": 0,
+        "chartType": "area",
+        "fontColor": "rgb(106, 109, 120)",
+        "gridLineColor": "rgba(242, 242, 242, 0.06)",
+        "volumeUpColor": "rgba(34, 171, 148, 0.5)",
+        "volumeDownColor": "rgba(247, 82, 95, 0.5)",
+        "backgroundColor": "#0F0F0F",
+        "widgetFontColor": "#DBDBDB",
+        "upColor": "#22ab94",
+        "downColor": "#f7525f",
+        "borderUpColor": "#22ab94",
+        "borderDownColor": "#f7525f",
+        "wickUpColor": "#22ab94",
+        "wickDownColor": "#f7525f",
+        "colorTheme": "dark",
+        "isTransparent": true,
+        "locale": "br",
+        "chartOnly": false,
+        "scalePosition": "right",
+        "scaleMode": "Normal",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
+        "valuesTracking": "1",
+        "changeMode": "price-and-percent",
+        "symbols": [
+          [
+            "BMFBOVESPA:IBOV|1D"
+          ]
+        ],
+        "dateRanges": [
+          "1d|1",
+          "1m|30",
+          "3m|60",
+          "12m|1D",
+          "60m|1W",
+          "all|1M"
+        ],
+        "fontSize": "10",
+        "headerFontSize": "medium",
+        "autosize": true,
+        "dateFormat": "dd/MM/yyyy",
+        "width": "100%",
+        "height": "100%",
+        "noTimeScale": false,
+        "hideDateRanges": false,
+        "hideMarketStatus": false,
+        "hideSymbolLogo": false
+      }
+      </script>
+    </div>
+    """
+    import streamlit.components.v1 as components
+    components.html(tv_ibov, height=300)
+
+    st.markdown("---")
+
+    # MAIORES ALTAS E BAIXAS - TradingView Hotlists Widget
     st.markdown("## 📊 Maiores Altas / Maiores Baixas")
 
-    altas_baixas = get_maiores_altas_baixas_hgbrasil()
-
-    col_altas, col_baixas = st.columns(2)
-
-    with col_altas:
-        st.markdown("<h3 style='color: #10b981;'>Maiores Altas</h3>", unsafe_allow_html=True)
-
-        if altas_baixas["altas"]:
-            for acao in altas_baixas["altas"]:
-                st.markdown(f"""
-                <div class="ticker-card alta">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong style="font-size: 1.1rem;">{acao['ticker']}</strong><br>
-                            <span style="color: #666; font-size: 0.85rem;">{acao['nome'][:30]}</span>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="color: #10b981; font-size: 1.2rem; font-weight: bold;">+{acao['variacao']:.1f}%</div>
-                            <div style="color: #888; font-size: 0.85rem;">R$ {acao['preco']:.2f}</div>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("Dados de altas indisponiveis (API indisponivel no momento)")
-
-    with col_baixas:
-        st.markdown("<h3 style='color: #ef4444;'>Maiores Baixas</h3>", unsafe_allow_html=True)
-
-        if altas_baixas["baixas"]:
-            for acao in altas_baixas["baixas"]:
-                st.markdown(f"""
-                <div class="ticker-card baixa">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong style="font-size: 1.1rem;">{acao['ticker']}</strong><br>
-                            <span style="color: #666; font-size: 0.85rem;">{acao['nome'][:30]}</span>
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="color: #ef4444; font-size: 1.2rem; font-weight: bold;">{acao['variacao']:.1f}%</div>
-                            <div style="color: #888; font-size: 0.85rem;">R$ {acao['preco']:.2f}</div>
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("Dados de baixas indisponiveis (API indisponivel no momento)")
+    tv_hotlists = """
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-hotlists.js" async>
+      {
+        "exchange": "BMFBOVESPA",
+        "colorTheme": "dark",
+        "dateRange": "1D",
+        "showChart": true,
+        "locale": "br",
+        "largeChartUrl": "",
+        "isTransparent": false,
+        "showSymbolLogo": true,
+        "showFloatingTooltip": true,
+        "plotLineColorGrowing": "rgba(41, 98, 255, 1)",
+        "plotLineColorFalling": "rgba(41, 98, 255, 1)",
+        "gridLineColor": "rgba(240, 243, 250, 0)",
+        "scaleFontColor": "#DBDBDB",
+        "belowLineFillColorGrowing": "rgba(41, 98, 255, 0.12)",
+        "belowLineFillColorFalling": "rgba(41, 98, 255, 0.12)",
+        "belowLineFillColorGrowingBottom": "rgba(41, 98, 255, 0)",
+        "belowLineFillColorFallingBottom": "rgba(41, 98, 255, 0)",
+        "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
+        "width": "100%",
+        "height": "600"
+      }
+      </script>
+    </div>
+    """
+    components.html(tv_hotlists, height=620)
 
     st.markdown("---")
 
