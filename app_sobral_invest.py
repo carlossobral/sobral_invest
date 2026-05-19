@@ -202,7 +202,7 @@ def pagina_inicial():
         "belowLineFillColorGrowingBottom": "rgba(41, 98, 255, 0)",
         "belowLineFillColorFallingBottom": "rgba(41, 98, 255, 0)",
         "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
-        "width": "100%",
+        "width": "960",
         "height": "400"
       }
       </script>
