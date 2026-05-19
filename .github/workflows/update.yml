@@ -14,7 +14,7 @@ env:
 jobs:
   atualizar:
     runs-on: ubuntu-latest
-    timeout-minutes: 45  # Limite de 45 minutos
+    timeout-minutes: 45
 
     steps:
       - name: Clonar repositório
@@ -26,7 +26,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'  # Cache de dependências
+          cache: 'pip'
 
       - name: Instalar dependências
         run: |
@@ -39,6 +39,7 @@ jobs:
           python - <<'EOF'
           import requests
           import json
+          import os
           from datetime import date
 
           URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
@@ -47,21 +48,24 @@ jobs:
               r = requests.get(URL, timeout=15)
               r.raise_for_status()
               dados = r.json()
-              selic_diaria = float(dados[0]["valor"])
-              selic_anual = round(selic_diaria * 252, 4)  # Taxa diária -> anual
 
-              # Validação
+              # A API retorna a taxa diária em PERCENTUAL (ex: 0.043647)
+              # A SELIC anual = taxa diária * 252 (dias úteis)
+              selic_diaria_pct = float(dados[0]["valor"])
+              selic_anual = round(selic_diaria_pct * 252, 2)
+
+              # Validação: SELIC anual deve estar entre 2% e 30%
               if not (2.0 <= selic_anual <= 30.0):
-                  raise ValueError(f"Selic fora do intervalo: {selic_anual}%")
+                  raise ValueError(f"SELIC anual fora do intervalo: {selic_anual}%")
 
               payload = {"selic": selic_anual, "data": str(date.today())}
               with open("selic.json", "w", encoding="utf-8") as f:
                   json.dump(payload, f)
 
-              print(f"✅ Selic atualizada: {selic_anual}% a.a.")
+              print(f"✅ SELIC atualizada: {selic_anual}% a.a. ({date.today()})")
 
           except Exception as e:
-              print(f"⚠️ Erro ao buscar Selic: {e}")
+              print(f"⚠️ Erro ao buscar SELIC: {e}")
 
               # Mantém anterior ou cria fallback
               if os.path.exists("selic.json"):
@@ -104,19 +108,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Adicionar apenas arquivos relevantes
           git add ativos.xlsx ativos.csv selic.json
 
-          # Verificar se há mudanças
           if git diff --cached --quiet; then
             echo "ℹ️ Nenhuma mudança detectada"
             exit 0
           fi
 
-          # Commit com timestamp
           git commit -m "🤖 Atualização automática - $(date +'%Y-%m-%d %H:%M')"
 
-          # Push com retry
           for i in 1 2 3; do
             git pull --rebase https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git main && break
             echo "⚠️ Tentativa $i falhou, retry..."
