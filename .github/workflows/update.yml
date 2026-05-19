@@ -49,10 +49,13 @@ jobs:
               r.raise_for_status()
               dados = r.json()
 
-              # A API retorna a taxa diária em PERCENTUAL (ex: 0.043647)
-              # A SELIC anual = taxa diária * 252 (dias úteis)
-              selic_diaria_pct = float(dados[0]["valor"])
-              selic_anual = round(selic_diaria_pct * 252, 2)
+              # A API retorna a taxa diária como STRING PERCENTUAL
+              # Exemplo: "0.043647" significa 0.043647% ao dia
+              # Para converter para anual: (taxa_diaria / 100) * 252
+              selic_diaria_str = dados[0]["valor"]
+              selic_diaria_pct = float(selic_diaria_str)  # 0.043647
+              selic_diaria_decimal = selic_diaria_pct / 100  # 0.00043647
+              selic_anual = round(selic_diaria_decimal * 252 * 100, 2)  # 10.99%
 
               # Validação: SELIC anual deve estar entre 2% e 30%
               if not (2.0 <= selic_anual <= 30.0):
