@@ -260,7 +260,7 @@ def pagina_analise():
         st.warning("Nenhum dado disponivel.")
         return
 
-    ticker = st.selectbox("Selecione o ativo", sorted(df["Ticker"].tolist()))
+    ticker = st.selectbox("Selecione o ativo", sorted(df["Ticker"].astype(str).tolist()))
 
     if not ticker:
         return
