@@ -318,8 +318,21 @@ def parse_mfinance_dividends(div_data: Dict) -> Dict[str, Any]:
             "Qtd_Dividendos_12m": 0,
         }
 
+    # Filtrar dividendos com data válida (ignorar None)
+    valid_divs = [d for d in dividends if d.get("date") is not None]
+
+    if not valid_divs:
+        return {
+            "Ticker": symbol,
+            "DY_12m": 0,
+            "Dividendo_Medio_12m": 0,
+            "Dividendo_Total_12m": 0,
+            "Dividendo_Ultimo": 0,
+            "Qtd_Dividendos_12m": 0,
+        }
+
     # Ordenar por data (mais recente primeiro)
-    sorted_divs = sorted(dividends, key=lambda x: x.get("date", ""), reverse=True)
+    sorted_divs = sorted(valid_divs, key=lambda x: x.get("date", ""), reverse=True)
 
     # Últimos 12 meses (aproximado: últimos 4 registros)
     recent = sorted_divs[:4]
