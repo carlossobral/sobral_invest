@@ -1,469 +1,537 @@
 """
-Sobral Invest v3.0 - Plataforma Profissional de Análise de Ativos
-Lê dados do ativos.xlsx (cache local) + BRAPI/UseBolsai para tempo real
+app_sobral_invest.py - Dashboard SOBRAL Invest v3.0
+Lê ativos.xlsx como fonte principal de dados.
+MFinance/BRAPI/UseBolsai apenas para complementos em tempo real.
 """
-import streamlit as st
+
+import os
+import json
+from datetime import date, datetime
+from typing import Dict, List, Any, Optional
+
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import streamlit as st
 import plotly.express as px
-from datetime import datetime, timedelta
-import os
-import sys
-import json
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from mfinance_client import MFinanceClient
-from brapi_client import obter_dados_brapi
-from usebolsai_client import buscar_acoes_usebolsai
-
-# ============================================================
-# CONFIGURAÇÃO DA PÁGINA
-# ============================================================
+# Configuração da página
 st.set_page_config(
-    page_title="Sobral Invest v3.0",
+    page_title="SOBRAL Invest",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ============================================================
-# CSS CUSTOMIZADO - TERMINAL ESCURO
-# ============================================================
+# CSS customizado
 st.markdown("""
 <style>
-    .main { background-color: #0a0a0a; color: #e0e0e0; }
-    .stApp { background-color: #0a0a0a; }
-    h1, h2, h3 { color: #00ff88 !important; font-family: 'Courier New', monospace; }
-    .stMetric { background-color: #1a1a1a; border-radius: 8px; padding: 10px; }
-    .stDataFrame { background-color: #1a1a1a; }
-    .css-1d391kg { background-color: #0f0f0f; }
-    div[data-testid="stSidebar"] { background-color: #0f0f0f; }
-    .stButton>button { background-color: #00ff88; color: #000; font-weight: bold; }
-    .stButton>button:hover { background-color: #00cc6a; }
-    .highlight-green { color: #00ff88; font-weight: bold; }
-    .highlight-red { color: #ff4444; font-weight: bold; }
-    .highlight-yellow { color: #ffaa00; font-weight: bold; }
-    .card { background-color: #1a1a1a; border-radius: 10px; padding: 15px; margin: 10px 0; border-left: 3px solid #00ff88; }
-    .card-red { border-left-color: #ff4444; }
-    .card-yellow { border-left-color: #ffaa00; }
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .sub-header {
+        font-size: 1.2rem;
+        color: #666;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 1rem;
+        text-align: center;
+    }
+    .score-excelente { color: #00cc00; font-weight: bold; }
+    .score-bom { color: #66cc00; font-weight: bold; }
+    .score-regular { color: #ffcc00; font-weight: bold; }
+    .score-fraco { color: #ff6600; font-weight: bold; }
+    .score-pessimo { color: #ff0000; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# FUNÇÕES AUXILIARES
-# ============================================================
-@st.cache_data(ttl=3600)
-def carregar_dados() -> pd.DataFrame:
-    """Carrega ativos.xlsx do cache local"""
+
+def load_data() -> pd.DataFrame:
+    """Carrega ativos.xlsx da raiz do projeto."""
     try:
         df = pd.read_excel("ativos.xlsx", sheet_name="Dados")
+        df["Cotacao"] = pd.to_numeric(df["Cotacao"], errors="coerce").fillna(0)
+        df["Score_CS"] = pd.to_numeric(df["Score_CS"], errors="coerce").fillna(0)
         return df
     except Exception as e:
-        st.error(f"Erro ao carregar ativos.xlsx: {e}")
+        st.error(f"❌ Erro ao carregar ativos.xlsx: {e}")
         return pd.DataFrame()
 
-@st.cache_data(ttl=300)
-def buscar_cotacao_tempo_real(ticker: str) -> dict:
-    """Busca cotação em tempo real via BRAPI"""
+
+def get_selic() -> float:
+    """Lê SELIC do selic.json."""
     try:
-        token = os.getenv("BRAPI_TOKEN", "")
-        data = obter_dados_brapi(ticker, token=token)
-        if data and "results" in data:
-            return data["results"][0]
-    except Exception:
-        pass
-    return {}
+        with open("selic.json", "r") as f:
+            return json.load(f).get("selic", 10.75)
+    except:
+        return 10.75
 
-def formatar_moeda(valor: float) -> str:
-    if pd.isna(valor) or valor == 0:
-        return "—"
-    if abs(valor) >= 1e9:
-        return f"R$ {valor/1e9:.2f}B"
-    elif abs(valor) >= 1e6:
-        return f"R$ {valor/1e6:.2f}M"
-    elif abs(valor) >= 1e3:
-        return f"R$ {valor/1e3:.2f}K"
-    return f"R$ {valor:.2f}"
 
-def formatar_pct(valor: float) -> str:
-    if pd.isna(valor):
-        return "—"
-    cor = "highlight-green" if valor > 0 else "highlight-red" if valor < 0 else ""
-    return f'<span class="{cor}">{valor:.2f}%</span>'
+def score_class_css(classificacao: str) -> str:
+    """Retorna classe CSS para a classificação do Score CS."""
+    mapping = {
+        "Excelente": "score-excelente",
+        "Bom": "score-bom",
+        "Regular": "score-regular",
+        "Fraco": "score-fraco",
+        "Péssimo": "score-pessimo",
+    }
+    return mapping.get(classificacao, "")
 
-def cor_score(score: float) -> str:
-    if score >= 7: return "🟢"
-    elif score >= 4: return "🟡"
-    else: return "🔴"
 
-# ============================================================
-# HEADER
-# ============================================================
-st.markdown("""
-<div style="text-align: center; padding: 20px 0;">
-    <h1 style="font-size: 3em; margin-bottom: 0;">📈 SOBRAL INVEST</h1>
-    <p style="color: #888; font-size: 1.2em; margin-top: 5px;">Plataforma Profissional de Análise de Ativos</p>
-    <p style="color: #00ff88; font-size: 0.9em;">v3.0 | Dados via MFinance + BRAPI + UseBolsai</p>
-</div>
-""", unsafe_allow_html=True)
+# ==================== SIDEBAR ====================
+with st.sidebar:
+    st.image("https://img.icons8.com/color/96/stocks.png", width=60)
+    st.title("SOBRAL Invest")
+    st.markdown("---")
 
-# ============================================================
-# CARREGAR DADOS
-# ============================================================
-df = carregar_dados()
+    menu = st.radio(
+        "Navegação",
+        ["🏠 Dashboard", "🔍 Análise de Ativo", "📊 Rankings", "📈 Comparativo", "⚙️ Configurações"]
+    )
 
-if df.empty:
-    st.error("""
-    ❌ **ativos.xlsx não encontrado!**
+    st.markdown("---")
+    st.markdown("**Dados:** `ativos.xlsx`")
+    st.markdown("**Fonte:** MFinance + BRAPI")
 
-    Execute o script `app.py` localmente para gerar o arquivo:
-    ```bash
-    python app.py
-    ```
+    selic = get_selic()
+    st.markdown(f"**SELIC:** {selic}% a.a.")
 
-    Ou faça upload do arquivo na raiz do projeto.
-    """)
-    st.stop()
 
-# Sidebar
-st.sidebar.markdown("### 🎯 Menu")
-aba = st.sidebar.radio("", [
-    "🏠 Dashboard",
-    "🔍 Análise de Ativo",
-    "📊 Rankings",
-    "💰 Carteira",
-    "📥 Importar B3"
-])
+# ==================== DASHBOARD ====================
+if menu == "🏠 Dashboard":
+    st.markdown('<div class="main-header">📈 SOBRAL Invest</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Plataforma de Análise Fundamentalista</div>', unsafe_allow_html=True)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown(f"**📁 Ativos carregados:** {len(df)}")
-st.sidebar.markdown(f"**🕐 Atualizado:** {datetime.now().strftime('%d/%m/%Y')}")
+    df = load_data()
 
-# ============================================================
-# ABA 1: DASHBOARD
-# ============================================================
-if aba == "🏠 Dashboard":
-    st.markdown("## 🏠 Dashboard")
+    if df.empty:
+        st.warning("⚠️ Nenhum dado disponível. Execute `app.py` localmente para gerar `ativos.xlsx`.")
+        st.stop()
 
     # KPIs
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("Ativos", len(df))
     with col2:
-        dy_medio = df["DY"].replace(0, np.nan).mean()
-        st.metric("DY Médio", f"{dy_medio:.2f}%")
+        st.metric("Score CS Médio", f"{df['Score_CS'].mean():.1f}/9")
     with col3:
-        pl_medio = df["PL"].replace(0, np.nan).mean()
-        st.metric("P/L Médio", f"{pl_medio:.2f}x")
+        st.metric("Score CS Max", int(df['Score_CS'].max()))
     with col4:
-        roe_medio = df["ROE"].replace(0, np.nan).mean()
-        st.metric("ROE Médio", f"{roe_medio:.2f}%")
+        excelentes = len(df[df["Score_CS_Classificacao"] == "Excelente"])
+        st.metric("Excelentes", excelentes)
     with col5:
-        score_medio = df["Score_CS"].mean()
-        st.metric("Score CS Médio", f"{score_medio:.1f}/9")
+        st.metric("SELIC", f"{selic}%")
 
     st.markdown("---")
 
-    # Top 10 por Score CS
-    col1, col2 = st.columns(2)
+    # Gráficos
+    col_left, col_right = st.columns(2)
 
-    with col1:
-        st.markdown("### 🏆 Top 10 - Score CS")
-        top_score = df.nlargest(10, "Score_CS")[["Ticker", "Nome_Empresa", "Cotacao", "Score_CS", "DY", "PL"]]
-        top_score["Score"] = top_score["Score_CS"].apply(lambda x: f"{cor_score(x)} {x:.1f}")
-        st.dataframe(
-            top_score[["Ticker", "Nome_Empresa", "Cotacao", "Score", "DY", "PL"]],
-            use_container_width=True,
-            hide_index=True
+    with col_left:
+        st.subheader("📊 Distribuição Score CS")
+        score_counts = df["Score_CS_Classificacao"].value_counts()
+        fig = px.pie(
+            values=score_counts.values,
+            names=score_counts.index,
+            color=score_counts.index,
+            color_discrete_map={
+                "Excelente": "#00cc00",
+                "Bom": "#66cc00",
+                "Regular": "#ffcc00",
+                "Fraco": "#ff6600",
+                "Péssimo": "#ff0000",
+            }
         )
+        fig.update_traces(textposition="inside", textinfo="percent+label")
+        st.plotly_chart(fig, use_container_width=True)
 
-    with col2:
-        st.markdown("### 💎 Top 10 - Dividend Yield")
-        top_dy = df.nlargest(10, "DY")[["Ticker", "Nome_Empresa", "Cotacao", "DY", "Score_CS", "Payout"]]
-        st.dataframe(top_dy, use_container_width=True, hide_index=True)
+    with col_right:
+        st.subheader("🏆 Top 10 Score CS")
+        top10 = df.nlargest(10, "Score_CS")[["Ticker", "Nome", "Score_CS", "Score_CS_Classificacao", "Cotacao", "DY"]]
+        st.dataframe(top10, use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
-    # Distribuição por Setor
-    st.markdown("### 🏭 Distribuição por Setor")
-    setores = df[df["Setor"] != ""]["Setor"].value_counts().head(15)
-    fig = px.bar(
-        x=setores.index, y=setores.values,
-        labels={"x": "Setor", "y": "Quantidade"},
-        color=setores.values,
-        color_continuous_scale="Greens"
+    # Tabela completa com filtros
+    st.subheader("📋 Todos os Ativos")
+
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+    with col_f1:
+        setores = ["Todos"] + sorted(df["Setor"].dropna().unique().tolist())
+        filtro_setor = st.selectbox("Setor", setores)
+    with col_f2:
+        scores = ["Todos"] + ["Excelente", "Bom", "Regular", "Fraco", "Péssimo"]
+        filtro_score = st.selectbox("Score CS", scores)
+    with col_f3:
+        min_dy = st.slider("DY Mínimo (%)", 0.0, 20.0, 0.0, 0.5)
+    with col_f4:
+        max_pl = st.slider("P/L Máximo", 0.0, 50.0, 50.0, 1.0)
+
+    df_filt = df.copy()
+    if filtro_setor != "Todos":
+        df_filt = df_filt[df_filt["Setor"] == filtro_setor]
+    if filtro_score != "Todos":
+        df_filt = df_filt[df_filt["Score_CS_Classificacao"] == filtro_score]
+    df_filt = df_filt[(df_filt["DY"] >= min_dy) & (df_filt["PL"] <= max_pl)]
+
+    # Colunas visíveis
+    cols_vis = [
+        "Ticker", "Nome", "Setor", "Cotacao", "Variacao",
+        "PL", "PVP", "DY", "ROE", "ROIC", "MargemLiquida",
+        "Score_CS", "Score_CS_Classificacao",
+        "Graham", "Bazin", "Upside_Graham", "Upside_Bazin"
+    ]
+    cols_vis = [c for c in cols_vis if c in df_filt.columns]
+
+    st.dataframe(
+        df_filt[cols_vis].sort_values("Score_CS", ascending=False),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Cotacao": st.column_config.NumberColumn(format="R$ %.2f"),
+            "Variacao": st.column_config.NumberColumn(format="%.2f%%"),
+            "PL": st.column_config.NumberColumn(format="%.2f"),
+            "PVP": st.column_config.NumberColumn(format="%.2f"),
+            "DY": st.column_config.NumberColumn(format="%.2f%%"),
+            "ROE": st.column_config.NumberColumn(format="%.2f%%"),
+            "ROIC": st.column_config.NumberColumn(format="%.2f%%"),
+            "MargemLiquida": st.column_config.NumberColumn(format="%.2f%%"),
+            "Score_CS": st.column_config.NumberColumn(format="%d/9"),
+            "Upside_Graham": st.column_config.NumberColumn(format="%.1f%%"),
+            "Upside_Bazin": st.column_config.NumberColumn(format="%.1f%%"),
+        }
     )
-    fig.update_layout(
-        plot_bgcolor="#1a1a1a", paper_bgcolor="#0a0a0a",
-        font_color="#e0e0e0", xaxis_tickangle=-45
+
+
+# ==================== ANÁLISE DE ATIVO ====================
+elif menu == "🔍 Análise de Ativo":
+    st.markdown('<div class="main-header">🔍 Análise Fundamentalista</div>', unsafe_allow_html=True)
+
+    df = load_data()
+    if df.empty:
+        st.warning("⚠️ Nenhum dado disponível.")
+        st.stop()
+
+    ticker = st.selectbox("Selecione o ativo", sorted(df["Ticker"].tolist()))
+
+    if not ticker:
+        st.stop()
+
+    ativo = df[df["Ticker"] == ticker].iloc[0]
+
+    # Header do ativo
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.header(f"{ticker} - {ativo.get('Nome', '')}")
+        st.caption(f"{ativo.get('Setor', '')} > {ativo.get('SubSetor', '')} > {ativo.get('Segmento', '')}")
+    with col2:
+        score = int(ativo.get("Score_CS", 0))
+        classif = ativo.get("Score_CS_Classificacao", "")
+        st.metric("Score CS", f"{score}/9", classif)
+    with col3:
+        st.metric("Cotação", f"R$ {ativo.get('Cotacao', 0):.2f}")
+
+    st.markdown("---")
+
+    # Indicadores principais
+    st.subheader("📊 Indicadores Principais")
+
+    cols = st.columns(4)
+    metrics = [
+        ("P/L", ativo.get("PL", 0), "x"),
+        ("P/VP", ativo.get("PVP", 0), "x"),
+        ("DY", ativo.get("DY", 0), "%"),
+        ("ROE", ativo.get("ROE", 0), "%"),
+        ("ROIC", ativo.get("ROIC", 0), "%"),
+        ("Margem Líquida", ativo.get("MargemLiquida", 0), "%"),
+        ("EV/EBIT", ativo.get("EV_EBIT", 0), "x"),
+        ("EV/EBITDA", ativo.get("EV_EBITDA", 0), "x"),
+    ]
+
+    for i, (nome, valor, unidade) in enumerate(metrics):
+        with cols[i % 4]:
+            if unidade == "%":
+                st.metric(nome, f"{valor:.2f}%")
+            else:
+                st.metric(nome, f"{valor:.2f}{unidade}")
+
+    st.markdown("---")
+
+    # Valuation
+    st.subheader("💰 Valuation")
+
+    col_v1, col_v2 = st.columns(2)
+
+    with col_v1:
+        st.markdown("**Preços Alvo**")
+        valuation_data = {
+            "Método": ["Graham", "Graham BR", "Bazin", "Lynch", "AGF"],
+            "Preço Alvo": [
+                ativo.get("Graham", 0),
+                ativo.get("Graham_BR", 0),
+                ativo.get("Bazin", 0),
+                ativo.get("Lynch_Preco_Teto", 0),
+                ativo.get("AGF", 0),
+            ],
+            "Upside": [
+                ativo.get("Upside_Graham", 0),
+                ativo.get("Upside_Graham_BR", 0),
+                ativo.get("Upside_Bazin", 0),
+                ativo.get("Upside_Lynch_Preco_Teto", 0),
+                ativo.get("Upside_AGF", 0),
+            ]
+        }
+        df_val = pd.DataFrame(valuation_data)
+        df_val["Preço Alvo"] = df_val["Preço Alvo"].apply(lambda x: f"R$ {x:.2f}" if x > 0 else "N/A")
+        df_val["Upside"] = df_val["Upside"].apply(lambda x: f"{x:.1f}%" if x != 0 else "N/A")
+        st.dataframe(df_val, use_container_width=True, hide_index=True)
+
+    with col_v2:
+        st.markdown("**Composição Score CS**")
+        score_details = {
+            "Critério": [
+                "ROE > 15%", "DY > 3%", "Dív/PL < 0.5", "P/L < 15",
+                "P/VP < 2", "Margem > 10%", "Liq. Corr. > 1", "CAGR > 5%", "ROIC > 10%"
+            ],
+            "Status": [
+                "✅" if ativo.get("ROE_15pct", 0) == 1 else "❌",
+                "✅" if ativo.get("DY_3pct", 0) == 1 else "❌",
+                "✅" if ativo.get("DivPL_0_5", 0) == 1 else "❌",
+                "✅" if ativo.get("PL_15", 0) == 1 else "❌",
+                "✅" if ativo.get("PVP_2", 0) == 1 else "❌",
+                "✅" if ativo.get("Margem_10pct", 0) == 1 else "❌",
+                "✅" if ativo.get("LiqCorrente_1", 0) == 1 else "❌",
+                "✅" if ativo.get("CAGR_5pct", 0) == 1 else "❌",
+                "✅" if ativo.get("ROIC_10pct", 0) == 1 else "❌",
+            ],
+            "Valor": [
+                f"{ativo.get('ROE', 0):.2f}%",
+                f"{ativo.get('DY', 0):.2f}%",
+                f"{ativo.get('DivLiquida_PL', 0):.2f}",
+                f"{ativo.get('PL', 0):.2f}",
+                f"{ativo.get('PVP', 0):.2f}",
+                f"{ativo.get('MargemLiquida', 0):.2f}%",
+                f"{ativo.get('LiquidezCorrente', 0):.2f}",
+                f"{ativo.get('CAGR_Lucros_5a', 0):.2f}%",
+                f"{ativo.get('ROIC', 0):.2f}%",
+            ]
+        }
+        df_score = pd.DataFrame(score_details)
+        st.dataframe(df_score, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # Radar de indicadores
+    st.subheader("🎯 Radar de Indicadores")
+
+    radar_metrics = {
+        "ROE": min(ativo.get("ROE", 0) / 30 * 100, 100),
+        "DY": min(ativo.get("DY", 0) / 10 * 100, 100),
+        "Margem Líq.": min(ativo.get("MargemLiquida", 0) / 20 * 100, 100),
+        "ROIC": min(ativo.get("ROIC", 0) / 20 * 100, 100),
+        "Liquidez": min(ativo.get("LiquidezCorrente", 0) / 2 * 100, 100),
+    }
+
+    fig_radar = go.Figure()
+    fig_radar.add_trace(go.Scatterpolar(
+        r=list(radar_metrics.values()) + [list(radar_metrics.values())[0]],
+        theta=list(radar_metrics.keys()) + [list(radar_metrics.keys())[0]],
+        fill='toself',
+        name=ticker
+    ))
+    fig_radar.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=False,
+        height=400
+    )
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+
+# ==================== RANKINGS ====================
+elif menu == "📊 Rankings":
+    st.markdown('<div class="main-header">📊 Rankings</div>', unsafe_allow_html=True)
+
+    df = load_data()
+    if df.empty:
+        st.warning("⚠️ Nenhum dado disponível.")
+        st.stop()
+
+    ranking_tipo = st.selectbox(
+        "Tipo de Ranking",
+        ["🏆 Score CS", "💰 Maior DY", "📉 Menor P/L", "📈 Maior ROE", "🚀 Maior Upside (Graham)",
+         "💵 Maior Upside (Bazin)", "📊 Maior Margem Líquida", "🔥 Maior ROIC"]
+    )
+
+    n = st.slider("Quantidade", 5, 50, 20)
+
+    mapping = {
+        "🏆 Score CS": ("Score_CS", False),
+        "💰 Maior DY": ("DY", False),
+        "📉 Menor P/L": ("PL", True),
+        "📈 Maior ROE": ("ROE", False),
+        "🚀 Maior Upside (Graham)": ("Upside_Graham", False),
+        "💵 Maior Upside (Bazin)": ("Upside_Bazin", False),
+        "📊 Maior Margem Líquida": ("MargemLiquida", False),
+        "🔥 Maior ROIC": ("ROIC", False),
+    }
+
+    col, asc = mapping.get(ranking_tipo, ("Score_CS", False))
+
+    # Filtrar valores válidos
+    df_rank = df[df[col] > 0].copy() if col not in ["PL", "PVP"] else df[df[col] > 0].copy()
+
+    top = df_rank.nsmallest(n, col) if asc else df_rank.nlargest(n, col)
+
+    cols_display = ["Ticker", "Nome", "Setor", col, "Cotacao", "Score_CS", "Score_CS_Classificacao"]
+    cols_display = [c for c in cols_display if c in top.columns]
+
+    st.dataframe(
+        top[cols_display],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Cotacao": st.column_config.NumberColumn(format="R$ %.2f"),
+            col: st.column_config.NumberColumn(format="%.2f"),
+            "Score_CS": st.column_config.NumberColumn(format="%d/9"),
+        }
+    )
+
+    # Gráfico de barras
+    fig = px.bar(
+        top,
+        x="Ticker",
+        y=col,
+        color="Score_CS_Classificacao",
+        color_discrete_map={
+            "Excelente": "#00cc00",
+            "Bom": "#66cc00",
+            "Regular": "#ffcc00",
+            "Fraco": "#ff6600",
+            "Péssimo": "#ff0000",
+        },
+        title=f"Top {n} - {ranking_tipo}"
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # Distribuição do Score CS
-    st.markdown("### 📊 Distribuição do Score CS")
-    fig2 = px.histogram(
-        df, x="Score_CS", nbins=10,
-        labels={"Score_CS": "Score CS", "count": "Quantidade"},
-        color_discrete_sequence=["#00ff88"]
-    )
-    fig2.update_layout(
-        plot_bgcolor="#1a1a1a", paper_bgcolor="#0a0a0a",
-        font_color="#e0e0e0"
-    )
-    st.plotly_chart(fig2, use_container_width=True)
 
-# ============================================================
-# ABA 2: ANÁLISE DE ATIVO
-# ============================================================
-elif aba == "🔍 Análise de Ativo":
-    st.markdown("## 🔍 Análise de Ativo")
+# ==================== COMPARATIVO ====================
+elif menu == "📈 Comparativo":
+    st.markdown('<div class="main-header">📈 Comparativo de Ativos</div>', unsafe_allow_html=True)
 
-    # Busca de ativo
-    ticker_input = st.selectbox(
-        "Selecione o ativo:",
-        options=[""] + sorted(df["Ticker"].tolist()),
-        format_func=lambda x: f"{x} - {df[df['Ticker']==x]['Nome_Empresa'].values[0] if x and len(df[df['Ticker']==x]) > 0 else ''}" if x else "🔍 Digite ou selecione..."
-    )
-
-    if not ticker_input:
-        st.info("👆 Selecione um ativo acima para análise detalhada.")
+    df = load_data()
+    if df.empty:
+        st.warning("⚠️ Nenhum dado disponível.")
         st.stop()
 
-    # Dados do ativo
-    ativo = df[df["Ticker"] == ticker_input]
-    if ativo.empty:
-        st.error(f"Ativo {ticker_input} não encontrado no cache.")
+    tickers = st.multiselect(
+        "Selecione até 5 ativos",
+        sorted(df["Ticker"].tolist()),
+        max_selections=5,
+        default=sorted(df["Ticker"].tolist())[:3] if len(df) >= 3 else []
+    )
+
+    if not tickers:
+        st.info("Selecione ativos para comparar.")
         st.stop()
 
-    ativo = ativo.iloc[0]
+    df_comp = df[df["Ticker"].isin(tickers)].copy()
 
-    # Buscar cotação em tempo real
-    cotacao_real = buscar_cotacao_tempo_real(ticker_input)
-    cotacao_atual = cotacao_real.get("regularMarketPrice", ativo["Cotacao"])
-    variacao_atual = cotacao_real.get("regularMarketChangePercent", ativo["Variacao"])
+    # Tabela comparativa
+    metrics = ["Cotacao", "PL", "PVP", "DY", "ROE", "ROIC", "MargemLiquida",
+               "EV_EBIT", "EV_EBITDA", "Score_CS"]
+    metrics = [m for m in metrics if m in df_comp.columns]
 
-    # Header do ativo
-    st.markdown(f"""
-    <div class="card">
-        <h2>{ativo["Nome_Empresa"]} <span style="color:#888;">({ticker_input})</span></h2>
-        <p>{ativo["Descricao"] or "Sem descrição disponível"}</p>
-        <p>📍 {ativo["Setor"]} → {ativo["SubSetor"]} → {ativo["Segmento"]}</p>
-    </div>
-    """)
+    comp_table = df_comp.set_index("Ticker")[metrics].T
+    st.dataframe(comp_table, use_container_width=True)
 
-    # Cards principais
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Cotação", f"R$ {cotacao_atual:.2f}", f"{variacao_atual:.2f}%")
-    with col2:
-        st.metric("P/L", f"{ativo['PL']:.2f}x")
-    with col3:
-        st.metric("DY", f"{ativo['DY']:.2f}%")
-    with col4:
-        st.metric("Score CS", f"{ativo['Score_CS']:.1f}/9")
+    # Gráfico comparativo
+    metric_comp = st.selectbox("Métrica para comparar", metrics)
+
+    fig = px.bar(
+        df_comp,
+        x="Ticker",
+        y=metric_comp,
+        color="Score_CS_Classificacao",
+        color_discrete_map={
+            "Excelente": "#00cc00",
+            "Bom": "#66cc00",
+            "Regular": "#ffcc00",
+            "Fraco": "#ff6600",
+            "Péssimo": "#ff0000",
+        }
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Radar comparativo
+    st.subheader("🎯 Radar Comparativo")
+
+    radar_cols = ["ROE", "DY", "MargemLiquida", "ROIC", "LiquidezCorrente"]
+    radar_cols = [c for c in radar_cols if c in df_comp.columns]
+
+    fig_radar = go.Figure()
+    for _, row in df_comp.iterrows():
+        values = [min(row.get(c, 0) / 30 * 100, 100) for c in radar_cols]
+        values += [values[0]]
+        fig_radar.add_trace(go.Scatterpolar(
+            r=values,
+            theta=radar_cols + [radar_cols[0]],
+            fill='toself',
+            name=row["Ticker"]
+        ))
+
+    fig_radar.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        height=500
+    )
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+
+# ==================== CONFIGURAÇÕES ====================
+elif menu == "⚙️ Configurações":
+    st.markdown('<div class="main-header">⚙️ Configurações</div>', unsafe_allow_html=True)
+
+    st.subheader("📁 Dados")
+
+    if os.path.exists("ativos.xlsx"):
+        import os as os_mod
+        size = os_mod.path.getsize("ativos.xlsx")
+        st.write(f"**ativos.xlsx:** {size/1024:.1f} KB")
+
+        df = load_data()
+        if not df.empty:
+            st.write(f"**Ativos:** {len(df)}")
+            st.write(f"**Colunas:** {len(df.columns)}")
+            st.write(f"**Última atualização:** {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}")
+    else:
+        st.warning("❌ ativos.xlsx não encontrado.")
 
     st.markdown("---")
 
-    # Tabs de análise
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Indicadores", "💰 Valuation", "📈 Técnico", "🏛️ Setorial"])
-
-    with tab1:
+    st.subheader("📊 Estatísticas")
+    df = load_data()
+    if not df.empty:
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("### Rentabilidade")
-            st.markdown(f"- **ROE:** {ativo['ROE']:.2f}%")
-            st.markdown(f"- **ROA:** {ativo['ROA']:.2f}%")
-            st.markdown(f"- **ROIC:** {ativo['ROIC']:.2f}%")
-            st.markdown(f"- **Margem Bruta:** {ativo['Margem_Bruta']:.2f}%")
-            st.markdown(f"- **Margem EBITDA:** {ativo['Margem_EBITDA']:.2f}%")
-            st.markdown(f"- **Margem Líquida:** {ativo['Margem_Liquida']:.2f}%")
+            st.write("**Setores:**")
+            st.write(df["Setor"].value_counts().head(10))
         with col2:
-            st.markdown("### Endividamento & Eficiência")
-            st.markdown(f"- **Dívida/PL:** {ativo['Divida_PL']:.2f}x")
-            st.markdown(f"- **Dívida Líquida:** {formatar_moeda(ativo['Divida_Liquida'])}")
-            st.markdown(f"- **DL/EBITDA:** {ativo['DL_EBITDA']:.2f}x")
-            st.markdown(f"- **Liquidez Corrente:** {ativo['Liquidez_Corrente']:.2f}x")
-            st.markdown(f"- **Giro Ativos:** {ativo['Giro_Ativos']:.2f}x")
-            st.markdown(f"- **CAGR Receita (5a):** {ativo['Receita_CAGR']:.2f}%")
-            st.markdown(f"- **CAGR Lucro (5a):** {ativo['Lucro_CAGR']:.2f}%")
+            st.write("**Score CS Distribuição:**")
+            st.write(df["Score_CS"].value_counts().sort_index())
 
-    with tab2:
-        st.markdown("### Preços Alvo")
+    st.markdown("---")
 
-        metodos = [
-            ("Graham", ativo["Graham"]),
-            ("Graham BR", ativo["Graham_BR"]),
-            ("Bazin", ativo["Bazin"]),
-            ("Lynch", ativo["Lynch"]),
-            ("AGF Médio", ativo["AGF_Medio"]),
-            ("AGF Projetivo", ativo["AGF_Projetivo"]),
-        ]
-
-        cols = st.columns(3)
-        for i, (nome, preco) in enumerate(metodos):
-            with cols[i % 3]:
-                if preco > 0:
-                    upside = ((preco - cotacao_atual) / cotacao_atual) * 100
-                    cor = "highlight-green" if upside > 0 else "highlight-red"
-                    st.markdown(f"""
-                    <div class="card">
-                        <h4>{nome}</h4>
-                        <p style="font-size:1.5em;">R$ {preco:.2f}</p>
-                        <p class="{cor}">{upside:+.1f}%</p>
-                    </div>
-                    """)
-                else:
-                    st.markdown(f"""
-                    <div class="card card-red">
-                        <h4>{nome}</h4>
-                        <p>N/A</p>
-                    </div>
-                    """)
-
-        # Preço alvo médio dos analysts
-        if ativo["Preco_Alvo_Medio"] > 0:
-            upside_analysts = ((ativo["Preco_Alvo_Medio"] - cotacao_atual) / cotacao_atual) * 100
-            st.markdown(f"""
-            <div class="card card-yellow">
-                <h4>🎯 Preço Alvo Analysts ({ativo["Qtd_Analysts"]:.0f} analistas)</h4>
-                <p style="font-size:1.5em;">R$ {ativo["Preco_Alvo_Medio"]:.2f}</p>
-                <p>{upside_analysts:+.1f}% upside | Recomendação: {ativo["Recomendacao_Analysts"]}</p>
-            </div>
-            """)
-
-    with tab3:
-        st.markdown("### Análise Técnica")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(f"- **Máxima 52s:** R$ {ativo['Maxima_52s']:.2f}")
-            st.markdown(f"- **Mínima 52s:** R$ {ativo['Minima_52s']:.2f}")
-            st.markdown(f"- **Média 50d:** R$ {ativo['Media_50d']:.2f}")
-            st.markdown(f"- **Média 200d:** R$ {ativo['Media_200d']:.2f}")
-            st.markdown(f"- **Beta:** {ativo['Beta']:.2f}")
-        with col2:
-            # Distância das médias
-            if ativo["Media_50d"] > 0:
-                dist_50 = ((cotacao_atual - ativo["Media_50d"]) / ativo["Media_50d"]) * 100
-                st.markdown(f"- **Dist. Média 50d:** {dist_50:+.1f}%")
-            if ativo["Media_200d"] > 0:
-                dist_200 = ((cotacao_atual - ativo["Media_200d"]) / ativo["Media_200d"]) * 100
-                st.markdown(f"- **Dist. Média 200d:** {dist_200:+.1f}%")
-
-            # Tendência
-            if ativo["Media_50d"] > ativo["Media_200d"] > 0:
-                st.markdown("- **Tendência:** 🟢 Alta (MM50 > MM200)")
-            elif ativo["Media_50d"] < ativo["Media_200d"] > 0:
-                st.markdown("- **Tendência:** 🔴 Baixa (MM50 < MM200)")
-            else:
-                st.markdown("- **Tendência:** ⚪ Indefinida")
-
-    with tab4:
-        st.markdown("### Benchmark Setorial")
-        setor = ativo["Setor"]
-        if setor:
-            df_setor = df[df["Setor"] == setor]
-            st.markdown(f"**Setor:** {setor} ({len(df_setor)} ativos)")
-
-            medias = {
-                "P/L": df_setor["PL"].replace(0, np.nan).mean(),
-                "P/VP": df_setor["PVP"].replace(0, np.nan).mean(),
-                "DY": df_setor["DY"].replace(0, np.nan).mean(),
-                "ROE": df_setor["ROE"].replace(0, np.nan).mean(),
-                "Margem Liq.": df_setor["Margem_Liquida"].replace(0, np.nan).mean(),
-            }
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("#### Médias do Setor")
-                for k, v in medias.items():
-                    st.markdown(f"- **{k}:** {v:.2f}")
-            with col2:
-                st.markdown("#### Ativo vs Setor")
-                comparativos = [
-                    ("P/L", ativo["PL"], medias["P/L"], "menor"),
-                    ("P/VP", ativo["PVP"], medias["P/VP"], "menor"),
-                    ("DY", ativo["DY"], medias["DY"], "maior"),
-                    ("ROE", ativo["ROE"], medias["ROE"], "maior"),
-                ]
-                for nome, val_ativo, val_setor, melhor in comparativos:
-                    if val_setor > 0:
-                        diff = ((val_ativo - val_setor) / val_setor) * 100
-                        cor = "highlight-green" if (melhor == "menor" and diff < 0) or (melhor == "maior" and diff > 0) else "highlight-red"
-                        st.markdown(f"- **{nome}:** {diff:+.1f}% vs setor", unsafe_allow_html=True)
-        else:
-            st.info("Setor não classificado para este ativo.")
-
-# ============================================================
-# ABA 3: RANKINGS
-# ============================================================
-elif aba == "📊 Rankings":
-    st.markdown("## 📊 Rankings")
-
-    tipo_ranking = st.selectbox("Ordenar por:", [
-        "Score CS (Maior)",
-        "Dividend Yield (Maior)",
-        "P/L (Menor)",
-        "ROE (Maior)",
-        "ROIC (Maior)",
-        "Margem Líquida (Maior)",
-        "Upside Graham (Maior)",
-        "Upside Bazin (Maior)",
-    ])
-
-    # Filtros
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        setor_filtro = st.multiselect("Setor:", options=["Todos"] + sorted(df["Setor"].unique().tolist()))
-    with col2:
-        min_score = st.slider("Score CS mínimo:", 0.0, 9.0, 0.0, 0.5)
-    with col3:
-        min_dy = st.slider("DY mínimo (%):", 0.0, 20.0, 0.0, 0.5)
-
-    # Aplicar filtros
-    df_rank = df.copy()
-    if setor_filtro and "Todos" not in setor_filtro:
-        df_rank = df_rank[df_rank["Setor"].isin(setor_filtro)]
-    df_rank = df_rank[df_rank["Score_CS"] >= min_score]
-    df_rank = df_rank[df_rank["DY"] >= min_dy]
-
-    # Ordenar
-    if "Score CS" in tipo_ranking:
-        df_rank = df_rank.sort_values("Score_CS", ascending=False)
-    elif "Dividend Yield" in tipo_ranking:
-        df_rank = df_rank.sort_values("DY", ascending=False)
-    elif "P/L" in tipo_ranking:
-        df_rank = df_rank[df_rank["PL"] > 0].sort_values("PL", ascending=True)
-    elif "ROE" in tipo_ranking:
-        df_rank = df_rank.sort_values("ROE", ascending=False)
-    elif "ROIC" in tipo_ranking:
-        df_rank = df_rank.sort_values("ROIC", ascending=False)
-    elif "Margem" in tipo_ranking:
-        df_rank = df_rank.sort_values("Margem_Liquida", ascending=False)
-    elif "Graham" in tipo_ranking:
-        df_rank["Upside_Graham"] = ((df_rank["Graham"] - df_rank["Cotacao"]) / df_rank["Cotacao"]) * 100
-        df_rank = df_rank[df_rank["Graham"] > 0].sort_values("Upside_Graham", ascending=False)
-    elif "Bazin" in tipo_ranking:
-        df_rank["Upside_Bazin"] = ((df_rank["Bazin"] - df_rank["Cotacao"]) / df_rank["Cotacao"]) * 100
-        df_rank = df_rank[df_rank["Bazin"] > 0].sort_values("Upside_Bazin", ascending=False)
-
-    # Mostrar
-    colunas_display = ["Ticker", "Nome_Empresa", "Cotacao", "Score_CS", "DY", "PL", "ROE", "ROIC", "Setor"]
-    st.dataframe(df_rank[colunas_display].head(50), use_container_width=True, hide_index=True)
-
-    st.markdown(f"**Mostrando top 50 de {len(df_rank)} ativos filtrados**")
-
-# ============================================================
-# ABA 4: CARTEIRA
-# ============================================================
-elif aba == "💰 Carteira":
-    st.markdown("## 💰 Carteira")
-    st.info("🚧 Em desenvolvimento. Use a aba 'Importar B3' para carregar sua carteira.")
-
-# ============================================================
-# ABA 5: IMPORTAR B3
-# ============================================================
-elif aba == "📥 Importar B3":
-    st.markdown("## 📥 Importar Nota de Negociação B3")
-    st.info("🚧 Em desenvolvimento. Integração com parser_negociacao_b3.py em andamento.")
+    st.subheader("🔧 Parâmetros de Valuation")
+    st.write(f"**SELIC atual:** {selic}%")
+    st.write("**Mínimo DY Bazin:** 6%")
+    st.write("**Multiplicador Graham BR:** 1/SELIC")
+    st.write("**Threshold Score CS:** 8=Excelente, 6=Bom, 4=Regular, 2=Fraco, 0=Péssimo")
