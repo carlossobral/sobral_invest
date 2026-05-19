@@ -67,7 +67,7 @@ class MFinanceClient:
             return []
         symbols_str = ",".join(symbols)
         data = self._request("GET", f"/stocks?symbols={symbols_str}")
-        if isinstance(data, dict) and "stocks" in data:
+        if isinstance(data, dict) and "stocks" in data and data["stocks"] is not None:
             return data["stocks"]
         return []
 
@@ -77,7 +77,7 @@ class MFinanceClient:
             return []
         symbols_str = ",".join(symbols)
         data = self._request("GET", f"/stocks/indicators?symbols={symbols_str}")
-        if isinstance(data, dict) and "indicators" in data:
+        if isinstance(data, dict) and "indicators" in data and data["indicators"] is not None:
             return data["indicators"]
         return []
 
@@ -109,7 +109,10 @@ class MFinanceClient:
             batch = symbols[i:i + batch_size]
             print(f"  Buscando dados básicos {i+1}-{min(i+batch_size, len(symbols))}...")
             stocks = self.get_stocks_batch(batch)
-            all_stocks.extend(stocks)
+            if stocks is not None:
+                all_stocks.extend(stocks)
+            else:
+                print(f"    ⚠️ Batch {i+1}-{min(i+batch_size, len(symbols))} retornou None")
             time.sleep(0.5)  # Respeitar API
 
         return all_stocks
@@ -124,7 +127,10 @@ class MFinanceClient:
             batch = symbols[i:i + batch_size]
             print(f"  Buscando indicadores {i+1}-{min(i+batch_size, len(symbols))}...")
             indicators = self.get_indicators_batch(batch)
-            all_indicators.extend(indicators)
+            if indicators is not None:
+                all_indicators.extend(indicators)
+            else:
+                print(f"    ⚠️ Indicadores {i+1}-{min(i+batch_size, len(symbols))} retornou None")
             time.sleep(0.5)
 
         return all_indicators
