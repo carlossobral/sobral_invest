@@ -177,7 +177,7 @@ def pagina_inicial():
     st.markdown("---")
 
     # MAIORES ALTAS E BAIXAS - TradingView Hotlists Widget
-    st.markdown("## 📊 Maiores Altas / Maiores Baixas")
+    st.markdown("## 📊 Mais Negociadas / Maiores Altas / Maiores Baixas")
 
     tv_hotlists = """
     <div class="tradingview-widget-container">
