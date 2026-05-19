@@ -162,7 +162,7 @@ def pagina_inicial():
         "autosize": true,
         "dateFormat": "dd/MM/yyyy",
         "width": "960",
-        "height": "480",
+        "height": "300",
         "noTimeScale": false,
         "hideDateRanges": false,
         "hideMarketStatus": false,
