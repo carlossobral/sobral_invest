@@ -1,40 +1,30 @@
-name: Atualizar Planilha Sobral Invest
+name: Atualizar Dados SOBRAL Invest
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'  # 03:00 BRT (UTC-3)
-
-permissions:
-  contents: write
-
-env:
-  PYTHONUNBUFFERED: "1"
+    - cron: '0 6 * * *'  # 6h UTC = 3h BRT
+  workflow_dispatch:
 
 jobs:
-  atualizar:
+  update:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
-      - name: Clonar repositório
+      - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Configurar Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Instalar dependências
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Buscar taxa Selic (API Banco Central)
-        id: selic
+      - name: Atualizar SELIC
         run: |
           python - <<'EOF'
           import requests
@@ -49,98 +39,92 @@ jobs:
               r.raise_for_status()
               dados = r.json()
 
-              # A API retorna a taxa diária como STRING PERCENTUAL
-              # Exemplo: "0.043647" significa 0.043647% ao dia
-              # Para converter para anual: (taxa_diaria / 100) * 252
-              selic_diaria_str = dados[0]["valor"]
-              selic_diaria_pct = float(selic_diaria_str)  # 0.043647
-              selic_diaria_decimal = selic_diaria_pct / 100  # 0.00043647
-              selic_anual = round(selic_diaria_decimal * 252 * 100, 2)  # 10.99%
+              valor_str = dados[0]["valor"]
+              valor = float(valor_str)
 
-              # Validação: SELIC anual deve estar entre 2% e 30%
-              if not (2.0 <= selic_anual <= 30.0):
-                  raise ValueError(f"SELIC anual fora do intervalo: {selic_anual}%")
+              # Detecção automática: < 1.0 = diária, >= 1.0 = anual
+              if valor < 1.0:
+                  selic = round((valor / 100) * 252 * 100, 2)
+              else:
+                  selic = round(valor, 2)
 
-              payload = {"selic": selic_anual, "data": str(date.today())}
-              with open("selic.json", "w", encoding="utf-8") as f:
-                  json.dump(payload, f)
-
-              print(f"✅ SELIC atualizada: {selic_anual}% a.a. ({date.today()})")
+              if 2.0 <= selic <= 30.0:
+                  payload = {"selic": selic, "data": str(date.today())}
+                  with open("selic.json", "w", encoding="utf-8") as f:
+                      json.dump(payload, f)
+                  print(f"✅ SELIC atualizada: {selic}%")
+              else:
+                  raise ValueError(f"SELIC fora do intervalo: {selic}%")
 
           except Exception as e:
               print(f"⚠️ Erro ao buscar SELIC: {e}")
-
-              # Mantém anterior ou cria fallback
               if os.path.exists("selic.json"):
                   print("⚠️ Mantendo selic.json anterior")
               else:
-                  fallback = {"selic": 13.25, "data": str(date.today()), "fallback": True}
+                  fallback = {"selic": 10.75, "data": str(date.today()), "fallback": True}
                   with open("selic.json", "w", encoding="utf-8") as f:
                       json.dump(fallback, f)
-                  print("⚠️ Criado selic.json com fallback: 13.25%")
+                  print("⚠️ Criado selic.json com fallback: 10.75%")
           EOF
 
-      - name: Executar coletor de dados
-        id: coletor
+      - name: Coletar dados MFinance
+        run: |
+          python app.py
         env:
           BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
-          USEBOLSAI_API_KEY: ${{ secrets.USEBOLSAI_API_KEY }}
-        run: |
-          echo "🚀 Iniciando coleta de dados..."
-          python app.py
-          echo "✅ Coleta finalizada"
+          USEBOLSAI_TOKEN: ${{ secrets.USEBOLSAI_TOKEN }}
 
-      - name: Verificar arquivos gerados
-        id: verificar
-        run: |
-          if [ -f "ativos.xlsx" ]; then
-            echo "✅ ativos.xlsx encontrado"
-            ls -lh ativos.xlsx
-          else
-            echo "❌ ativos.xlsx NÃO encontrado"
-            exit 1
-          fi
-
-          if [ -f "ativos.csv" ]; then
-            echo "✅ ativos.csv encontrado"
-            ls -lh ativos.csv
-          fi
-
-      - name: Commit arquivos atualizados
+      - name: Verificar e commitar
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Verificar se ativos.xlsx foi gerado e não está vazio
+          if [ ! -f "ativos.xlsx" ]; then
+            echo "❌ ativos.xlsx não foi gerado!"
+            exit 1
+          fi
+
+          # Verificar tamanho mínimo (cabeçalho = ~2KB)
+          SIZE=$(stat -c%s "ativos.xlsx")
+          if [ $SIZE -lt 5000 ]; then
+            echo "❌ ativos.xlsx muito pequeno ($SIZE bytes) - provavelmente vazio!"
+            exit 1
+          fi
+
+          echo "✅ ativos.xlsx: $SIZE bytes"
+
+          # Commit seletivo
           git add ativos.xlsx ativos.csv selic.json
 
           if git diff --cached --quiet; then
-            echo "ℹ️ Nenhuma mudança detectada"
-            exit 0
+            echo "✅ Nenhuma mudança para commitar"
+          else
+            git commit -m "📊 Dados atualizados - $(date +'%Y-%m-%d %H:%M')"
+
+            # Retry push (3 tentativas)
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break
+              echo "⚠️ Push falhou, tentativa $i/3..."
+              sleep 5
+            done
           fi
 
-          git commit -m "🤖 Atualização automática - $(date +'%Y-%m-%d %H:%M')"
-
-          for i in 1 2 3; do
-            git pull --rebase https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git main && break
-            echo "⚠️ Tentativa $i falhou, retry..."
-            sleep 5
-          done
-
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
-          echo "✅ Push realizado com sucesso"
-
-      - name: Resumo da execução
+      - name: Resumo
         if: always()
         run: |
           echo "=========================================="
-          echo "📊 RESUMO DA EXECUÇÃO"
+          echo "RESUMO DO WORKFLOW"
           echo "=========================================="
-          echo "Data: $(date)"
-          echo "Status SELIC: ${{ steps.selic.outcome }}"
-          echo "Status Coletor: ${{ steps.coletor.outcome }}"
-          echo "Status Verificação: ${{ steps.verificar.outcome }}"
-
           if [ -f "ativos.xlsx" ]; then
-            echo "Tamanho ativos.xlsx: $(ls -lh ativos.xlsx | awk '{print $5}')"
+            SIZE=$(stat -c%s "ativos.xlsx")
+            echo "✅ ativos.xlsx: $SIZE bytes"
+          else
+            echo "❌ ativos.xlsx não encontrado"
+          fi
+          if [ -f "selic.json" ]; then
+            echo "✅ selic.json: $(cat selic.json)"
+          else
+            echo "❌ selic.json não encontrado"
           fi
           echo "=========================================="
