@@ -235,53 +235,29 @@ def pagina_inicial():
         """, unsafe_allow_html=True)
 
     with col_chart:
-        # TradingView Symbol Overview Widget - Ibovespa
-        tv_widget = """
-        <div class="tradingview-widget-container">
-          <div class="tradingview-widget-container__widget"></div>
-          <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
-          {
-            "symbols": [
-              ["BMFBOVESPA:IBOV|1D"]
-            ],
-            "chartOnly": false,
-            "width": "100%",
-            "height": "250",
-            "locale": "br",
-            "colorTheme": "light",
-            "autosize": true,
-            "showVolume": false,
-            "showMA": false,
-            "hideDateRanges": false,
-            "hideMarketStatus": false,
-            "hideSymbolLogo": false,
-            "scalePosition": "right",
-            "scaleMode": "Normal",
-            "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
-            "fontSize": "10",
-            "noTimeScale": false,
-            "valuesTracking": "1",
-            "changeMode": "price-and-percent",
-            "chartType": "area",
-            "maLineColor": "#2962FF",
-            "maLineWidth": 1,
-            "maLength": 9,
-            "lineWidth": 2,
-            "lineType": 0,
-            "dateRanges": [
-              "1d|1",
-              "1m|30",
-              "3m|60",
-              "12m|1D",
-              "60m|1W",
-              "all|1M"
-            ]
-          }
-          </script>
-        </div>
-        """
-        import streamlit.components.v1 as components
-        components.html(tv_widget, height=260)
+        if ibov_data["historico"] is not None:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=ibov_data["historico"].index,
+                y=ibov_data["historico"]["Close"],
+                mode='lines',
+                line=dict(color='#10b981', width=2),
+                fill='tozeroy',
+                fillcolor='rgba(16,185,129,0.1)'
+            ))
+            fig.update_layout(
+                template='plotly_dark',
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=0, r=0, t=0, b=0),
+                showlegend=False,
+                xaxis=dict(showgrid=False, showticklabels=False),
+                yaxis=dict(showgrid=False, showticklabels=False),
+                height=250
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Grafico do Ibovespa indisponivel (API indisponivel no momento)")
 
     st.markdown("---")
 
