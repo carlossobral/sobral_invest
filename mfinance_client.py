@@ -17,7 +17,7 @@ from typing import List, Dict, Any, Optional
 BASE_URL = "https://mfinance.com.br/api/v1"
 DEFAULT_TIMEOUT = 25
 DEFAULT_RETRY = 3
-BATCH_SIZE = 50  # MFinance aceita múltiplos tickers via query string
+BATCH_SIZE = 10  # MFinance aceita múltiplos tickers via query string
 
 
 class MFinanceClient:
@@ -39,7 +39,16 @@ class MFinanceClient:
                     method, url, timeout=self.timeout, **kwargs
                 )
                 response.raise_for_status()
-                return response.json()
+                data = response.json()
+                # Log para debug
+                if isinstance(data, dict):
+                    keys = list(data.keys())
+                    print(f"    DEBUG {url}: keys={keys[:5]}")
+                elif isinstance(data, list):
+                    print(f"    DEBUG {url}: list len={len(data)}")
+                else:
+                    print(f"    DEBUG {url}: type={type(data).__name__}, value={str(data)[:100]}")
+                return data
             except requests.exceptions.Timeout:
                 if attempt < self.retries - 1:
                     time.sleep(2 ** attempt)
@@ -48,6 +57,10 @@ class MFinanceClient:
                 return None
             except requests.exceptions.HTTPError as e:
                 print(f"⚠️ HTTP {e.response.status_code}: {url}")
+                try:
+                    print(f"    Response: {e.response.text[:200]}")
+                except:
+                    pass
                 return None
             except Exception as e:
                 print(f"⚠️ Erro em {url}: {e}")
@@ -98,41 +111,128 @@ class MFinanceClient:
         return {}
 
     def get_all_stocks(self, batch_size: int = BATCH_SIZE) -> List[Dict]:
-        """Busca TODOS os ativos do MFinance (dados básicos)."""
+        """Busca TODOS os ativos do MFinance (dados básicos).
+
+        Estratégia de 3 camadas:
+        1. Batch de 10 tickers (mais estável que 50)
+        2. Se batch falhar → Individual 1 por 1
+        3. Se individual falhar → Retorna lista vazia (app.py usa BRAPI fallback)
+        """
         symbols = self.get_all_symbols()
         if not symbols:
             return []
         print(f"📊 Total de tickers disponíveis: {len(symbols)}")
 
+        # CAMADA 1: Batch de 10
         all_stocks = []
-        for i in range(0, len(symbols), batch_size):
-            batch = symbols[i:i + batch_size]
-            print(f"  Buscando dados básicos {i+1}-{min(i+batch_size, len(symbols))}...")
-            stocks = self.get_stocks_batch(batch)
-            if stocks is not None:
-                all_stocks.extend(stocks)
-            else:
-                print(f"    ⚠️ Batch {i+1}-{min(i+batch_size, len(symbols))} retornou None")
-            time.sleep(0.5)  # Respeitar API
+        batch_worked = False
+        test_batch = symbols[:10]  # Testar com apenas 10 primeiros
+        print(f"  [CAMADA 1] Testando batch com {len(test_batch)} tickers...")
+        stocks = self.get_stocks_batch(test_batch)
+        if stocks and len(stocks) > 0:
+            all_stocks.extend(stocks)
+            batch_worked = True
+            print(f"    ✅ Batch funcionou! {len(stocks)} ativos")
+        else:
+            print(f"    ❌ Batch falhou")
 
+        # Se batch funcionou, continuar com batches de 10
+        if batch_worked:
+            print("  ✅ Modo batch ativado. Processando todos...")
+            for i in range(10, len(symbols), batch_size):
+                batch = symbols[i:i + batch_size]
+                print(f"  Batch {i+1}-{min(i+batch_size, len(symbols))}...")
+                stocks = self.get_stocks_batch(batch)
+                if stocks is not None and len(stocks) > 0:
+                    all_stocks.extend(stocks)
+                time.sleep(0.3)
+        else:
+            # CAMADA 2: Individual 1 por 1
+            print("  ⚠️ CAMADA 2: Modo individual...")
+            all_stocks = self.get_all_stocks_single(symbols)
+
+        print(f"✅ Total coletado: {len(all_stocks)} ativos")
         return all_stocks
 
+    def get_stock_single(self, symbol: str) -> Optional[Dict]:
+        """Busca dados de 1 ticker individualmente (fallback se batch falhar)."""
+        data = self._request("GET", f"/stocks/{symbol}")
+        if isinstance(data, dict):
+            return data
+        return None
+
+    def get_indicators_single(self, symbol: str) -> Optional[Dict]:
+        """Busca indicadores de 1 ticker individualmente."""
+        data = self._request("GET", f"/stocks/indicators/{symbol}")
+        if isinstance(data, dict):
+            # O endpoint /stocks/indicators/{symbol} retorna dict direto, não {"indicators": [...]}
+            return data
+        return None
+
+    def get_all_stocks_single(self, symbols: List[str]) -> List[Dict]:
+        """Busca TODOS os ativos 1 por 1 (fallback quando batch falha)."""
+        print(f"Usando modo individual para {len(symbols)} ativos...")
+        all_stocks = []
+        for i, sym in enumerate(symbols):
+            if i % 50 == 0:
+                print(f"  {i+1}/{len(symbols)}...")
+            stock = self.get_stock_single(sym)
+            if stock:
+                all_stocks.append(stock)
+            time.sleep(0.2)  # Delay maior para não sobrecarregar
+        return all_stocks
+
+    def get_all_indicators_single(self, symbols: List[str]) -> List[Dict]:
+        """Busca indicadores 1 por 1 (fallback quando batch falha)."""
+        print(f"Usando modo individual para {len(symbols)} indicadores...")
+        all_indicators = []
+        for i, sym in enumerate(symbols):
+            if i % 50 == 0:
+                print(f"  {i+1}/{len(symbols)}...")
+            ind = self.get_indicators_single(sym)
+            if ind:
+                all_indicators.append(ind)
+            time.sleep(0.2)
+        return all_indicators
+
     def get_all_indicators(self, symbols: List[str], batch_size: int = BATCH_SIZE) -> List[Dict]:
-        """Busca indicadores para uma lista de símbolos."""
+        """Busca indicadores para uma lista de símbolos.
+
+        Estratégia de 3 camadas:
+        1. Batch de 10 tickers
+        2. Se batch falhar → Individual 1 por 1
+        """
         if not symbols:
             return []
 
+        # CAMADA 1: Batch
         all_indicators = []
-        for i in range(0, len(symbols), batch_size):
-            batch = symbols[i:i + batch_size]
-            print(f"  Buscando indicadores {i+1}-{min(i+batch_size, len(symbols))}...")
-            indicators = self.get_indicators_batch(batch)
-            if indicators is not None:
-                all_indicators.extend(indicators)
-            else:
-                print(f"    ⚠️ Indicadores {i+1}-{min(i+batch_size, len(symbols))} retornou None")
-            time.sleep(0.5)
+        batch_worked = False
+        test_batch = symbols[:10]
+        print(f"  [CAMADA 1] Testando batch indicadores {len(test_batch)} tickers...")
+        indicators = self.get_indicators_batch(test_batch)
+        if indicators and len(indicators) > 0:
+            all_indicators.extend(indicators)
+            batch_worked = True
+            print(f"    ✅ Batch funcionou! {len(indicators)} indicadores")
+        else:
+            print(f"    ❌ Batch falhou")
 
+        if batch_worked:
+            print("  ✅ Modo batch ativado. Processando todos...")
+            for i in range(10, len(symbols), batch_size):
+                batch = symbols[i:i + batch_size]
+                print(f"  Indicadores {i+1}-{min(i+batch_size, len(symbols))}...")
+                indicators = self.get_indicators_batch(batch)
+                if indicators is not None and len(indicators) > 0:
+                    all_indicators.extend(indicators)
+                time.sleep(0.3)
+        else:
+            # CAMADA 2: Individual
+            print("  ⚠️ CAMADA 2: Modo individual...")
+            all_indicators = self.get_all_indicators_single(symbols)
+
+        print(f"✅ Total indicadores: {len(all_indicators)}")
         return all_indicators
 
 
