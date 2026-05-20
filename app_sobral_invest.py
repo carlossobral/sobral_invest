@@ -609,6 +609,16 @@ def pagina_analise():
     div[data-testid="column"] {
         padding: 0 4px !important;
     }
+
+    /* Espaçamento entre linhas de cards */
+    .bh-card-v2 {
+        margin-bottom: 12px !important;
+    }
+
+    /* Garantir alinhamento perfeito */
+    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        padding: 0 6px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -939,7 +949,7 @@ def pagina_analise():
         score_color, score_bg, score_label = "#dc2626", "#7f1d1d", "Pessimo"
 
     # Card do Score
-    col_score, col_info = st.columns([1, 1])
+    col1, col_score, col3 = st.columns([1, 2, 1])
     with col_score:
         st.markdown(f"""
         <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
@@ -949,8 +959,7 @@ def pagina_analise():
         </div>
         """, unsafe_allow_html=True)
 
-    with col_info:
-        st.markdown("", unsafe_allow_html=True)
+
 
     # Cards dos critérios
     st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
