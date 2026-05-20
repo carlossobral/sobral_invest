@@ -1,758 +1,382 @@
 """
-app_sobral_invest.py - SOBRAL Invest v4.0
-Dashboard com TradingView Widgets
+Cliente MFinance API - v2.1 (CORRIGIDO)
+Correções:
+- PL ↔ PVP trocados no parse_mfinance_indicator()
+- DivLiquida_PL renomeado para DivLiquida_Ativos (netDebtToAssets = Dívida/Ativos)
+- Adicionado cálculo manual de Dívida/PL quando possível
+
+Formatos confirmados:
+- /stocks/symbols/ -> ["PETR4", "VALE3", ...] (lista de strings)
+- /stocks?symbols=... -> {"stocks": [{...}, {...}]} (objeto com array 'stocks')
+- /stocks/indicators?symbols=... -> {"indicators": [{symbol, ...}, ...]} (objeto com array 'indicators')
+- /stocks/dividends/{symbol} -> {"symbol": "...", "dividends": [{...}]}
+- /stocks/details/{symbol} -> {"details": [{...}]} (inferido do schema)
 """
 
-import os
-import json
-from datetime import date, datetime
-from typing import Dict, List, Any, Optional
+import requests
+import time
+from typing import List, Dict, Any, Optional
 
-import pandas as pd
-import numpy as np
-import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+BASE_URL = "https://mfinance.com.br/api/v1"
+DEFAULT_TIMEOUT = 25
+DEFAULT_RETRY = 3
+BATCH_SIZE = 10
 
-# Configuracao da pagina
-st.set_page_config(
-    page_title="SOBRAL Invest",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+class MFinanceClient:
+    def __init__(self, timeout: int = DEFAULT_TIMEOUT, retries: int = DEFAULT_RETRY):
+        self.timeout = timeout
+        self.retries = retries
+        self.session = requests.Session()
+        self.session.headers.update({
+            "Accept": "application/json",
+            "User-Agent": "SOBRAL-Invest/1.0"
+        })
 
-# CSS customizado
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 1rem;
+    def _request(self, method: str, endpoint: str, **kwargs) -> Optional[Any]:
+        """Faz request com retry automático."""
+        url = f"{BASE_URL}{endpoint}"
+        for attempt in range(self.retries):
+            try:
+                response = self.session.request(
+                    method, url, timeout=self.timeout, **kwargs
+                )
+                response.raise_for_status()
+                data = response.json()
+                if isinstance(data, dict):
+                    keys = list(data.keys())
+                    print(f"  DEBUG {url}: keys={keys[:5]}")
+                elif isinstance(data, list):
+                    print(f"  DEBUG {url}: list len={len(data)}")
+                else:
+                    print(f"  DEBUG {url}: type={type(data).__name__}, value={str(data)[:100]}")
+                return data
+            except requests.exceptions.Timeout:
+                if attempt < self.retries - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                print(f"⚠️ Timeout após {self.retries} tentativas: {url}")
+                return None
+            except requests.exceptions.HTTPError as e:
+                print(f"⚠️ HTTP {e.response.status_code}: {url}")
+                try:
+                    print(f"  Response: {e.response.text[:200]}")
+                except:
+                    pass
+                return None
+            except Exception as e:
+                print(f"⚠️ Erro em {url}: {e}")
+                return None
+        return None
+
+    def get_all_symbols(self) -> List[str]:
+        """Retorna lista de todos os tickers de ações."""
+        data = self._request("GET", "/stocks/symbols/")
+        if isinstance(data, list):
+            return [s for s in data if isinstance(s, str) and s]
+        return []
+
+    def get_stocks_batch(self, symbols: List[str]) -> List[Dict]:
+        """Busca dados básicos de múltiplos tickers. Retorna lista de dicts."""
+        if not symbols:
+            return []
+        symbols_str = ",".join(symbols)
+        data = self._request("GET", f"/stocks?symbols={symbols_str}")
+        if isinstance(data, dict) and "stocks" in data and data["stocks"] is not None:
+            return data["stocks"]
+        return []
+
+    def get_indicators_batch(self, symbols: List[str]) -> List[Dict]:
+        """Busca indicadores de múltiplos tickers. Retorna lista de dicts."""
+        if not symbols:
+            return []
+        symbols_str = ",".join(symbols)
+        data = self._request("GET", f"/stocks/indicators?symbols={symbols_str}")
+        if isinstance(data, dict) and "indicators" in data and data["indicators"] is not None:
+            return data["indicators"]
+        return []
+
+    def get_dividends(self, symbol: str) -> Dict[str, Any]:
+        """Busca dividendos de 1 ticker. Retorna {"symbol": "...", "dividends": [...]}."""
+        data = self._request("GET", f"/stocks/dividends/{symbol}")
+        if isinstance(data, dict) and "dividends" in data:
+            return data
+        return {"symbol": symbol, "dividends": []}
+
+    def get_details(self, symbol: str) -> Dict[str, Any]:
+        """Busca detalhes de 1 ticker. Retorna dict com type, subSector, segment."""
+        data = self._request("GET", f"/stocks/details/{symbol}")
+        if isinstance(data, dict) and "details" in data:
+            details_list = data["details"]
+            if details_list and isinstance(details_list, list):
+                return details_list[0]
+        return {}
+
+    def get_all_stocks(self, batch_size: int = BATCH_SIZE) -> List[Dict]:
+        """Busca TODOS os ativos do MFinance (dados básicos)."""
+        symbols = self.get_all_symbols()
+        if not symbols:
+            return []
+        print(f"📊 Total de tickers disponíveis: {len(symbols)}")
+
+        all_stocks = []
+        batch_worked = False
+        test_batch = symbols[:10]
+        print(f"  [CAMADA 1] Testando batch com {len(test_batch)} tickers...")
+        stocks = self.get_stocks_batch(test_batch)
+        if stocks and len(stocks) > 0:
+            all_stocks.extend(stocks)
+            batch_worked = True
+            print(f"  ✅ Batch funcionou! {len(stocks)} ativos")
+        else:
+            print(f"  ❌ Batch falhou")
+
+        if batch_worked:
+            print("  ✅ Modo batch ativado. Processando todos...")
+            for i in range(10, len(symbols), batch_size):
+                batch = symbols[i:i + batch_size]
+                print(f"  Batch {i+1}-{min(i+batch_size, len(symbols))}...")
+                stocks = self.get_stocks_batch(batch)
+                if stocks is not None and len(stocks) > 0:
+                    all_stocks.extend(stocks)
+                time.sleep(0.3)
+        else:
+            print("  ⚠️ CAMADA 2: Modo individual...")
+            all_stocks = self.get_all_stocks_single(symbols)
+
+        print(f"✅ Total coletado: {len(all_stocks)} ativos")
+        return all_stocks
+
+    def get_stock_single(self, symbol: str) -> Optional[Dict]:
+        """Busca dados de 1 ticker individualmente (fallback se batch falhar)."""
+        data = self._request("GET", f"/stocks/{symbol}")
+        if isinstance(data, dict):
+            return data
+        return None
+
+    def get_indicators_single(self, symbol: str) -> Optional[Dict]:
+        """Busca indicadores de 1 ticker individualmente."""
+        data = self._request("GET", f"/stocks/indicators/{symbol}")
+        if isinstance(data, dict):
+            return data
+        return None
+
+    def get_all_stocks_single(self, symbols: List[str]) -> List[Dict]:
+        """Busca TODOS os ativos 1 por 1 (fallback quando batch falha)."""
+        print(f"Usando modo individual para {len(symbols)} ativos...")
+        all_stocks = []
+        for i, sym in enumerate(symbols):
+            if i % 50 == 0:
+                print(f"  {i+1}/{len(symbols)}...")
+            stock = self.get_stock_single(sym)
+            if stock:
+                all_stocks.append(stock)
+            time.sleep(0.2)
+        return all_stocks
+
+    def get_all_indicators_single(self, symbols: List[str]) -> List[Dict]:
+        """Busca indicadores 1 por 1 (fallback quando batch falha)."""
+        print(f"Usando modo individual para {len(symbols)} indicadores...")
+        all_indicators = []
+        for i, sym in enumerate(symbols):
+            if i % 50 == 0:
+                print(f"  {i+1}/{len(symbols)}...")
+            ind = self.get_indicators_single(sym)
+            if ind:
+                all_indicators.append(ind)
+            time.sleep(0.2)
+        return all_indicators
+
+    def get_all_indicators(self, symbols: List[str], batch_size: int = BATCH_SIZE) -> List[Dict]:
+        """Busca indicadores para uma lista de símbolos."""
+        if not symbols:
+            return []
+
+        all_indicators = []
+        batch_worked = False
+        test_batch = symbols[:10]
+        print(f"  [CAMADA 1] Testando batch indicadores {len(test_batch)} tickers...")
+        indicators = self.get_indicators_batch(test_batch)
+        if indicators and len(indicators) > 0:
+            all_indicators.extend(indicators)
+            batch_worked = True
+            print(f"  ✅ Batch funcionou! {len(indicators)} indicadores")
+        else:
+            print(f"  ❌ Batch falhou")
+
+        if batch_worked:
+            print("  ✅ Modo batch ativado. Processando todos...")
+            for i in range(10, len(symbols), batch_size):
+                batch = symbols[i:i + batch_size]
+                print(f"  Indicadores {i+1}-{min(i+batch_size, len(symbols))}...")
+                indicators = self.get_indicators_batch(batch)
+                if indicators is not None and len(indicators) > 0:
+                    all_indicators.extend(indicators)
+                time.sleep(0.3)
+        else:
+            print("  ⚠️ CAMADA 2: Modo individual...")
+            all_indicators = self.get_all_indicators_single(symbols)
+
+        print(f"✅ Total indicadores: {len(all_indicators)}")
+        return all_indicators
+
+
+def parse_mfinance_stock(stock: Dict) -> Dict[str, Any]:
+    """Extrai campos relevantes de um objeto Stock do MFinance."""
+    return {
+        "Ticker": stock.get("symbol", ""),
+        "Nome": stock.get("name", ""),
+        "Setor": stock.get("sector", ""),
+        "SubSetor": stock.get("subSector", ""),
+        "Segmento": stock.get("segment", ""),
+        "Cotacao": stock.get("lastPrice", 0),
+        "Variacao": stock.get("change", 0),
+        "Abertura": stock.get("priceOpen", 0),
+        "Maxima": stock.get("high", 0),
+        "Minima": stock.get("low", 0),
+        "Fechamento_Anterior": stock.get("closingPrice", 0),
+        "Volume": stock.get("volume", 0),
+        "Volume_Medio": stock.get("volumeAvg", 0),
+        "Market_Cap": stock.get("marketCap", 0),
+        "PE": stock.get("pe", 0),
+        "EPS": stock.get("eps", 0),
+        "DY": stock.get("dividendYield", 0),
+        "Maxima_52s": stock.get("lastYearHigh", 0),
+        "Minima_52s": stock.get("lastYearLow", 0),
+        "Qtd_Acoes": stock.get("shares", 0),
     }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #666;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-    }
-    .score-excelente { color: #00cc00; font-weight: bold; }
-    .score-bom { color: #66cc00; font-weight: bold; }
-    .score-regular { color: #ffcc00; font-weight: bold; }
-    .score-fraco { color: #ff6600; font-weight: bold; }
-    .score-pessimo { color: #ff0000; font-weight: bold; }
-    .ibov-card {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border-radius: 15px;
-        padding: 2rem;
-        color: white;
-        margin-bottom: 2rem;
-    }
-    .ibov-value {
-        font-size: 3rem;
-        font-weight: bold;
-        color: #10b981;
-    }
-    .ibov-var {
-        font-size: 1.2rem;
-        margin-top: 0.5rem;
-    }
-    .ticker-card {
-        background-color: #f8f9fa;
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 0.5rem 0;
-        border-left: 4px solid #ddd;
-        transition: all 0.3s;
-    }
-    .ticker-card:hover {
-        transform: translateX(5px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .ticker-card.alta { border-left-color: #10b981; }
-    .ticker-card.baixa { border-left-color: #ef4444; }
-</style>
-""", unsafe_allow_html=True)
 
 
-def load_data() -> pd.DataFrame:
-    """Carrega ativos.xlsx da raiz do projeto."""
-    try:
-        df = pd.read_excel("ativos.xlsx", sheet_name="Dados")
-
-        # Converter TODAS as colunas numéricas (nomes reais do ativos.xlsx)
-        numeric_cols = [
-            "Cotacao", "Variacao", "Abertura", "Maxima", "Minima", "Fechamento_Anterior",
-            "Volume", "Volume_Medio", "Maxima_52s", "Minima_52s", "Market_Cap",
-            "PE", "EPS", "DY", "DY_12m", "PL", "PVP", "PSR", "PAtivo", "PCapGiro",
-            "PAtivoCircLiq", "PEBIT", "PEBITDA", "EV_EBIT", "EV_EBITDA",
-            "LPA", "VPA", "Patrimonio", "Lucro_Liquido", "EBIT", "Receita_Liquida",
-            "ROE", "ROA", "ROIC", "GiroAtivos", "MargemBruta", "MargemEBITDA",
-            "MargemEBIT", "MargemLiquida", "DivLiquida_PL", "DivLiquida_EBIT",
-            "DivLiquida_EBITDA", "LiquidezCorrente", "Passivos_Ativos", "PL_Ativos",
-            "CAGR_Receitas_5a", "CAGR_Lucros_5a", "Qtd_Acoes", "Dividendo_Medio_12m",
-            "Dividendo_Total_12m", "Dividendo_Ultimo", "Qtd_Dividendos_12m",
-            "Graham", "Graham_BR", "Bazin", "Lynch", "Lynch_Preco_Teto", "Lynch_Mod", "AGF",
-            "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin",
-            "Upside_Lynch_Preco_Teto", "Upside_AGF",
-            "Score_CS", "ROE_15pct", "DY_3pct", "DivPL_0_5", "PL_15", "PVP_2",
-            "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct",
-            "Beta", "Media_50d", "Media_200d", "FCO", "FCL"
-        ]
-
-        for col in numeric_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-        # Converter Ticker para string
-        if "Ticker" in df.columns:
-            df["Ticker"] = df["Ticker"].astype(str)
-
-        return df
-    except Exception as e:
-        st.error(f"Erro ao carregar ativos.xlsx: {e}")
-        return pd.DataFrame()
-
-
-def get_selic() -> float:
-    """Le SELIC do selic.json."""
-    try:
-        with open("selic.json", "r") as f:
-            return json.load(f).get("selic", 10.75)
-    except:
-        return 10.75
-
-
-# ==================== PAGINA INICIAL - DASHBOARD ====================
-def pagina_inicial():
-    st.markdown('<div class="main-header">📈 SOBRAL Invest</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Acompanhe em tempo real o mercado da B3</div>', unsafe_allow_html=True)
-
-    # IBOVESPA - TradingView Symbol Overview Widget
-    st.markdown("---")
-
-    tv_ibov = """
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <div class="tradingview-widget-copyright"><a href="https://br.tradingview.com/" rel="noopener nofollow" target="_blank"><span class="blue-text">Track all markets on TradingView</span></a></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
-      {
-        "lineWidth": 2,
-        "lineType": 0,
-        "chartType": "area",
-        "fontColor": "rgb(106, 109, 120)",
-        "gridLineColor": "rgba(242, 242, 242, 0.06)",
-        "volumeUpColor": "rgba(34, 171, 148, 0.5)",
-        "volumeDownColor": "rgba(247, 82, 95, 0.5)",
-        "backgroundColor": "#0F0F0F",
-        "widgetFontColor": "#DBDBDB",
-        "upColor": "#22ab94",
-        "downColor": "#f7525f",
-        "borderUpColor": "#22ab94",
-        "borderDownColor": "#f7525f",
-        "wickUpColor": "#22ab94",
-        "wickDownColor": "#f7525f",
-        "colorTheme": "dark",
-        "isTransparent": true,
-        "locale": "br",
-        "chartOnly": false,
-        "scalePosition": "right",
-        "scaleMode": "Normal",
-        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
-        "valuesTracking": "1",
-        "changeMode": "price-and-percent",
-        "symbols": [
-          [
-            "BMFBOVESPA:IBOV|1D"
-          ]
-        ],
-        "dateRanges": [
-          "1d|1",
-          "1m|30",
-          "3m|60",
-          "12m|1D",
-          "60m|1W",
-          "all|1M"
-        ],
-        "fontSize": "10",
-        "headerFontSize": "medium",
-        "autosize": true,
-        "dateFormat": "dd/MM/yyyy",
-        "width": "960",
-        "height": "400",
-        "noTimeScale": false,
-        "hideDateRanges": false,
-        "hideMarketStatus": false,
-        "hideSymbolLogo": false
-      }
-      </script>
-    </div>
+def parse_mfinance_indicator(ind: Dict) -> Dict[str, Any]:
     """
-    import streamlit.components.v1 as components
-    components.html(tv_ibov, height=410)
+    Extrai valores numéricos dos indicadores do MFinance.
 
-    st.markdown("---")
-
-    # MAIORES ALTAS E BAIXAS - TradingView Hotlists Widget
-    st.markdown("## 📊 Mais Negociadas / Maiores Altas / Maiores Baixas")
-
-    tv_hotlists = """
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-hotlists.js" async>
-      {
-        "exchange": "BMFBOVESPA",
-        "colorTheme": "dark",
-        "dateRange": "1D",
-        "showChart": true,
-        "locale": "br",
-        "largeChartUrl": "",
-        "isTransparent": false,
-        "showSymbolLogo": true,
-        "showFloatingTooltip": true,
-        "plotLineColorGrowing": "rgba(41, 98, 255, 1)",
-        "plotLineColorFalling": "rgba(41, 98, 255, 1)",
-        "gridLineColor": "rgba(240, 243, 250, 0)",
-        "scaleFontColor": "#DBDBDB",
-        "belowLineFillColorGrowing": "rgba(41, 98, 255, 0.12)",
-        "belowLineFillColorFalling": "rgba(41, 98, 255, 0.12)",
-        "belowLineFillColorGrowingBottom": "rgba(41, 98, 255, 0)",
-        "belowLineFillColorFallingBottom": "rgba(41, 98, 255, 0)",
-        "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
-        "width": "960",
-        "height": "550"
-      }
-      </script>
-    </div>
+    CORREÇÃO v2.1:
+    - PL agora usa priceEarningsRatio (P/L = Preço/Lucro)
+    - PVP agora usa priceToBookValue (P/VP = Preço/Valor Patrimonial)
+    - DivLiquida_Ativos = netDebtToAssets (Dívida Líquida / Ativos Totais)
+    - DivLiquida_PL será calculado no app.py (MFinance não tem diretamente)
     """
-    components.html(tv_hotlists, height=560)
+    def get_val(key: str) -> float:
+        obj = ind.get(key)
+        if isinstance(obj, dict):
+            return obj.get("value", 0) or 0
+        return obj or 0
 
-    st.markdown("---")
-
-    # RANKINGS RAPIDOS do ativos.xlsx
-    st.markdown("## 🏆 Rankings Destaque")
-
-    df = load_data()
-    if not df.empty:
-        tabs = st.tabs(["💰 Maior DY", "📉 Menor P/L", "📈 Maior ROE", "🚀 Score CS", "💎 Graham"])
-
-        with tabs[0]:
-            top_dy = df.nlargest(5, "DY")[["Ticker", "Nome", "DY", "Cotacao"]]
-            st.dataframe(top_dy, use_container_width=True, hide_index=True,
-                        column_config={"DY": st.column_config.NumberColumn(format="%.2f%%"),
-                                      "Cotacao": st.column_config.NumberColumn(format="R$ %.2f")})
-
-        with tabs[1]:
-            top_pl = df[df["PL"] > 0].nsmallest(5, "PL")[["Ticker", "Nome", "PL", "Cotacao"]]
-            st.dataframe(top_pl, use_container_width=True, hide_index=True,
-                        column_config={"PL": st.column_config.NumberColumn(format="%.2f"),
-                                      "Cotacao": st.column_config.NumberColumn(format="R$ %.2f")})
-
-        with tabs[2]:
-            top_roe = df.nlargest(5, "ROE")[["Ticker", "Nome", "ROE", "Cotacao"]]
-            st.dataframe(top_roe, use_container_width=True, hide_index=True,
-                        column_config={"ROE": st.column_config.NumberColumn(format="%.2f%%"),
-                                      "Cotacao": st.column_config.NumberColumn(format="R$ %.2f")})
-
-        with tabs[3]:
-            top_score = df.nlargest(5, "Score_CS")[["Ticker", "Nome", "Score_CS", "Score_CS_Classificacao", "Cotacao"]]
-            st.dataframe(top_score, use_container_width=True, hide_index=True,
-                        column_config={"Score_CS": st.column_config.NumberColumn(format="%d/9"),
-                                      "Cotacao": st.column_config.NumberColumn(format="R$ %.2f")})
-
-        with tabs[4]:
-            top_graham = df[df["Upside_Graham"] > 0].nlargest(5, "Upside_Graham")[["Ticker", "Nome", "Graham", "Upside_Graham", "Cotacao"]]
-            st.dataframe(top_graham, use_container_width=True, hide_index=True,
-                        column_config={"Upside_Graham": st.column_config.NumberColumn(format="%.1f%%"),
-                                      "Graham": st.column_config.NumberColumn(format="R$ %.2f"),
-                                      "Cotacao": st.column_config.NumberColumn(format="R$ %.2f")})
-
-
-# ==================== ANÁLISE DE ATIVO ====================
-def pagina_analise():
-    st.markdown('<div class="main-header">🔍 Análise de Ativo</div>', unsafe_allow_html=True)
-
-    df = load_data()
-    if df.empty:
-        st.warning("Nenhum dado disponivel.")
-        return
-
-    ticker = st.selectbox("Selecione o ativo", sorted(df["Ticker"].tolist()))
-
-    if not ticker:
-        return
-
-    ativo = df[df["Ticker"] == ticker].iloc[0]
-
-    # ─── HEADER DO ATIVO ──────────────────────────────────────────────────────
-    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-
-    with col1:
-        st.markdown(f"""
-        <div style="display:flex; align-items:center; gap:15px;">
-            <div style="width:60px; height:60px; background:linear-gradient(135deg, #667eea, #764ba2); 
-                        border-radius:12px; display:flex; align-items:center; justify-content:center; 
-                        color:white; font-size:1.5rem; font-weight:700;">
-                {ticker[:2]}
-            </div>
-            <div>
-                <div style="font-size:1.5rem; font-weight:700;">{ticker}</div>
-                <div style="font-size:0.9rem; color:#666;">{ativo.get('Nome', '')}</div>
-                <div style="font-size:0.8rem; color:#888;">{ativo.get('Setor', '')} › {ativo.get('SubSetor', '')}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.metric("Cotação", f"R$ {ativo.get('Cotacao', 0):.2f}")
-
-    with col3:
-        var = ativo.get("Variacao", 0)
-        delta_color = "normal" if var == 0 else ("inverse" if var < 0 else "normal")
-        st.metric("Variação", f"{var:+.2f}%", delta_color=delta_color)
-
-    with col4:
-        score = int(ativo.get("Score_CS", 0))
-        score_colors = {8: "🟢", 6: "🟡", 4: "🟠", 0: "🔴"}
-        score_emoji = next((v for k, v in sorted(score_colors.items(), reverse=True) if score >= k), "🔴")
-        st.metric("Score CS", f"{score_emoji} {score}/9")
-
-    st.markdown("---")
-
-    # ─── GRÁFICO DO ATIVO (TradingView) ───────────────────────────────────────
-    tv_ativo = f"""
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <div class="tradingview-widget-copyright"><a href="https://br.tradingview.com/" rel="noopener nofollow" target="_blank"><span class="blue-text">Track all markets on TradingView</span></a></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
-      {{
-        "symbols": [
-          ["BMFBOVESPA:{ticker}|1D"]
-        ],
-        "chartOnly": false,
-        "width": "100%",
-        "height": "300",
-        "locale": "br",
-        "colorTheme": "dark",
-        "isTransparent": true,
-        "autosize": true,
-        "showVolume": false,
-        "scalePosition": "right",
-        "scaleMode": "Normal",
-        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
-        "fontSize": "10",
-        "noTimeScale": false,
-        "valuesTracking": "1",
-        "changeMode": "price-and-percent",
-        "chartType": "area",
-        "lineWidth": 2,
-        "lineType": 0,
-        "dateRanges": [
-          "1d|1",
-          "1m|30",
-          "3m|60",
-          "12m|1D",
-          "60m|1W",
-          "all|1M"
-        ]
-      }}
-      </script>
-    </div>
-    """
-    import streamlit.components.v1 as components
-    components.html(tv_ativo, height=310)
-
-    st.markdown("---")
-
-    # ─── PREÇO JUSTO (Graham) ────────────────────────────────────────────────
-    st.subheader("💰 Preço Justo")
-
-    col_g1, col_g2, col_g3 = st.columns(3)
-
-    with col_g1:
-        graham = ativo.get("Graham", 0)
-        upside_g = ativo.get("Upside_Graham", 0)
-        color_g = "#00c853" if upside_g > 0 else "#ff1744" if upside_g < 0 else "#ffab00"
-        st.markdown(f"""
-        <div style="background:#f8f9fa; border-radius:12px; padding:20px; text-align:center;">
-            <div style="font-size:0.9rem; color:#666; margin-bottom:5px;">Graham</div>
-            <div style="font-size:1.8rem; font-weight:700; color:#667eea;">R$ {graham:.2f}</div>
-            <div style="font-size:0.9rem; color:{color_g}; margin-top:5px; font-weight:600;">
-                {f"Upside: {upside_g:+.1f}%" if graham > 0 else "N/A"}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_g2:
-        bazin = ativo.get("Bazin", 0)
-        upside_b = ativo.get("Upside_Bazin", 0)
-        color_b = "#00c853" if upside_b > 0 else "#ff1744" if upside_b < 0 else "#ffab00"
-        st.markdown(f"""
-        <div style="background:#f8f9fa; border-radius:12px; padding:20px; text-align:center;">
-            <div style="font-size:0.9rem; color:#666; margin-bottom:5px;">Bazin (6% DY)</div>
-            <div style="font-size:1.8rem; font-weight:700; color:#667eea;">R$ {bazin:.2f}</div>
-            <div style="font-size:0.9rem; color:{color_b}; margin-top:5px; font-weight:600;">
-                {f"Upside: {upside_b:+.1f}%" if bazin > 0 else "N/A"}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_g3:
-        lynch = ativo.get("Lynch_Preco_Teto", 0)
-        upside_l = ativo.get("Upside_Lynch_Preco_Teto", 0)
-        color_l = "#00c853" if upside_l > 0 else "#ff1744" if upside_l < 0 else "#ffab00"
-        st.markdown(f"""
-        <div style="background:#f8f9fa; border-radius:12px; padding:20px; text-align:center;">
-            <div style="font-size:0.9rem; color:#666; margin-bottom:5px;">Lynch</div>
-            <div style="font-size:1.8rem; font-weight:700; color:#667eea;">R$ {lynch:.2f}</div>
-            <div style="font-size:0.9rem; color:{color_l}; margin-top:5px; font-weight:600;">
-                {f"Upside: {upside_l:+.1f}%" if lynch > 0 else "N/A"}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # ─── INDICADORES PRINCIPAIS ────────────────────────────────────────────────
-    st.subheader("📊 Indicadores Fundamentalistas")
-
-    indicadores = {
-        "P/L": (ativo.get("PL", 0), "x"),
-        "P/VP": (ativo.get("PVP", 0), "x"),
-        "DY": (ativo.get("DY", 0), "%"),
-        "ROE": (ativo.get("ROE", 0), "%"),
-        "ROIC": (ativo.get("ROIC", 0), "%"),
-        "Margem Líquida": (ativo.get("MargemLiquida", 0), "%"),
-        "Margem Bruta": (ativo.get("MargemBruta", 0), "%"),
-        "Margem EBIT": (ativo.get("MargemEBIT", 0), "%"),
-        "EV/EBIT": (ativo.get("EV_EBIT", 0), "x"),
-        "EV/EBITDA": (ativo.get("EV_EBITDA", 0), "x"),
-        "Dívida/PL": (ativo.get("DivLiquida_PL", 0), "x"),
-        "Dívida/EBITDA": (ativo.get("DivLiquida_EBITDA", 0), "x"),
-        "Liquidez Corrente": (ativo.get("LiquidezCorrente", 0), "x"),
-        "VPA": (ativo.get("VPA", 0), "R$"),
-        "LPA": (ativo.get("LPA", 0), "R$"),
-        "P/Ativo": (ativo.get("PAtivo", 0), "x"),
-        "P/EBIT": (ativo.get("PEBIT", 0), "x"),
-        "Giro Ativos": (ativo.get("GiroAtivos", 0), "x"),
-        "CAGR Receitas": (ativo.get("CAGR_Receitas_5a", 0), "%"),
-        "CAGR Lucros": (ativo.get("CAGR_Lucros_5a", 0), "%"),
+    return {
+        "Ticker": ind.get("symbol", ""),
+        # CORRIGIDO: PL = P/L = priceEarningsRatio
+        "PL": get_val("priceEarningsRatio"),
+        # CORRIGIDO: PVP = P/VP = priceToBookValue
+        "PVP": get_val("priceToBookValue"),
+        "PSR": get_val("priceToSalesRatio"),
+        "PAtivo": get_val("priceToAssets"),
+        "PCapGiro": get_val("priceToNetCurrentAssets"),
+        "PAtivoCircLiq": get_val("priceToNetNetWorkingCapital"),
+        "PEBIT": get_val("priceToEbit"),
+        "PEBITDA": get_val("priceToEbitda"),
+        "EV_EBIT": get_val("enterpriseValueEbit"),
+        "EV_EBITDA": get_val("enterpriseValueEbitda"),
+        "LPA": get_val("earningsPerShare"),
+        "VPA": get_val("bookValuePerShare"),
+        "ROE": get_val("returnOnEquity"),
+        "ROA": get_val("returnOnAssets"),
+        "ROIC": get_val("returnOnInvestedCapital"),
+        "GiroAtivos": get_val("assetTurnoverRatio"),
+        "MargemBruta": get_val("grossMargin"),
+        "MargemEBITDA": get_val("ebitdaMargin"),
+        "MargemEBIT": get_val("ebitMargin"),
+        "MargemLiquida": get_val("netMargin"),
+        # RENOMEADO: netDebtToAssets = Dívida/Ativos (não Dívida/PL)
+        "DivLiquida_Ativos": get_val("netDebtToAssets"),
+        "DivLiquida_EBIT": get_val("netDebtToEbit"),
+        "DivLiquida_EBITDA": get_val("netDebtToEbitda"),
+        "LiquidezCorrente": get_val("currentLiquidity"),
+        "Passivos_Ativos": get_val("liabilitiesToAssetsRatio"),
+        "PL_Ativos": get_val("equityToAssetsRatio"),
+        "CAGR_Receitas_5a": get_val("cagrRecipesFiveYears"),
+        "CAGR_Lucros_5a": get_val("cagrProfitsFiveYears"),
     }
 
-    cols = st.columns(5)
-    idx = 0
-    for nome, (valor, unidade) in indicadores.items():
-        if valor != 0 or nome in ["P/L", "P/VP", "DY", "ROE"]:
-            with cols[idx % 5]:
-                suffix = f"{unidade}" if unidade != "R$" else ""
-                prefix = "R$ " if unidade == "R$" else ""
-                st.markdown(f"""
-                <div style="background:#f8f9fa; border-radius:10px; padding:12px; text-align:center; margin:3px 0;">
-                    <div style="font-size:0.75rem; color:#888;">{nome}</div>
-                    <div style="font-size:1.1rem; font-weight:700; color:#1a1a2e;">
-                        {prefix}{valor:.2f}{suffix}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-            idx += 1
 
-    st.markdown("---")
+def parse_mfinance_dividends(div_data: Dict) -> Dict[str, Any]:
+    """Calcula métricas de dividendos a partir da lista de dividendos."""
+    dividends = div_data.get("dividends", [])
+    symbol = div_data.get("symbol", "")
 
-    # ─── CHECKLIST SCORE CS ──────────────────────────────────────────────────
-    st.subheader("✅ Checklist Score CS (Carlos Sobral)")
-
-    criterios = [
-        ("ROE > 15%", ativo.get("ROE_15pct", 0) == 1, f"{ativo.get('ROE', 0):.2f}%"),
-        ("DY > 3%", ativo.get("DY_3pct", 0) == 1, f"{ativo.get('DY', 0):.2f}%"),
-        ("Dívida/PL < 0.5", ativo.get("DivPL_0_5", 0) == 1, f"{ativo.get('DivLiquida_PL', 0):.2f}"),
-        ("P/L < 15", ativo.get("PL_15", 0) == 1, f"{ativo.get('PL', 0):.2f}"),
-        ("P/VP < 2", ativo.get("PVP_2", 0) == 1, f"{ativo.get('PVP', 0):.2f}"),
-        ("Margem Líquida > 10%", ativo.get("Margem_10pct", 0) == 1, f"{ativo.get('MargemLiquida', 0):.2f}%"),
-        ("Liquidez Corrente > 1", ativo.get("LiqCorrente_1", 0) == 1, f"{ativo.get('LiquidezCorrente', 0):.2f}"),
-        ("CAGR Lucros > 5%", ativo.get("CAGR_5pct", 0) == 1, f"{ativo.get('CAGR_Lucros_5a', 0):.2f}%"),
-        ("ROIC > 10%", ativo.get("ROIC_10pct", 0) == 1, f"{ativo.get('ROIC', 0):.2f}%"),
-    ]
-
-    col1, col2 = st.columns(2)
-    for i, (criterio, passou, valor) in enumerate(criterios):
-        with col1 if i < 5 else col2:
-            status = "✅ PASSOU" if passou else "❌ NÃO PASSOU"
-            cor = "#e8f5e9" if passou else "#ffebee"
-            cor_borda = "#00c853" if passou else "#ff1744"
-            st.markdown(f"""
-            <div style="background:{cor}; border-left:4px solid {cor_borda}; border-radius:8px; 
-                        padding:10px 15px; margin:5px 0; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <div style="font-weight:600; font-size:0.9rem;">{criterio}</div>
-                    <div style="font-size:0.8rem; color:#666;">Valor atual: {valor}</div>
-                </div>
-                <div style="font-weight:700; font-size:0.85rem; color:{cor_borda};">{status}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # ─── RADAR DE INDICADORES ────────────────────────────────────────────────
-    st.subheader("🎯 Radar de Indicadores")
-
-    radar_metrics = {
-        "ROE": min(ativo.get("ROE", 0) / 30 * 100, 100),
-        "DY": min(ativo.get("DY", 0) / 10 * 100, 100),
-        "Margem Líq.": min(ativo.get("MargemLiquida", 0) / 20 * 100, 100),
-        "ROIC": min(ativo.get("ROIC", 0) / 20 * 100, 100),
-        "Liquidez": min(ativo.get("LiquidezCorrente", 0) / 2 * 100, 100),
-    }
-
-    fig_radar = go.Figure()
-    fig_radar.add_trace(go.Scatterpolar(
-        r=list(radar_metrics.values()) + [list(radar_metrics.values())[0]],
-        theta=list(radar_metrics.keys()) + [list(radar_metrics.keys())[0]],
-        fill="toself",
-        fillcolor="rgba(102, 126, 234, 0.3)",
-        line=dict(color="#667eea", width=2),
-        name=ticker
-    ))
-    fig_radar.add_trace(go.Scatterpolar(
-        r=[100, 100, 100, 100, 100, 100],
-        theta=list(radar_metrics.keys()) + [list(radar_metrics.keys())[0]],
-        line=dict(color="#ccc", width=1, dash="dash"),
-        name="Referência"
-    ))
-    fig_radar.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-        showlegend=True,
-        height=400
-    )
-    st.plotly_chart(fig_radar, use_container_width=True)
-
-    st.markdown("---")
-
-    # ─── TABELA COMPLETA DE VALUATION ────────────────────────────────────────
-    st.subheader("📋 Valuation Completo")
-
-    valuation_data = {
-        "Método": ["Graham", "Graham BR", "Bazin", "Lynch", "AGF"],
-        "Preço Alvo": [
-            ativo.get("Graham", 0),
-            ativo.get("Graham_BR", 0),
-            ativo.get("Bazin", 0),
-            ativo.get("Lynch_Preco_Teto", 0),
-            ativo.get("AGF", 0),
-        ],
-        "Upside": [
-            ativo.get("Upside_Graham", 0),
-            ativo.get("Upside_Graham_BR", 0),
-            ativo.get("Upside_Bazin", 0),
-            ativo.get("Upside_Lynch_Preco_Teto", 0),
-            ativo.get("Upside_AGF", 0),
-        ]
-    }
-    df_val = pd.DataFrame(valuation_data)
-    df_val["Preço Alvo"] = df_val["Preço Alvo"].apply(lambda x: f"R$ {x:.2f}" if x > 0 else "N/A")
-    df_val["Upside"] = df_val["Upside"].apply(lambda x: f"{x:+.1f}%" if x != 0 else "N/A")
-    st.dataframe(df_val, use_container_width=True, hide_index=True)
-
-
-# ==================== RANKINGS ====================
-def pagina_rankings():
-    st.markdown('<div class="main-header">🏆 Rankings</div>', unsafe_allow_html=True)
-
-    df = load_data()
-    if df.empty:
-        st.warning("Nenhum dado disponivel.")
-        return
-
-    ranking_tipo = st.selectbox(
-        "Tipo de Ranking",
-        ["🏆 Score CS", "💰 Maior DY", "📉 Menor P/L", "📈 Maior ROE", "🚀 Maior Upside (Graham)",
-         "💵 Maior Upside (Bazin)", "📊 Maior Margem Liquida", "🔥 Maior ROIC"]
-    )
-
-    n = st.slider("Quantidade", 5, 50, 20)
-
-    mapping = {
-        "🏆 Score CS": ("Score_CS", False),
-        "💰 Maior DY": ("DY", False),
-        "📉 Menor P/L": ("PL", True),
-        "📈 Maior ROE": ("ROE", False),
-        "🚀 Maior Upside (Graham)": ("Upside_Graham", False),
-        "💵 Maior Upside (Bazin)": ("Upside_Bazin", False),
-        "📊 Maior Margem Liquida": ("MargemLiquida", False),
-        "🔥 Maior ROIC": ("ROIC", False),
-    }
-
-    col, asc = mapping.get(ranking_tipo, ("Score_CS", False))
-
-    df_rank = df[df[col] > 0].copy() if col not in ["PL", "PVP"] else df[df[col] > 0].copy()
-    top = df_rank.nsmallest(n, col) if asc else df_rank.nlargest(n, col)
-
-    cols_display = ["Ticker", "Nome", "Setor", col, "Cotacao", "Score_CS", "Score_CS_Classificacao"]
-    cols_display = [c for c in cols_display if c in top.columns]
-
-    st.dataframe(
-        top[cols_display],
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Cotacao": st.column_config.NumberColumn(format="R$ %.2f"),
-            col: st.column_config.NumberColumn(format="%.2f"),
-            "Score_CS": st.column_config.NumberColumn(format="%d/9"),
+    if not dividends:
+        return {
+            "Ticker": symbol,
+            "DY_12m": 0,
+            "Dividendo_Medio_12m": 0,
+            "Dividendo_Total_12m": 0,
+            "Dividendo_Ultimo": 0,
+            "Qtd_Dividendos_12m": 0,
         }
-    )
 
-    fig = px.bar(
-        top,
-        x="Ticker",
-        y=col,
-        color="Score_CS_Classificacao",
-        color_discrete_map={
-            "Excelente": "#00cc00",
-            "Bom": "#66cc00",
-            "Regular": "#ffcc00",
-            "Fraco": "#ff6600",
-            "Pessimo": "#ff0000",
-        },
-        title=f"Top {n} - {ranking_tipo}"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    valid_divs = [d for d in dividends if d.get("date") is not None]
 
-
-# ==================== COMPARATIVO ====================
-def pagina_comparativo():
-    st.markdown('<div class="main-header">📈 Comparativo de Ativos</div>', unsafe_allow_html=True)
-
-    df = load_data()
-    if df.empty:
-        st.warning("Nenhum dado disponivel.")
-        return
-
-    tickers = st.multiselect(
-        "Selecione ate 5 ativos",
-        sorted(df["Ticker"].tolist()),
-        max_selections=5,
-        default=sorted(df["Ticker"].tolist())[:3] if len(df) >= 3 else []
-    )
-
-    if not tickers:
-        st.info("Selecione ativos para comparar.")
-        return
-
-    df_comp = df[df["Ticker"].isin(tickers)].copy()
-
-    metrics = ["Cotacao", "PL", "PVP", "DY", "ROE", "ROIC", "MargemLiquida", "Score_CS"]
-    metrics = [m for m in metrics if m in df_comp.columns]
-
-    comp_table = df_comp.set_index("Ticker")[metrics].T
-    st.dataframe(comp_table, use_container_width=True)
-
-    metric_comp = st.selectbox("Metrica para comparar", metrics)
-
-    fig = px.bar(
-        df_comp,
-        x="Ticker",
-        y=metric_comp,
-        color="Score_CS_Classificacao",
-        color_discrete_map={
-            "Excelente": "#00cc00",
-            "Bom": "#66cc00",
-            "Regular": "#ffcc00",
-            "Fraco": "#ff6600",
-            "Pessimo": "#ff0000",
+    if not valid_divs:
+        return {
+            "Ticker": symbol,
+            "DY_12m": 0,
+            "Dividendo_Medio_12m": 0,
+            "Dividendo_Total_12m": 0,
+            "Dividendo_Ultimo": 0,
+            "Qtd_Dividendos_12m": 0,
         }
-    )
-    st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("🎯 Radar Comparativo")
+    sorted_divs = sorted(valid_divs, key=lambda x: x.get("date", ""), reverse=True)
+    recent = sorted_divs[:4]
 
-    radar_cols = ["ROE", "DY", "MargemLiquida", "ROIC", "LiquidezCorrente"]
-    radar_cols = [c for c in radar_cols if c in df_comp.columns]
+    total_12m = sum(d.get("value", 0) for d in recent)
+    avg_12m = total_12m / len(recent) if recent else 0
+    ultimo = sorted_divs[0].get("value", 0) if sorted_divs else 0
 
-    fig_radar = go.Figure()
-    for _, row in df_comp.iterrows():
-        values = [min(row.get(c, 0) / 30 * 100, 100) for c in radar_cols]
-        values += [values[0]]
-        fig_radar.add_trace(go.Scatterpolar(
-            r=values,
-            theta=radar_cols + [radar_cols[0]],
-            fill='toself',
-            name=row["Ticker"]
-        ))
-
-    fig_radar.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-        height=500
-    )
-    st.plotly_chart(fig_radar, use_container_width=True)
+    return {
+        "Ticker": symbol,
+        "DY_12m": 0,
+        "Dividendo_Medio_12m": round(avg_12m, 4),
+        "Dividendo_Total_12m": round(total_12m, 4),
+        "Dividendo_Ultimo": round(ultimo, 4),
+        "Qtd_Dividendos_12m": len(recent),
+    }
 
 
-# ==================== CONFIGURACOES ====================
-def pagina_configuracoes():
-    st.markdown('<div class="main-header">⚙️ Configuracoes</div>', unsafe_allow_html=True)
+def merge_mfinance_data(
+    stocks: List[Dict],
+    indicators: List[Dict],
+    dividends_map: Dict[str, Dict]
+) -> List[Dict[str, Any]]:
+    """Mescla dados básicos + indicadores + dividendos em registros únicos."""
+    stock_map = {s.get("symbol", ""): s for s in stocks}
+    ind_map = {i.get("symbol", ""): i for i in indicators}
 
-    st.subheader("📁 Dados")
+    all_tickers = set(stock_map.keys()) | set(ind_map.keys())
 
-    if os.path.exists("ativos.xlsx"):
-        import os as os_mod
-        size = os_mod.path.getsize("ativos.xlsx")
-        st.write(f"**ativos.xlsx:** {size/1024:.1f} KB")
+    result = []
+    for ticker in sorted(all_tickers):
+        stock = stock_map.get(ticker, {})
+        ind = ind_map.get(ticker, {})
+        div = dividends_map.get(ticker, {"Ticker": ticker, "DY_12m": 0, "Dividendo_Medio_12m": 0,
+                                         "Dividendo_Total_12m": 0, "Dividendo_Ultimo": 0,
+                                         "Qtd_Dividendos_12m": 0})
 
-        df = load_data()
-        if not df.empty:
-            st.write(f"**Ativos:** {len(df)}")
-            st.write(f"**Colunas:** {len(df.columns)}")
-            st.write(f"**Ultima atualizacao:** {pd.Timestamp.now().strftime('%d/%m/%Y %H:%M')}")
-    else:
-        st.warning("ativos.xlsx nao encontrado.")
+        parsed_stock = parse_mfinance_stock(stock)
+        parsed_ind = parse_mfinance_indicator(ind)
 
-    st.markdown("---")
+        merged = {**parsed_ind, **parsed_stock}
 
-    st.subheader("🔧 Parametros de Valuation")
-    selic = get_selic()
-    st.write(f"**SELIC atual:** {selic}%")
-    st.write("**Minimo DY Bazin:** 6%")
-    st.write("**Multiplicador Graham BR:** 1/SELIC")
-    st.write("**Threshold Score CS:** 8=Excelente, 6=Bom, 4=Regular, 2=Fraco, 0=Pessimo")
+        merged["DY_12m"] = div.get("DY_12m", 0)
+        merged["Dividendo_Medio_12m"] = div.get("Dividendo_Medio_12m", 0)
+        merged["Dividendo_Total_12m"] = div.get("Dividendo_Total_12m", 0)
+        merged["Dividendo_Ultimo"] = div.get("Dividendo_Ultimo", 0)
+        merged["Qtd_Dividendos_12m"] = div.get("Qtd_Dividendos_12m", 0)
 
+        cotacao = merged.get("Cotacao", 0)
+        div_total = merged.get("Dividendo_Total_12m", 0)
+        if cotacao > 0 and div_total > 0:
+            merged["DY_12m"] = round((div_total / cotacao) * 100, 2)
 
-# ==================== MAIN ====================
-def main():
-    with st.sidebar:
-        st.image("https://img.icons8.com/color/96/stocks.png", width=60)
-        st.title("SOBRAL Invest")
-        st.markdown("---")
+        result.append(merged)
 
-        menu = st.radio(
-            "Navegacao",
-            ["🏠 Dashboard", "🔍 Analise de Ativo", "📊 Rankings", "📈 Comparativo", "⚙️ Configuracoes"]
-        )
-
-        st.markdown("---")
-        st.markdown("**Dados:** `ativos.xlsx`")
-        st.markdown("**Fonte:** MFinance + BRAPI")
-
-        selic = get_selic()
-        st.markdown(f"**SELIC:** {selic}% a.a.")
-
-    if menu == "🏠 Dashboard":
-        pagina_inicial()
-    elif menu == "🔍 Analise de Ativo":
-        pagina_analise()
-    elif menu == "📊 Rankings":
-        pagina_rankings()
-    elif menu == "📈 Comparativo":
-        pagina_comparativo()
-    elif menu == "⚙️ Configuracoes":
-        pagina_configuracoes()
-
-
-if __name__ == "__main__":
-    main()
+    return result
