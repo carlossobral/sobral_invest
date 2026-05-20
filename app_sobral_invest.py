@@ -232,6 +232,64 @@ def pagina_analise():
     """Pagina de analise de ativo estilo Investidor10 - Layout v2.0 Cards."""
 
     # CSS customizado para esta pagina
+    # Dicionário de descrições para tooltips
+    TOOLTIP_DESC = {
+        "P/L (PL)": "Preço / Lucro. Indica quantos anos de lucro seriam necessários para pagar o preço da ação. Quanto menor, mais barata.",
+        "P/VP (PVP)": "Preço / Valor Patrimonial. Mostra se a ação está negociando acima ou abaixo do valor contábil. < 1 = abaixo do patrimônio.",
+        "P/E (PE)": "Price / Earnings Ratio. Versão americana do P/L. Mesma interpretação: quanto menor, mais barata.",
+        "EPS": "Earnings Per Share. Lucro líquido dividido pelo número de ações. Quanto maior, mais lucrativa a empresa por ação.",
+        "PSR (P/Receita)": "Preço / Receita. Útil para empresas que ainda não têm lucro. < 1 é considerado atraente.",
+        "P/Ativo": "Preço / Ativo Total. Indica quanto o mercado paga pelos ativos da empresa. Útil para holdings.",
+        "P/Cap.Giro": "Preço / Capital de Giro. Mede a relação entre preço e o capital de giro da empresa.",
+        "P/Ativo Circ. Líq.": "Preço / Ativo Circulante Líquido. Negativo pode indicar empresa com mais caixa que dívidas de curto prazo.",
+        "P/EBIT": "Preço / EBIT. Valuation baseado no lucro operacional antes de juros e impostos.",
+        "P/EBITDA": "Preço / EBITDA. Elimina efeitos de depreciação. Útil para comparar empresas de setores diferentes.",
+        "EV/EBIT": "Enterprise Value / EBIT. Considera dívida líquida. Melhor que P/EBIT para comparar empresas alavancadas.",
+        "EV/EBITDA": "EV / EBITDA. O valuation mais completo: considera dívida, depreciação e lucro operacional.",
+        "ROE": "Return on Equity. Retorno sobre o Patrimônio Líquido. > 15% é excelente. Mede eficiência na geração de lucro.",
+        "ROA": "Return on Assets. Retorno sobre Ativos. Mede eficiência total da empresa em gerar lucro com todos os recursos.",
+        "ROIC": "Return on Invested Capital. Retorno sobre Capital Investido. > 10% é bom. Considera dívida + patrimônio.",
+        "Giro Ativos": "Receita / Ativos Totais. Mede quantas vezes a empresa 'gira' seus ativos em receita no ano.",
+        "Margem Bruta": "(Receita - CMV) / Receita. Lucro antes de despesas operacionais. > 30% é bom para maioria dos setores.",
+        "Margem EBITDA": "EBITDA / Receita. Lucro operacional antes de depreciação. Mostra eficiência operacional pura.",
+        "Margem EBIT": "EBIT / Receita. Lucro operacional. > 10% indica empresa com bom controle de custos.",
+        "Margem Líquida": "Lucro Líquido / Receita. Lucro final após todas as despesas e impostos. > 5% é saudável.",
+        "Dív.Líq / Ativos": "Dívida Líquida / Ativos. < 0.5 indica empresa com pouca alavancagem financeira.",
+        "Dív.Líq / PL": "Dívida Líquida / Patrimônio. < 1 é ideal: patrimônio maior que dívida.",
+        "Dív.Líq / EBIT": "Dívida Líquida / EBIT. Indica quantos anos de lucro operacional levaria para quitar dívidas. < 3 é bom.",
+        "Dív.Líq / EBITDA": "Dívida Líquida / EBITDA. < 2.5 é considerado saudável pelo Score CS. Principal indicador de endividamento.",
+        "Liquidez Corrente": "Ativo Circulante / Passivo Circulante. > 1 indica capacidade de pagar dívidas de curto prazo.",
+        "Passivos / Ativos": "Passivo Total / Ativo Total. < 0.7 indica estrutura de capital conservadora.",
+        "PL / Ativos": "Patrimônio / Ativos. Quanto maior, mais capital próprio a empresa tem vs. capital de terceiros.",
+        "LPA": "Lucro Por Ação. Lucro líquido dividido por número de ações. Base para cálculo do P/L.",
+        "VPA": "Valor Patrimonial Por Ação. Patrimônio líquido dividido por ações. Base para cálculo do P/VP.",
+        "Patrimônio Líq.": "Patrimônio Líquido total da empresa. Ativos - Passivos. Representa o valor contábil.",
+        "Lucro Líquido": "Lucro após todas as despesas, impostos e juros. O resultado final para acionistas.",
+        "EBIT": "Earnings Before Interest and Taxes. Lucro operacional antes de juros e impostos. Mede eficiência do negócio.",
+        "Receita Líq.": "Receita Líquida total. Faturamento bruto menos impostos, devoluções e descontos.",
+        "CAGR Receitas 5a": "Compound Annual Growth Rate de Receitas. Taxa média anual de crescimento nos últimos 5 anos.",
+        "CAGR Lucros 5a": "CAGR de Lucros. Taxa média anual de crescimento do lucro nos últimos 5 anos. > 5% é positivo.",
+        "Qtd. de Ações": "Número total de ações emitidas pela empresa. Usado para calcular LPA, VPA e EPS.",
+        "DY Atual": "Dividend Yield dos últimos 12 meses. Dividendos pagos / Preço atual. > 6% é atrativo para renda.",
+        "DY 12 meses": "Dividend Yield médio dos últimos 12 meses. Média histórica mais estável que o DY atual.",
+        "Div. Médio 12m": "Média dos dividendos pagos nos últimos 12 meses. Indica previsibilidade de renda.",
+        "Div. Total 12m": "Soma total dos dividendos pagos nos últimos 12 meses. Útil para projeção anual.",
+        "Div. Último": "Valor do último dividendo pago. Útil para identificar tendência de aumento ou redução.",
+        "Qtd. Div. 12m": "Quantidade de pagamentos de dividendos no ano. Mensal = 12, trimestral = 4, semestral = 2.",
+        "Div. Médio 6a": "Média dos dividendos dos últimos 6 anos. Indica consistência histórica de pagamentos.",
+        "Graham": "Preço Justo por Graham: √(22.5 × VPA × LPA). Fórmula clássica de Benjamin Graham para valor intrínseco.",
+        "Graham BR": "Preço Justo Graham ajustado para Brasil. Considera peculiaridades do mercado brasileiro.",
+        "Bazin": "Preço Justo por Bazin: Dividendo Médio / 0.06. Baseado em DY de 6% (teto de Bazin para compra).",
+        "Lynch": "Preço Justo por Lynch: PEG Ratio. Relaciona crescimento com valuation. < 1 indica subvalorizada.",
+        "AGF Médio": "Preço Justo Médio das 4 fórmulas (Graham, Graham_BR, Bazin, Lynch). Consenso de valuation.",
+    }
+
+    def tooltip_html(label_text):
+        desc = TOOLTIP_DESC.get(label_text, "")
+        if desc:
+            return f'<span class="tooltip-container"><span class="tooltip-icon">?</span><span class="tooltip-text">{desc}</span></span>'
+        return ""
+
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -475,6 +533,69 @@ def pagina_analise():
         text-align: right;
         margin-top: 4px;
     }
+
+    /* Tooltip customizado */
+    .tooltip-container {
+        position: relative;
+        display: inline-block;
+    }
+
+    .tooltip-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #475569;
+        color: #f1f5f9;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: help;
+        margin-left: 6px;
+        transition: all 0.2s ease;
+    }
+
+    .tooltip-icon:hover {
+        background: #3b82f6;
+    }
+
+    .tooltip-text {
+        visibility: hidden;
+        width: 280px;
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #475569;
+        color: #e2e8f0;
+        text-align: left;
+        border-radius: 10px;
+        padding: 12px 14px;
+        position: absolute;
+        z-index: 1000;
+        bottom: 125%;
+        left: 50%;
+        margin-left: -140px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        font-size: 0.8rem;
+        line-height: 1.4;
+        box-shadow: 0 10px 15px rgba(0,0,0,0.3);
+    }
+
+    .tooltip-text::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -5px;
+        border-width: 5px;
+        border-style: solid;
+        border-color: #475569 transparent transparent transparent;
+    }
+
+    .tooltip-container:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -556,55 +677,56 @@ def pagina_analise():
     components.html(tv_chart, height=360)
 
     # ============================================================
-    # 2. SCORE CS + CHECKLIST COMPACTO
+    # 2. WIDGET TRADINGVIEW DO ATIVO
     # ============================================================
-    st.markdown('<div class="section-title-v2">🎯 Score CS</div>', unsafe_allow_html=True)
+    st.markdown("<div style='margin: 16px 0;'></div>", unsafe_allow_html=True)
 
-    score = int(ativo.get('Score_CS', 0))
-    if score >= 7:
-        score_color, score_bg, score_label = "#10b981", "#065f46", "Excelente"
-    elif score >= 4:
-        score_color, score_bg, score_label = "#f59e0b", "#92400e", "Bom"
-    else:
-        score_color, score_bg, score_label = "#ef4444", "#991b1b", "Fraco"
-
-    col_score, col_check = st.columns([1, 2])
-
-    with col_score:
-        st.markdown(f"""
-        <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
-            <div class="score-number-v2" style="color: {score_color};">{score}</div>
-            <div class="score-label-v2" style="color: {score_color};">{score_label}</div>
-            <div class="score-desc-v2">de 10 pontos</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_check:
-        checklist_items = [
-            ("ROE > 10%", ativo.get('ROE_10pct', 0)),
-            ("DY > 6%", ativo.get('DY_6pct', 0)),
-            ("Dív.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0)),
-            ("PL < 15", ativo.get('PL_15', 0)),
-            ("PVP < 2", ativo.get('PVP_2', 0)),
-            ("Margem > 10%", ativo.get('Margem_10pct', 0)),
-            ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0)),
-            ("CAGR > 5%", ativo.get('CAGR_5pct', 0)),
-            ("ROIC > 10%", ativo.get('ROIC_10pct', 0)),
-            ("Volume > 1M", ativo.get('Volume_1M', 0)),
+    tv_symbol = f"BMFBOVESPA:{ticker}"
+    tv_chart = f"""
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
+      {{
+        "symbols": [
+          ["{tv_symbol}|1D"]
+        ],
+        "chartOnly": false,
+        "width": "100%",
+        "height": "350",
+        "locale": "br",
+        "colorTheme": "dark",
+        "autosize": false,
+        "showVolume": true,
+        "showMA": false,
+        "hideDateRanges": false,
+        "hideMarketStatus": false,
+        "hideSymbolLogo": false,
+        "scalePosition": "right",
+        "scaleMode": "Normal",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
+        "fontSize": "10",
+        "noTimeScale": false,
+        "valuesTracking": "1",
+        "changeMode": "price-and-percent",
+        "chartType": "area",
+        "maLineColor": "#2962FF",
+        "maLineWidth": 1,
+        "maLength": 9,
+        "lineWidth": 2,
+        "lineType": 0,
+        "dateRanges": [
+          "1d|1",
+          "1m|30",
+          "3m|60",
+          "12m|1D",
+          "60m|1W",
+          "all|1M"
         ]
-
-        cols_check = st.columns(3)
-        for i, (label, value) in enumerate(checklist_items):
-            is_true = bool(value) if not pd.isna(value) else False
-            icon = "✓" if is_true else "✗"
-            bg_color = "#10b981" if is_true else "#ef4444"
-
-            cols_check[i % 3].markdown(f"""
-            <div class="checklist-item-v2">
-                <div class="checklist-icon-v2" style="background: {bg_color};">{icon}</div>
-                <div class="checklist-text-v2">{label}</div>
-            </div>
-            """, unsafe_allow_html=True)
+      }}
+      </script>
+    </div>
+    """
+    components.html(tv_chart, height=360)
 
     # ============================================================
     # 3. VALUATION - 6 colunas x 2 linhas
@@ -634,7 +756,7 @@ def pagina_analise():
                 label, value = valuation_data[idx]
                 cols[col_idx].markdown(f"""
                 <div class="metric-card-v2">
-                    <div class="metric-label-v2">{label}</div>
+                    <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
                     <div class="metric-value-v2">{value}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -663,7 +785,7 @@ def pagina_analise():
                 label, value = rent_data[idx]
                 cols[col_idx].markdown(f"""
                 <div class="metric-card-v2">
-                    <div class="metric-label-v2">{label}</div>
+                    <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
                     <div class="metric-value-v2">{value}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -691,7 +813,7 @@ def pagina_analise():
                 label, value = endiv_data[idx]
                 cols[col_idx].markdown(f"""
                 <div class="metric-card-v2">
-                    <div class="metric-label-v2">{label}</div>
+                    <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
                     <div class="metric-value-v2">{value}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -714,7 +836,7 @@ def pagina_analise():
     for i, (label, value) in enumerate(res_data):
         cols_res[i].markdown(f"""
         <div class="metric-card-v2">
-            <div class="metric-label-v2">{label}</div>
+            <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
             <div class="metric-value-v2">{value}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -734,7 +856,7 @@ def pagina_analise():
     for i, (label, value) in enumerate(cresc_data):
         cols_cresc[i].markdown(f"""
         <div class="metric-card-v2">
-            <div class="metric-label-v2">{label}</div>
+            <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
             <div class="metric-value-v2">{value}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -758,7 +880,7 @@ def pagina_analise():
     for i, (label, value) in enumerate(div_data):
         cols_div[i].markdown(f"""
         <div class="metric-card-v2">
-            <div class="metric-label-v2">{label}</div>
+            <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
             <div class="metric-value-v2">{value}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -802,22 +924,52 @@ def pagina_analise():
         """, unsafe_allow_html=True)
 
     # ============================================================
-    # 10. CHECKLIST BUY & HOLD - Cards melhorados
+    # 10. SCORE CS
     # ============================================================
-    st.markdown('<div class="section-title-v2">✅ Checklist Buy & Hold</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">🎯 SCORE CS</div>', unsafe_allow_html=True)
 
-    bh_items = [
-        ("ROE > 10%", ativo.get('ROE_10pct', 0), "Rentabilidade do patrimônio"),
-        ("DY > 6%", ativo.get('DY_6pct', 0), "Dividend Yield atrativo"),
-        ("Dív.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0), "Endividamento controlado"),
-        ("PL < 15", ativo.get('PL_15', 0), "Preço não está caro"),
-        ("PVP < 2", ativo.get('PVP_2', 0), "Próximo do valor patrimonial"),
-        ("Margem > 10%", ativo.get('Margem_10pct', 0), "Lucratividade saudável"),
-        ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0), "Capacidade de pagamento"),
-        ("CAGR > 5%", ativo.get('CAGR_5pct', 0), "Crescimento consistente"),
-        ("ROIC > 10%", ativo.get('ROIC_10pct', 0), "Retorno sobre capital"),
-        ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diária"),
-    ]
+    score = int(ativo.get('Score_CS', 0))
+    if score >= 9:
+        score_color, score_bg, score_label = "#10b981", "#065f46", "Excelente"
+    elif score >= 7:
+        score_color, score_bg, score_label = "#84cc16", "#3f6212", "Bom"
+    elif score >= 5:
+        score_color, score_bg, score_label = "#f59e0b", "#92400e", "Regular"
+    elif score >= 3:
+        score_color, score_bg, score_label = "#f97316", "#7c2d12", "Fraco"
+    else:
+        score_color, score_bg, score_label = "#dc2626", "#7f1d1d", "Pessimo"
+
+    # Card do Score
+    col_score, col_info = st.columns([1, 3])
+    with col_score:
+        st.markdown(f"""
+        <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
+            <div class="score-number-v2" style="color: {score_color};">{score}</div>
+            <div class="score-label-v2" style="color: {score_color};">{score_label}</div>
+            <div class="score-desc-v2">de 10 pontos</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_info:
+        st.markdown(f"""
+        <div style="background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); 
+                    border: 1px solid #334155; 
+                    border-radius: 12px; 
+                    padding: 16px; 
+                    height: 100%;
+                    display: flex;
+                    align-items: center;">
+            <div style="color: #94a3b8; font-size: 0.9rem; line-height: 1.5;">
+                <strong style="color: #f1f5f9;">Score CS (Carlos Sobral)</strong><br>
+                Avaliação fundamentalista baseada em 10 critérios de qualidade. 
+                Cada critério aprovado adiciona 1 ponto à pontuação final.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Cards dos critérios
+    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
 
     cols_bh = st.columns(5)
     for i, (title, value, desc) in enumerate(bh_items):
@@ -835,9 +987,136 @@ def pagina_analise():
         """, unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def pagina_rankings():
+    """Pagina de rankings."""
+    st.markdown('<h1 class="main-header">🏆 Rankings</h1>', unsafe_allow_html=True)
+
+    df = load_data()
+    if df.empty:
+        st.warning("Dados nao disponiveis.")
+        return
+
+    categorias = {
+        "Score CS": "Score_CS",
+        "Dividend Yield": "DY",
+        "P/L (menor)": "PL",
+        "ROE": "ROE",
+        "ROIC": "ROIC",
+        "Margem Liquida": "MargemLiquida",
+        "Graham Upside": "Upside_Graham",
+        "Bazin Upside": "Upside_Bazin",
+    }
+
+    categoria = st.selectbox("Categoria", list(categorias.keys()))
+    col = categorias[categoria]
+
+    if categoria in ["P/L (menor)", "Score CS"]:
+        top = df.nsmallest(20, col) if categoria == "P/L (menor)" else df.nlargest(20, col)
+    else:
+        top = df.nlargest(20, col)
+
+    st.dataframe(top[["Ticker", "Nome", "Setor", col]], hide_index=True, use_container_width=True)
+
+
+def pagina_comparativo():
+    """Pagina de comparativo de ativos."""
+    st.markdown('<h1 class="main-header">📊 Comparativo</h1>', unsafe_allow_html=True)
+
+    df = load_data()
+    if df.empty:
+        st.warning("Dados nao disponiveis.")
+        return
+
+    tickers = st.multiselect("Selecione ate 5 ativos", sorted(df["Ticker"].tolist()), max_selections=5)
+    if len(tickers) < 2:
+        st.info("Selecione pelo menos 2 ativos para comparar.")
+        return
+
+    selecionados = df[df["Ticker"].isin(tickers)]
+
+    # Radar comparativo
+    categorias = ["ROE", "DY", "Margem Liquida", "ROIC", "CAGR Lucros"]
+    fig = go.Figure()
+
+    for _, row in selecionados.iterrows():
+        valores = [
+            min(row.get("ROE", 0) / 30 * 100, 100),
+            min(row.get("DY", 0) / 10 * 100, 100),
+            min(row.get("MargemLiquida", 0) / 20 * 100, 100),
+            min(row.get("ROIC", 0) / 20 * 100, 100),
+            min(row.get("CAGR_Lucros_5a", 0) / 15 * 100, 100),
+        ]
+        fig.add_trace(go.Scatterpolar(
+            r=valores + [valores[0]],
+            theta=categorias + [categorias[0]],
+            fill='toself',
+            name=row['Ticker']
+        ))
+
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=True,
+        height=500
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Tabela comparativa
+    st.subheader("📋 Tabela Comparativa")
+    cols_comp = ["Ticker", "Nome", "Cotacao", "DY", "PL", "PVP", "ROE", "ROIC", "MargemLiquida", "Score_CS"]
+    st.dataframe(selecionados[[c for c in cols_comp if c in selecionados.columns]], hide_index=True, use_container_width=True)
+
+
+def pagina_configuracoes():
+    """Pagina de configuracoes."""
+    st.markdown('<h1 class="main-header">⚙️ Configuracoes</h1>', unsafe_allow_html=True)
+
+    df = load_data()
+    if df.empty:
+        st.warning("Dados nao disponiveis.")
+        return
+
+    st.subheader("📊 Estatisticas Gerais")
+    st.metric("Total de Ativos", len(df))
+    st.metric("Score CS Medio", round(df["Score_CS"].mean(), 1))
+    st.metric("Score CS Maximo", int(df["Score_CS"].max()))
+    st.metric("Score CS Minimo", int(df["Score_CS"].min()))
+
+    st.subheader("📅 Informacoes dos Dados")
+    st.info("Dados atualizados diariamente via GitHub Actions.")
+    st.info("Fonte: MFinance API + BRAPI (complementar)")
+
+    st.subheader("📋 Colunas Disponiveis")
+    st.write(f"Total de colunas: {len(df.columns)}")
+    st.write(list(df.columns))
+
+
+def main():
+    """Funcao principal."""
+    st.sidebar.markdown("## 📈 SOBRAL Invest")
+    st.sidebar.markdown("---")
+
+    pagina = st.sidebar.radio(
+        "Navegacao",
+        ["🏠 Dashboard", "🔍 Analise de Ativo", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"]
+    )
+
+    if pagina == "🏠 Dashboard":
+        pagina_inicial()
+    elif pagina == "🔍 Analise de Ativo":
+        pagina_analise()
+    elif pagina == "🏆 Rankings":
+        pagina_rankings()
+    elif pagina == "📊 Comparativo":
+        pagina_comparativo()
+    elif pagina == "⚙️ Configuracoes":
+        pagina_configuracoes()
+
+
+if __name__ == "__main__":
+    main()def pagina_rankings():
     """Pagina de rankings."""
     st.markdown('<h1 class="main-header">🏆 Rankings</h1>', unsafe_allow_html=True)
 
