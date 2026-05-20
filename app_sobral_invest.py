@@ -939,7 +939,7 @@ def pagina_analise():
         score_color, score_bg, score_label = "#dc2626", "#7f1d1d", "Pessimo"
 
     # Card do Score
-    col_score, col_info = st.columns([1, 3])
+    col_score, col_info = st.columns([1, 1])
     with col_score:
         st.markdown(f"""
         <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
@@ -950,21 +950,7 @@ def pagina_analise():
         """, unsafe_allow_html=True)
 
     with col_info:
-        st.markdown(f"""
-        <div style="background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); 
-                    border: 1px solid #334155; 
-                    border-radius: 12px; 
-                    padding: 16px; 
-                    height: 100%;
-                    display: flex;
-                    align-items: center;">
-            <div style="color: #94a3b8; font-size: 0.9rem; line-height: 1.5;">
-                <strong style="color: #f1f5f9;">Score CS (Carlos Sobral)</strong><br>
-                Avaliação fundamentalista baseada em 10 critérios de qualidade. 
-                Cada critério aprovado adiciona 1 ponto à pontuação final.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("", unsafe_allow_html=True)
 
     # Cards dos critérios
     st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
