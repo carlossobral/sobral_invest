@@ -596,6 +596,19 @@ def pagina_analise():
         visibility: visible;
         opacity: 1;
     }
+
+    /* Alinhamento perfeito dos cards */
+    .metric-card-v2 {
+        margin-bottom: 8px !important;
+    }
+
+    div[data-testid="stHorizontalBlock"] {
+        gap: 8px !important;
+    }
+
+    div[data-testid="column"] {
+        padding: 0 4px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -627,6 +640,28 @@ def pagina_analise():
     # ============================================================
     # WIDGET TRADINGVIEW DO ATIVO
     # ============================================================
+    # ============================================================
+    # INFO DO ATIVO - SETOR/SUBSETOR/SEGMENTO
+    # ============================================================
+    st.markdown(f"""
+    <div style="display: flex; gap: 24px; margin: 8px 0 16px 0; padding: 0;">
+        <div>
+            <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Setor</span>
+            <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Setor', 'N/A')}</span>
+        </div>
+        <div style="color: #475569;">›</div>
+        <div>
+            <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">SubSetor</span>
+            <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('SubSetor', 'N/A')}</span>
+        </div>
+        <div style="color: #475569;">›</div>
+        <div>
+            <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Segmento</span>
+            <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Segmento', 'N/A')}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("<div style='margin: 16px 0;'></div>", unsafe_allow_html=True)
 
     tv_symbol = f"BMFBOVESPA:{ticker}"
