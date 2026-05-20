@@ -1,8 +1,8 @@
-name: Atualizar Dados SOBRAL Invest
+# id: fetch_urls:6#0 (https://raw.githubusercontent.com/carlossobral/sobral_invest/refs/heads/main/.github/workflows/update.yml) mime: text/plainname: Atualizar Dados SOBRAL Invest
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # 6h UTC = 3h BRT
+    - cron: '0 4 * * *'  # 6h UTC = 3h BRT
   workflow_dispatch:
 
 jobs:
@@ -23,49 +23,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-
-      - name: Atualizar SELIC
-        run: |
-          python - <<'EOF'
-          import requests
-          import json
-          import os
-          from datetime import date
-
-          URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
-
-          try:
-              r = requests.get(URL, timeout=15)
-              r.raise_for_status()
-              dados = r.json()
-
-              valor_str = dados[0]["valor"]
-              valor = float(valor_str)
-
-              # Detecção automática: < 1.0 = diária, >= 1.0 = anual
-              if valor < 1.0:
-                  selic = round((valor / 100) * 252 * 100, 2)
-              else:
-                  selic = round(valor, 2)
-
-              if 2.0 <= selic <= 30.0:
-                  payload = {"selic": selic, "data": str(date.today())}
-                  with open("selic.json", "w", encoding="utf-8") as f:
-                      json.dump(payload, f)
-                  print(f"✅ SELIC atualizada: {selic}%")
-              else:
-                  raise ValueError(f"SELIC fora do intervalo: {selic}%")
-
-          except Exception as e:
-              print(f"⚠️ Erro ao buscar SELIC: {e}")
-              if os.path.exists("selic.json"):
-                  print("⚠️ Mantendo selic.json anterior")
-              else:
-                  fallback = {"selic": 10.75, "data": str(date.today()), "fallback": True}
-                  with open("selic.json", "w", encoding="utf-8") as f:
-                      json.dump(fallback, f)
-                  print("⚠️ Criado selic.json com fallback: 10.75%")
-          EOF
 
       - name: Coletar dados MFinance
         run: |
