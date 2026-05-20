@@ -959,7 +959,6 @@ def pagina_analise():
     # Card do Score centralizado
     score_cols = st.columns([2, 3, 2])
     with score_cols[1]:
-    with col_score:
         st.markdown(f"""
         <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
             <div class="score-number-v2" style="color: {score_color};">{score}</div>
