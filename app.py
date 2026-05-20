@@ -1,5 +1,10 @@
 """
-app.py - Coletor de dados SOBRAL Invest v3.0
+app.py - Coletor de dados SOBRAL Invest v3.1 (CORRIGIDO)
+Correções:
+- DivLiquida_PL calculado manualmente (MFinance não tem diretamente)
+- Score_CS usa DivLiquida_PL calculado
+- Coluna DivLiquida_Ativos renomeada corretamente
+
 Fonte principal: MFinance (batch, sem token)
 Fallback: BRAPI + lista de 196 tickers
 Gera: ativos.xlsx (1 aba "Dados" com ~55 colunas)
@@ -59,19 +64,19 @@ def get_selic() -> float:
         r = requests.get(url, timeout=15)
         r.raise_for_status()
         dados = r.json()
-        
+
         valor_str = dados[0]["valor"]
         valor = float(valor_str)
-        
+
         # Deteccao automatica: < 1.0 = diaria, >= 1.0 = anual
         if valor < 1.0:
             selic = round((valor / 100) * 252 * 100, 2)
         else:
             selic = round(valor, 2)
-        
+
         if 2.0 <= selic <= 30.0:
             return selic
-        
+
         # Fallback: serie 1178 (SELIC acumulada mes)
         url2 = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.1178/dados/ultimos/1?formato=json"
         r2 = requests.get(url2, timeout=15)
@@ -80,10 +85,10 @@ def get_selic() -> float:
         selic2 = float(dados2[0]["valor"])
         if 2.0 <= selic2 <= 30.0:
             return selic2
-            
+
     except Exception as e:
         print("Erro SELIC: " + str(e))
-    
+
     # Fallback final
     if os.path.exists("selic.json"):
         with open("selic.json", "r") as f:
@@ -102,28 +107,28 @@ def calcular_valuation(row: pd.Series, selic: float) -> Dict[str, float]:
     cagr_receitas = row.get("CAGR_Receitas_5a", 0)
     cagr_lucros = row.get("CAGR_Lucros_5a", 0)
     roe = row.get("ROE", 0)
-    
+
     result = {}
-    
+
     # 1. Graham Classico
     if lpa > 0 and vpa > 0:
         result["Graham"] = round(((22.5 * lpa * vpa) ** 0.5), 2)
     else:
         result["Graham"] = 0
-    
+
     # 2. Graham BR (com SELIC)
     if lpa > 0 and vpa > 0 and selic > 0:
         multiplicador = (1 / (selic / 100)) ** 0.5
         result["Graham_BR"] = round(((multiplicador * lpa * vpa) ** 0.5), 2)
     else:
         result["Graham_BR"] = 0
-    
+
     # 3. Bazin (DY minimo 6%)
     if dy > 0:
         result["Bazin"] = round((lpa * (100 / 6)), 2)
     else:
         result["Bazin"] = 0
-    
+
     # 4. Lynch (PEG)
     if pl > 0 and cagr_lucros > 0:
         peg = pl / cagr_lucros
@@ -132,13 +137,13 @@ def calcular_valuation(row: pd.Series, selic: float) -> Dict[str, float]:
     else:
         result["Lynch"] = 0
         result["Lynch_Preco_Teto"] = 0
-    
+
     # 5. Peter Lynch Modificado
     if dy > 0 and cagr_lucros > 0:
         result["Lynch_Mod"] = round(pl / (cagr_lucros + dy), 2) if pl > 0 else 0
     else:
         result["Lynch_Mod"] = 0
-    
+
     # 6. Desconto AGF (Ativo, Giro, Fluxo)
     patrimonio = row.get("Qtd_Acoes", 0) * vpa if vpa > 0 else 0
     ativos = row.get("PAtivo", 0)
@@ -147,7 +152,7 @@ def calcular_valuation(row: pd.Series, selic: float) -> Dict[str, float]:
         result["AGF"] = round((patrimonio * ativos * giro) / row.get("Qtd_Acoes", 1), 2)
     else:
         result["AGF"] = 0
-    
+
     # Upside/Downside
     if cotacao > 0:
         for key in ["Graham", "Graham_BR", "Bazin", "Lynch_Preco_Teto", "AGF"]:
@@ -156,7 +161,7 @@ def calcular_valuation(row: pd.Series, selic: float) -> Dict[str, float]:
                 result["Upside_" + key] = round(((preco - cotacao) / cotacao) * 100, 2)
             else:
                 result["Upside_" + key] = 0
-    
+
     return result
 
 
@@ -164,52 +169,53 @@ def calcular_score_cs(row: pd.Series) -> Dict[str, Any]:
     """Calcula Score CS (Carlos Sobral) 0-9 com 9 criterios."""
     score = 0
     detalhes = {}
-    
+
     # 1. ROE > 15%
     roe = row.get("ROE", 0)
     detalhes["ROE_15pct"] = 1 if roe > 15 else 0
     score += detalhes["ROE_15pct"]
-    
+
     # 2. DY > 3%
     dy = row.get("DY", 0) or row.get("DY_12m", 0)
     detalhes["DY_3pct"] = 1 if dy > 3 else 0
     score += detalhes["DY_3pct"]
-    
+
     # 3. Divida Liquida / PL < 0.5
+    # CORREÇÃO: Usar DivLiquida_PL calculado (não DivLiquida_Ativos)
     div_pl = row.get("DivLiquida_PL", 0)
     detalhes["DivPL_0_5"] = 1 if 0 < div_pl < 0.5 else 0
     score += detalhes["DivPL_0_5"]
-    
+
     # 4. P/L < 15
     pl = row.get("PL", 0)
     detalhes["PL_15"] = 1 if 0 < pl < 15 else 0
     score += detalhes["PL_15"]
-    
+
     # 5. P/VP < 2
     pvp = row.get("PVP", 0)
     detalhes["PVP_2"] = 1 if 0 < pvp < 2 else 0
     score += detalhes["PVP_2"]
-    
+
     # 6. Margem Liquida > 10%
     margem = row.get("MargemLiquida", 0)
     detalhes["Margem_10pct"] = 1 if margem > 10 else 0
     score += detalhes["Margem_10pct"]
-    
+
     # 7. Liquidez Corrente > 1
     liq = row.get("LiquidezCorrente", 0)
     detalhes["LiqCorrente_1"] = 1 if liq > 1 else 0
     score += detalhes["LiqCorrente_1"]
-    
+
     # 8. CAGR Lucros 5 anos > 5%
     cagr = row.get("CAGR_Lucros_5a", 0)
     detalhes["CAGR_5pct"] = 1 if cagr > 5 else 0
     score += detalhes["CAGR_5pct"]
-    
+
     # 9. ROIC > 10%
     roic = row.get("ROIC", 0)
     detalhes["ROIC_10pct"] = 1 if roic > 10 else 0
     score += detalhes["ROIC_10pct"]
-    
+
     # Classificacao
     if score >= 8:
         classificacao = "Excelente"
@@ -221,7 +227,7 @@ def calcular_score_cs(row: pd.Series) -> Dict[str, Any]:
         classificacao = "Fraco"
     else:
         classificacao = "Pessimo"
-    
+
     return {
         "Score_CS": score,
         "Score_CS_Classificacao": classificacao,
@@ -233,11 +239,11 @@ def complementar_brapi(df: pd.DataFrame, token: str = "") -> pd.DataFrame:
     """Complementa dados com BRAPI (beta, medias moveis, etc.)."""
     if not token:
         return df
-    
+
     print("Complementando com BRAPI...")
-    
+
     headers = {"Authorization": "Bearer " + token} if token else {}
-    
+
     for idx, row in df.iterrows():
         ticker = row["Ticker"]
         try:
@@ -245,80 +251,80 @@ def complementar_brapi(df: pd.DataFrame, token: str = "") -> pd.DataFrame:
             r = requests.get(url, headers=headers, timeout=10)
             if r.status_code != 200:
                 continue
-            
+
             data = r.json()
             results = data.get("results", [])
             if not results:
                 continue
-            
+
             info = results[0]
-            
+
             # Beta
             beta = info.get("beta")
             if beta is not None:
                 df.at[idx, "Beta"] = round(beta, 2)
-            
+
             # Medias moveis
             stats = info.get("defaultKeyStatistics", {})
             if stats.get("fiftyDayAverage"):
                 df.at[idx, "Media_50d"] = round(stats["fiftyDayAverage"], 2)
             if stats.get("twoHundredDayAverage"):
                 df.at[idx, "Media_200d"] = round(stats["twoHundredDayAverage"], 2)
-            
+
             # FCO / FCL (do financialData)
             fin = info.get("financialData", {})
             if fin.get("operatingCashflow"):
                 df.at[idx, "FCO"] = fin["operatingCashflow"]
             if fin.get("freeCashflow"):
                 df.at[idx, "FCL"] = fin["freeCashflow"]
-            
+
             time.sleep(0.3)
-            
+
         except Exception as e:
             print("Erro BRAPI " + ticker + ": " + str(e))
             continue
-    
+
     return df
 
 
 def main():
     print("=" * 70)
-    print("SOBRAL INVEST - Coletor de Dados v3.0")
+    print("SOBRAL INVEST - Coletor de Dados v3.1 (CORRIGIDO)")
     print("=" * 70)
     print("Inicio: " + str(pd.Timestamp.now()))
-    
+
     # 1. Buscar SELIC
     print("[0/4] Buscando SELIC...")
     selic = get_selic()
     print("SELIC: " + str(selic) + "%")
-    
+
     # Salvar selic.json
     with open("selic.json", "w", encoding="utf-8") as f:
         json.dump({"selic": selic, "data": str(date.today())}, f)
-    
+
     # 2. Inicializar cliente MFinance
     client = MFinanceClient(timeout=25, retries=3)
-    
+
     # 3. Buscar todos os ativos do MFinance
     print("[1/4] Buscando ativos do MFinance...")
     all_stocks = client.get_all_stocks(batch_size=50)
-    
+
     if not all_stocks:
         print("MFinance retornou vazio. Usando fallback com lista priorizada...")
         all_stocks = client.get_stocks_batch(TICKERS_PRIORITARIOS)
-    
+
     print("Ativos coletados: " + str(len(all_stocks)))
-    
+
     if not all_stocks:
         print("Nenhum ativo coletado. Abortando.")
         sys.exit(1)
-    
+
     # 4. Buscar indicadores
     symbols = [s.get("symbol", "") for s in all_stocks if s.get("symbol")]
     print("[2/4] Buscando indicadores para " + str(len(symbols)) + " ativos...")
     all_indicators = client.get_all_indicators(symbols, batch_size=50)
     print("Indicadores coletados: " + str(len(all_indicators)))
-    
+
     # 5. Buscar dividendos (1 por 1 - MFinance nao tem batch)
     print("[3/4] Buscando dividendos para " + str(len(symbols)) + " ativos...")
     dividends_map = {}
@@ -329,18 +335,18 @@ def main():
         parsed = parse_mfinance_dividends(div_data)
         dividends_map[sym] = parsed
         time.sleep(0.1)
-    
+
     # 6. Mesclar dados
     print("[4/4] Mesclando e processando dados...")
     merged = merge_mfinance_data(all_stocks, all_indicators, dividends_map)
-    
+
     if not merged:
         print("Nenhum dado mesclado. Abortando.")
         sys.exit(1)
-    
+
     # 7. Criar DataFrame
     df = pd.DataFrame(merged)
-    
+
     # 8. Calcular campos derivados
     df["Patrimonio"] = df["Qtd_Acoes"] * df["VPA"]
     df["Lucro_Liquido"] = df["Qtd_Acoes"] * df["LPA"]
@@ -352,7 +358,20 @@ def main():
         lambda r: (r["Market_Cap"] / r["PSR"]) if r.get("PSR", 0) > 0 else 0,
         axis=1
     )
-    
+
+    # CORREÇÃO v3.1: Calcular DivLiquida_PL manualmente
+    # Fórmula: DivLiquida_PL = (DivLiquida_Ativos / PL_Ativos) - 1
+    # Ou aproximação: DivLiquida_PL = DivLiquida_Ativos * (Ativos / PL)
+    # Como não temos Ativos separados, usamos: DivLiquida_PL = DivLiquida_Ativos / PL_Ativos
+    # quando PL_Ativos > 0 (PL_Ativos = Patrimônio/Ativos)
+    # Se PL_Ativos = 0.5, então Ativos = 2*PL, logo Div/PL = Div/Ativos * 2
+    df["DivLiquida_PL"] = df.apply(
+        lambda r: round(r["DivLiquida_Ativos"] / r["PL_Ativos"], 4) 
+        if r.get("PL_Ativos", 0) > 0 and r.get("DivLiquida_Ativos", 0) > 0 
+        else 0,
+        axis=1
+    )
+
     # 9. Calcular Valuation
     print("Calculando valuation...")
     valuation_cols = []
@@ -363,7 +382,7 @@ def main():
                 df[k] = 0.0
                 valuation_cols.append(k)
             df.at[idx, k] = v
-    
+
     # 10. Calcular Score CS
     print("Calculando Score CS...")
     score_cols = []
@@ -374,11 +393,11 @@ def main():
                 df[k] = ""
                 score_cols.append(k)
             df.at[idx, k] = v
-    
+
     # 11. Complementar com BRAPI (se token disponivel)
     if BRAPI_TOKEN:
         df = complementar_brapi(df, BRAPI_TOKEN)
-    
+
     # 12. Ordenar colunas
     col_order = [
         "Ticker", "Nome", "Setor", "SubSetor", "Segmento",
@@ -391,7 +410,7 @@ def main():
         "LPA", "VPA", "Patrimonio", "Lucro_Liquido", "EBIT", "Receita_Liquida",
         "ROE", "ROA", "ROIC", "GiroAtivos",
         "MargemBruta", "MargemEBITDA", "MargemEBIT", "MargemLiquida",
-        "DivLiquida_PL", "DivLiquida_EBIT", "DivLiquida_EBITDA",
+        "DivLiquida_Ativos", "DivLiquida_PL", "DivLiquida_EBIT", "DivLiquida_EBITDA",
         "LiquidezCorrente", "Passivos_Ativos", "PL_Ativos",
         "CAGR_Receitas_5a", "CAGR_Lucros_5a",
         "Qtd_Acoes",
@@ -403,24 +422,24 @@ def main():
         "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct",
         "Beta", "Media_50d", "Media_200d", "FCO", "FCL",
     ]
-    
+
     # Garantir que todas as colunas existam
     for col in col_order:
         if col not in df.columns:
             df[col] = 0 if col not in ["Nome", "Setor", "SubSetor", "Segmento", "Score_CS_Classificacao"] else ""
-    
+
     df = df[[c for c in col_order if c in df.columns]]
-    
+
     # 13. Salvar
     print("[5/4] Salvando arquivos...")
-    
+
     # Excel
     with pd.ExcelWriter("ativos.xlsx", engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Dados", index=False)
-    
+
     # CSV
     df.to_csv("ativos.csv", index=False, encoding="utf-8-sig")
-    
+
     # 14. Resumo
     print("=" * 70)
     print("RESUMO")
@@ -433,12 +452,12 @@ def main():
     print("Arquivos gerados: ativos.xlsx, ativos.csv")
     print("Fim: " + str(pd.Timestamp.now()))
     print("=" * 70)
-    
+
     # Verificar se planilha nao esta vazia
     if len(df) == 0:
         print("ERRO: Planilha vazia!")
         sys.exit(1)
-    
+
     print("Concluido com sucesso!")
 
 
