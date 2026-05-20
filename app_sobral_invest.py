@@ -491,7 +491,7 @@ def pagina_analise():
     df['Display'] = df['Ticker'] + ' — ' + df['Nome']
     ativo_selecionado = st.selectbox(
         "🔍 Selecione o ativo",
-        options=sorted(df['Display'].tolist()),
+        options=sorted([str(x) for x in df['Display'].tolist()]),
         index=0,
         key="ativo_selector_v2"
     )
