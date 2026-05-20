@@ -24,6 +24,32 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
+# CSS GLOBAL para alinhamento de cards
+st.markdown("""
+<style>
+/* Forçar gap entre colunas do Streamlit */
+div[data-testid="stHorizontalBlock"] {
+    gap: 0.75rem !important;
+}
+
+/* Forçar padding zero nas colunas */
+div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+    padding-left: 0.375rem !important;
+    padding-right: 0.375rem !important;
+}
+
+/* Garantir que cards tenham margin-bottom */
+.bh-card-v2 {
+    margin-bottom: 0.75rem !important;
+}
+
+.metric-card-v2 {
+    margin-bottom: 0.75rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # CSS customizado
 st.markdown("""
 <style>
@@ -597,28 +623,9 @@ def pagina_analise():
         opacity: 1;
     }
 
-    /* Alinhamento perfeito dos cards */
-    .metric-card-v2 {
-        margin-bottom: 8px !important;
-    }
 
-    div[data-testid="stHorizontalBlock"] {
-        gap: 8px !important;
-    }
 
-    div[data-testid="column"] {
-        padding: 0 4px !important;
-    }
 
-    /* Espaçamento entre linhas de cards */
-    .bh-card-v2 {
-        margin-bottom: 12px !important;
-    }
-
-    /* Garantir alinhamento perfeito */
-    div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-        padding: 0 6px !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -949,7 +956,9 @@ def pagina_analise():
         score_color, score_bg, score_label = "#dc2626", "#7f1d1d", "Pessimo"
 
     # Card do Score
-    col1, col_score, col3 = st.columns([1, 2, 1])
+    # Card do Score centralizado
+    score_cols = st.columns([2, 3, 2])
+    with score_cols[1]:
     with col_score:
         st.markdown(f"""
         <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
