@@ -1,382 +1,592 @@
 """
-Cliente MFinance API - v2.1 (CORRIGIDO)
-Correções:
-- PL ↔ PVP trocados no parse_mfinance_indicator()
-- DivLiquida_PL renomeado para DivLiquida_Ativos (netDebtToAssets = Dívida/Ativos)
-- Adicionado cálculo manual de Dívida/PL quando possível
-
-Formatos confirmados:
-- /stocks/symbols/ -> ["PETR4", "VALE3", ...] (lista de strings)
-- /stocks?symbols=... -> {"stocks": [{...}, {...}]} (objeto com array 'stocks')
-- /stocks/indicators?symbols=... -> {"indicators": [{symbol, ...}, ...]} (objeto com array 'indicators')
-- /stocks/dividends/{symbol} -> {"symbol": "...", "dividends": [{...}]}
-- /stocks/details/{symbol} -> {"details": [{...}]} (inferido do schema)
+app_sobral_invest.py - Streamlit Dashboard SOBRAL Invest v5.0
+Correcoes:
+- Score CS: 10 criterios (ROE>10%, DY>6%, DivLiq/EBITDA<2.5x, Volume>1M)
+- 5 valuations: Graham, Graham_BR, Bazin, Lynch, AGF_Medio
+- Remove Lynch_Preco_Teto, Lynch_Mod, AGF_Projetivo
+- Dados corrigidos (PL, PVP via mfinance_client v2.1)
+- Dashboard com TradingView widgets
 """
 
-import requests
-import time
-from typing import List, Dict, Any, Optional
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import streamlit.components.v1 as components
+import numpy as np
+import os
 
-BASE_URL = "https://mfinance.com.br/api/v1"
-DEFAULT_TIMEOUT = 25
-DEFAULT_RETRY = 3
-BATCH_SIZE = 10
+st.set_page_config(
+    page_title="SOBRAL Invest",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-class MFinanceClient:
-    def __init__(self, timeout: int = DEFAULT_TIMEOUT, retries: int = DEFAULT_RETRY):
-        self.timeout = timeout
-        self.retries = retries
-        self.session = requests.Session()
-        self.session.headers.update({
-            "Accept": "application/json",
-            "User-Agent": "SOBRAL-Invest/1.0"
+# CSS customizado
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    .score-excelente { color: #00cc00; font-weight: bold; }
+    .score-bom { color: #66cc00; font-weight: bold; }
+    .score-regular { color: #ffcc00; font-weight: bold; }
+    .score-fraco { color: #ff6600; font-weight: bold; }
+    .score-pessimo { color: #ff0000; font-weight: bold; }
+</style>
+""", unsafe_allow_html=True)
+
+
+def load_data():
+    """Carrega dados do ativos.xlsx com conversao correta."""
+    try:
+        df = pd.read_excel("ativos.xlsx", sheet_name="Dados")
+    except:
+        try:
+            df = pd.read_csv("ativos.csv", encoding="utf-8-sig")
+        except:
+            st.error("Erro ao carregar dados. Verifique se ativos.xlsx ou ativos.csv existem.")
+            return pd.DataFrame()
+
+    # Converter colunas numericas
+    numeric_cols = [
+        "Cotacao", "Variacao", "Volume", "Volume_Medio", "Market_Cap",
+        "PE", "EPS", "DY", "DY_12m",
+        "PL", "PVP", "PSR", "PAtivo", "PCapGiro", "PAtivoCircLiq",
+        "PEBIT", "PEBITDA", "EV_EBIT", "EV_EBITDA",
+        "LPA", "VPA", "Patrimonio", "Lucro_Liquido", "EBIT", "Receita_Liquida",
+        "ROE", "ROA", "ROIC", "GiroAtivos",
+        "MargemBruta", "MargemEBITDA", "MargemEBIT", "MargemLiquida",
+        "DivLiquida_Ativos", "DivLiquida_PL", "DivLiquida_EBIT", "DivLiquida_EBITDA",
+        "LiquidezCorrente", "Passivos_Ativos", "PL_Ativos",
+        "CAGR_Receitas_5a", "CAGR_Lucros_5a",
+        "Dividendo_Medio_12m", "Dividendo_Total_12m", "Dividendo_Ultimo",
+        "Dividendo_Medio_6a",
+        "Graham", "Graham_BR", "Bazin", "Lynch", "AGF_Medio",
+        "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin", "Upside_Lynch", "Upside_AGF_Medio",
+        "Score_CS",
+        "Beta", "Media_50d", "Media_200d", "FCO", "FCL"
+    ]
+
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Garantir que Ticker seja string
+    if "Ticker" in df.columns:
+        df["Ticker"] = df["Ticker"].astype(str)
+
+    return df
+
+
+def pagina_inicial():
+    """Dashboard principal com TradingView widgets."""
+    st.markdown('<h1 class="main-header">📈 SOBRAL Invest</h1>', unsafe_allow_html=True)
+
+    # Widget TradingView - Ibovespa Symbol Overview
+    st.subheader("📊 Ibovespa")
+    tv_ibov = """
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
+      {
+        "symbols": [
+          ["BMFBOVESPA:IBOV|1D"]
+        ],
+        "chartOnly": false,
+        "width": "960",
+        "height": "400",
+        "locale": "br",
+        "colorTheme": "dark",
+        "autosize": false,
+        "showVolume": true,
+        "showMA": false,
+        "hideDateRanges": false,
+        "hideMarketStatus": false,
+        "hideSymbolLogo": false,
+        "scalePosition": "right",
+        "scaleMode": "Normal",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
+        "fontSize": "10",
+        "noTimeScale": false,
+        "valuesTracking": "1",
+        "changeMode": "price-and-percent",
+        "chartType": "area",
+        "maLineColor": "#2962FF",
+        "maLineWidth": 1,
+        "maLength": 9,
+        "lineWidth": 2,
+        "lineType": 0,
+        "dateRanges": [
+          "1d|1",
+          "1m|30",
+          "3m|60",
+          "12m|1D",
+          "60m|1W",
+          "all|1M"
+        ]
+      }
+      </script>
+    </div>
+    """
+    components.html(tv_ibov, height=410)
+
+    # Widget TradingView - Hotlists (Maiores Altas/Baixas)
+    st.subheader("🔥 Maiores Altas e Baixas")
+    tv_hotlists = """
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-hotlists.js" async>
+      {
+        "colorTheme": "dark",
+        "dateRange": "1D",
+        "exchange": "BMFBOVESPA",
+        "showChart": true,
+        "locale": "br",
+        "largeChartUrl": "",
+        "isTransparent": false,
+        "showSymbolLogo": true,
+        "showFloatingTooltip": true,
+        "width": "960",
+        "height": "550",
+        "plotLineColorGrowing": "rgba(41, 98, 255, 1)",
+        "plotLineColorFalling": "rgba(41, 98, 255, 1)",
+        "plotLineColorGrowingBottom": "rgba(41, 98, 255, 0)",
+        "plotLineColorFallingBottom": "rgba(41, 98, 255, 0)",
+        "gridLineColor": "rgba(42, 46, 57, 0)",
+        "scaleFontColor": "rgba(120, 123, 134, 1)",
+        "belowLineFillColorGrowing": "rgba(41, 98, 255, 0.12)",
+        "belowLineFillColorFalling": "rgba(41, 98, 255, 0.12)",
+        "belowLineFillColorGrowingBottom": "rgba(41, 98, 255, 0)",
+        "belowLineFillColorFallingBottom": "rgba(41, 98, 255, 0)",
+        "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
+        "tabs": [
+          {
+            "title": "Mais Negociadas",
+            "symbols": [
+              { "s": "BMFBOVESPA:PETR4", "d": "Petrobras" },
+              { "s": "BMFBOVESPA:VALE3", "d": "Vale" },
+              { "s": "BMFBOVESPA:ITUB4", "d": "Itau Unibanco" },
+              { "s": "BMFBOVESPA:BBDC4", "d": "Bradesco" },
+              { "s": "BMFBOVESPA:ABEV3", "d": "Ambev" },
+              { "s": "BMFBOVESPA:WEGE3", "d": "Weg" },
+              { "s": "BMFBOVESPA:BBAS3", "d": "Banco do Brasil" }
+            ],
+            "originalTitle": "Equities"
+          },
+          {
+            "title": "Maiores Altas",
+            "symbols": [
+              { "s": "BMFBOVESPA:IBOV", "d": "Ibovespa" }
+            ]
+          },
+          {
+            "title": "Maiores Baixas",
+            "symbols": [
+              { "s": "BMFBOVESPA:IBOV", "d": "Ibovespa" }
+            ]
+          }
+        ]
+      }
+      </script>
+    </div>
+    """
+    components.html(tv_hotlists, height=560)
+
+    # Rankings rapidos
+    st.subheader("🏆 Rankings")
+    df = load_data()
+    if not df.empty:
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.markdown("**📊 Score CS**")
+            top_score = df.nlargest(5, "Score_CS")[["Ticker", "Nome", "Score_CS"]]
+            st.dataframe(top_score, hide_index=True)
+
+        with col2:
+            st.markdown("**💰 Dividend Yield**")
+            top_dy = df.nlargest(5, "DY")[["Ticker", "Nome", "DY"]]
+            st.dataframe(top_dy, hide_index=True)
+
+        with col3:
+            st.markdown("**📈 Maiores Altas**")
+            top_altas = df.nlargest(5, "Variacao")[["Ticker", "Nome", "Variacao"]]
+            st.dataframe(top_altas, hide_index=True)
+
+
+def pagina_analise():
+    """Pagina de analise de ativo estilo Investidor10."""
+    st.markdown('<h1 class="main-header">🔍 Analise de Ativo</h1>', unsafe_allow_html=True)
+
+    df = load_data()
+    if df.empty:
+        st.warning("Dados nao disponiveis.")
+        return
+
+    # Selecao de ativo
+    ticker = st.selectbox("Selecione o ativo", sorted(df["Ticker"].tolist()))
+    ativo = df[df["Ticker"] == ticker].iloc[0] if len(df[df["Ticker"] == ticker]) > 0 else None
+
+    if ativo is None:
+        st.error("Ativo nao encontrado.")
+        return
+
+    # Header
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.markdown(f"### {ativo['Ticker']} - {ativo['Nome']}")
+        st.markdown(f"**Setor:** {ativo.get('Setor', 'N/A')} | **Subsetor:** {ativo.get('SubSetor', 'N/A')}")
+    with col2:
+        cotacao = ativo.get("Cotacao", 0)
+        variacao = ativo.get("Variacao", 0)
+        color = "green" if variacao >= 0 else "red"
+        st.markdown(f"### R$ {cotacao:.2f}")
+        st.markdown(f"<span style='color:{color}'>{variacao:+.2f}%</span>", unsafe_allow_html=True)
+    with col3:
+        score = int(ativo.get("Score_CS", 0))
+        score_class = ativo.get("Score_CS_Classificacao", "N/A")
+        score_color = {
+            "Excelente": "score-excelente",
+            "Bom": "score-bom",
+            "Regular": "score-regular",
+            "Fraco": "score-fraco",
+            "Pessimo": "score-pessimo"
+        }.get(score_class, "")
+        st.markdown(f"### Score CS: {score}/10")
+        st.markdown(f"<span class='{score_color}'>{score_class}</span>", unsafe_allow_html=True)
+
+    # Widget TradingView para o ativo
+    st.subheader("📈 Grafico")
+    tv_symbol = f"BMFBOVESPA:{ticker}"
+    tv_chart = f"""
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
+      {{
+        "symbols": [
+          ["{tv_symbol}|1D"]
+        ],
+        "chartOnly": false,
+        "width": "100%",
+        "height": "300",
+        "locale": "br",
+        "colorTheme": "dark",
+        "autosize": true,
+        "showVolume": true,
+        "showMA": false,
+        "hideDateRanges": false,
+        "hideMarketStatus": false,
+        "hideSymbolLogo": false,
+        "scalePosition": "right",
+        "scaleMode": "Normal",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
+        "fontSize": "10",
+        "noTimeScale": false,
+        "valuesTracking": "1",
+        "changeMode": "price-and-percent",
+        "chartType": "area",
+        "maLineColor": "#2962FF",
+        "maLineWidth": 1,
+        "maLength": 9,
+        "lineWidth": 2,
+        "lineType": 0,
+        "dateRanges": [
+          "1d|1",
+          "1m|30",
+          "3m|60",
+          "12m|1D",
+          "60m|1W",
+          "all|1M"
+        ]
+      }}
+      </script>
+    </div>
+    """
+    components.html(tv_chart, height=310)
+
+    # Precos Justos
+    st.subheader("🎯 Precos Justos")
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    valuations = [
+        ("Graham", "Graham", "Upside_Graham"),
+        ("Graham BR", "Graham_BR", "Upside_Graham_BR"),
+        ("Bazin (6%)", "Bazin", "Upside_Bazin"),
+        ("Lynch", "Lynch", "Upside_Lynch"),
+        ("AGF Medio", "AGF_Medio", "Upside_AGF_Medio"),
+    ]
+
+    for i, (nome, col_val, col_up) in enumerate(valuations):
+        with [col1, col2, col3, col4, col5][i]:
+            preco = ativo.get(col_val, 0)
+            upside = ativo.get(col_up, 0)
+            if preco > 0:
+                color = "green" if upside >= 0 else "red"
+                st.metric(nome, f"R$ {preco:.2f}", f"{upside:+.1f}%", delta_color="inverse")
+            else:
+                st.metric(nome, "N/A", "—")
+
+    # Indicadores
+    st.subheader("📊 Indicadores Fundamentalistas")
+    cols = st.columns(5)
+    indicadores = [
+        ("P/L", "PL", "x"),
+        ("P/VP", "PVP", "x"),
+        ("DY", "DY", "%"),
+        ("ROE", "ROE", "%"),
+        ("ROIC", "ROIC", "%"),
+        ("Margem Liquida", "MargemLiquida", "%"),
+        ("Margem Bruta", "MargemBruta", "%"),
+        ("Margem EBITDA", "MargemEBITDA", "%"),
+        ("EV/EBIT", "EV_EBIT", "x"),
+        ("EV/EBITDA", "EV_EBITDA", "x"),
+        ("LPA", "LPA", "R$"),
+        ("VPA", "VPA", "R$"),
+        ("CAGR Receitas 5a", "CAGR_Receitas_5a", "%"),
+        ("CAGR Lucros 5a", "CAGR_Lucros_5a", "%"),
+        ("Liquidez Corrente", "LiquidezCorrente", "x"),
+        ("Div.Liq/EBITDA", "DivLiquida_EBITDA", "x"),
+        ("Div.Liq/PL", "DivLiquida_PL", "x"),
+        ("Passivos/Ativos", "Passivos_Ativos", "x"),
+        ("PL/Ativos", "PL_Ativos", "x"),
+        ("Giro Ativos", "GiroAtivos", "x"),
+    ]
+
+    for i, (nome, col, unit) in enumerate(indicadores):
+        with cols[i % 5]:
+            val = ativo.get(col, 0)
+            if unit == "%":
+                st.metric(nome, f"{val:.2f}%")
+            elif unit == "x":
+                st.metric(nome, f"{val:.2f}x")
+            elif unit == "R$":
+                st.metric(nome, f"R$ {val:.2f}")
+            else:
+                st.metric(nome, f"{val:.2f}")
+
+    # Checklist Score CS
+    st.subheader("✅ Checklist Score CS (Carlos Sobral)")
+
+    checklist = [
+        ("ROE > 10%", "ROE_10pct", "ROE", "%", 10),
+        ("DY > 6%", "DY_6pct", "DY", "%", 6),
+        ("Div.Liq/EBITDA < 2.5x", "DivLiq_EBITDA_2_5", "DivLiquida_EBITDA", "x", 2.5),
+        ("P/L < 15", "PL_15", "PL", "x", 15),
+        ("P/VP < 2", "PVP_2", "PVP", "x", 2),
+        ("Margem Liquida > 10%", "Margem_10pct", "MargemLiquida", "%", 10),
+        ("Liquidez Corrente > 1", "LiqCorrente_1", "LiquidezCorrente", "x", 1),
+        ("CAGR Lucros 5a > 5%", "CAGR_5pct", "CAGR_Lucros_5a", "%", 5),
+        ("ROIC > 10%", "ROIC_10pct", "ROIC", "%", 10),
+        ("Volume Medio > R$ 1M", "Volume_1M", "Volume_Medio", "R$", 1000000),
+    ]
+
+    cols_check = st.columns(2)
+    for i, (nome, check_col, val_col, unit, limite) in enumerate(checklist):
+        with cols_check[i % 2]:
+            passou = ativo.get(check_col, 0) == 1
+            valor = ativo.get(val_col, 0)
+            icon = "✅" if passou else "❌"
+            status = "PASSOU" if passou else "NAO PASSOU"
+            color = "green" if passou else "red"
+
+            if unit == "%":
+                val_str = f"{valor:.2f}%"
+            elif unit == "x":
+                val_str = f"{valor:.2f}x"
+            elif unit == "R$":
+                val_str = f"R$ {valor:,.0f}"
+            else:
+                val_str = f"{valor:.2f}"
+
+            st.markdown(f"{icon} **{nome}** — Valor atual: {val_str} (limite: {limite}{unit})")
+            st.markdown(f"<span style='color:{color}'>{status}</span>", unsafe_allow_html=True)
+            st.markdown("---")
+
+    # Radar de Indicadores
+    st.subheader("🎯 Radar de Indicadores")
+    categorias = ["ROE", "DY", "Margem Liquida", "ROIC", "CAGR Lucros"]
+    valores = [
+        min(ativo.get("ROE", 0) / 30 * 100, 100),
+        min(ativo.get("DY", 0) / 10 * 100, 100),
+        min(ativo.get("MargemLiquida", 0) / 20 * 100, 100),
+        min(ativo.get("ROIC", 0) / 20 * 100, 100),
+        min(ativo.get("CAGR_Lucros_5a", 0) / 15 * 100, 100),
+    ]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=valores + [valores[0]],
+        theta=categorias + [categorias[0]],
+        fill='toself',
+        name=ativo['Ticker']
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=[100, 100, 100, 100, 100, 100],
+        theta=categorias + [categorias[0]],
+        mode='lines',
+        line=dict(color='gray', dash='dash'),
+        name='Referencia'
+    ))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=True,
+        height=400
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Valuation Completo
+    st.subheader("📋 Valuation Completo")
+    valuation_data = []
+    for nome, col_val, col_up in valuations:
+        preco = ativo.get(col_val, 0)
+        upside = ativo.get(col_up, 0)
+        valuation_data.append({
+            "Metodo": nome,
+            "Preco Justo": f"R$ {preco:.2f}" if preco > 0 else "N/A",
+            "Upside": f"{upside:+.1f}%" if preco > 0 else "N/A",
+            "Sinal": "🟢 Compra" if upside >= 20 else ("🟡 Atencao" if upside >= 0 else "🔴 Acima do teto") if preco > 0 else "—"
         })
 
-    def _request(self, method: str, endpoint: str, **kwargs) -> Optional[Any]:
-        """Faz request com retry automático."""
-        url = f"{BASE_URL}{endpoint}"
-        for attempt in range(self.retries):
-            try:
-                response = self.session.request(
-                    method, url, timeout=self.timeout, **kwargs
-                )
-                response.raise_for_status()
-                data = response.json()
-                if isinstance(data, dict):
-                    keys = list(data.keys())
-                    print(f"  DEBUG {url}: keys={keys[:5]}")
-                elif isinstance(data, list):
-                    print(f"  DEBUG {url}: list len={len(data)}")
-                else:
-                    print(f"  DEBUG {url}: type={type(data).__name__}, value={str(data)[:100]}")
-                return data
-            except requests.exceptions.Timeout:
-                if attempt < self.retries - 1:
-                    time.sleep(2 ** attempt)
-                    continue
-                print(f"⚠️ Timeout após {self.retries} tentativas: {url}")
-                return None
-            except requests.exceptions.HTTPError as e:
-                print(f"⚠️ HTTP {e.response.status_code}: {url}")
-                try:
-                    print(f"  Response: {e.response.text[:200]}")
-                except:
-                    pass
-                return None
-            except Exception as e:
-                print(f"⚠️ Erro em {url}: {e}")
-                return None
-        return None
-
-    def get_all_symbols(self) -> List[str]:
-        """Retorna lista de todos os tickers de ações."""
-        data = self._request("GET", "/stocks/symbols/")
-        if isinstance(data, list):
-            return [s for s in data if isinstance(s, str) and s]
-        return []
-
-    def get_stocks_batch(self, symbols: List[str]) -> List[Dict]:
-        """Busca dados básicos de múltiplos tickers. Retorna lista de dicts."""
-        if not symbols:
-            return []
-        symbols_str = ",".join(symbols)
-        data = self._request("GET", f"/stocks?symbols={symbols_str}")
-        if isinstance(data, dict) and "stocks" in data and data["stocks"] is not None:
-            return data["stocks"]
-        return []
-
-    def get_indicators_batch(self, symbols: List[str]) -> List[Dict]:
-        """Busca indicadores de múltiplos tickers. Retorna lista de dicts."""
-        if not symbols:
-            return []
-        symbols_str = ",".join(symbols)
-        data = self._request("GET", f"/stocks/indicators?symbols={symbols_str}")
-        if isinstance(data, dict) and "indicators" in data and data["indicators"] is not None:
-            return data["indicators"]
-        return []
-
-    def get_dividends(self, symbol: str) -> Dict[str, Any]:
-        """Busca dividendos de 1 ticker. Retorna {"symbol": "...", "dividends": [...]}."""
-        data = self._request("GET", f"/stocks/dividends/{symbol}")
-        if isinstance(data, dict) and "dividends" in data:
-            return data
-        return {"symbol": symbol, "dividends": []}
-
-    def get_details(self, symbol: str) -> Dict[str, Any]:
-        """Busca detalhes de 1 ticker. Retorna dict com type, subSector, segment."""
-        data = self._request("GET", f"/stocks/details/{symbol}")
-        if isinstance(data, dict) and "details" in data:
-            details_list = data["details"]
-            if details_list and isinstance(details_list, list):
-                return details_list[0]
-        return {}
-
-    def get_all_stocks(self, batch_size: int = BATCH_SIZE) -> List[Dict]:
-        """Busca TODOS os ativos do MFinance (dados básicos)."""
-        symbols = self.get_all_symbols()
-        if not symbols:
-            return []
-        print(f"📊 Total de tickers disponíveis: {len(symbols)}")
-
-        all_stocks = []
-        batch_worked = False
-        test_batch = symbols[:10]
-        print(f"  [CAMADA 1] Testando batch com {len(test_batch)} tickers...")
-        stocks = self.get_stocks_batch(test_batch)
-        if stocks and len(stocks) > 0:
-            all_stocks.extend(stocks)
-            batch_worked = True
-            print(f"  ✅ Batch funcionou! {len(stocks)} ativos")
-        else:
-            print(f"  ❌ Batch falhou")
-
-        if batch_worked:
-            print("  ✅ Modo batch ativado. Processando todos...")
-            for i in range(10, len(symbols), batch_size):
-                batch = symbols[i:i + batch_size]
-                print(f"  Batch {i+1}-{min(i+batch_size, len(symbols))}...")
-                stocks = self.get_stocks_batch(batch)
-                if stocks is not None and len(stocks) > 0:
-                    all_stocks.extend(stocks)
-                time.sleep(0.3)
-        else:
-            print("  ⚠️ CAMADA 2: Modo individual...")
-            all_stocks = self.get_all_stocks_single(symbols)
-
-        print(f"✅ Total coletado: {len(all_stocks)} ativos")
-        return all_stocks
-
-    def get_stock_single(self, symbol: str) -> Optional[Dict]:
-        """Busca dados de 1 ticker individualmente (fallback se batch falhar)."""
-        data = self._request("GET", f"/stocks/{symbol}")
-        if isinstance(data, dict):
-            return data
-        return None
-
-    def get_indicators_single(self, symbol: str) -> Optional[Dict]:
-        """Busca indicadores de 1 ticker individualmente."""
-        data = self._request("GET", f"/stocks/indicators/{symbol}")
-        if isinstance(data, dict):
-            return data
-        return None
-
-    def get_all_stocks_single(self, symbols: List[str]) -> List[Dict]:
-        """Busca TODOS os ativos 1 por 1 (fallback quando batch falha)."""
-        print(f"Usando modo individual para {len(symbols)} ativos...")
-        all_stocks = []
-        for i, sym in enumerate(symbols):
-            if i % 50 == 0:
-                print(f"  {i+1}/{len(symbols)}...")
-            stock = self.get_stock_single(sym)
-            if stock:
-                all_stocks.append(stock)
-            time.sleep(0.2)
-        return all_stocks
-
-    def get_all_indicators_single(self, symbols: List[str]) -> List[Dict]:
-        """Busca indicadores 1 por 1 (fallback quando batch falha)."""
-        print(f"Usando modo individual para {len(symbols)} indicadores...")
-        all_indicators = []
-        for i, sym in enumerate(symbols):
-            if i % 50 == 0:
-                print(f"  {i+1}/{len(symbols)}...")
-            ind = self.get_indicators_single(sym)
-            if ind:
-                all_indicators.append(ind)
-            time.sleep(0.2)
-        return all_indicators
-
-    def get_all_indicators(self, symbols: List[str], batch_size: int = BATCH_SIZE) -> List[Dict]:
-        """Busca indicadores para uma lista de símbolos."""
-        if not symbols:
-            return []
-
-        all_indicators = []
-        batch_worked = False
-        test_batch = symbols[:10]
-        print(f"  [CAMADA 1] Testando batch indicadores {len(test_batch)} tickers...")
-        indicators = self.get_indicators_batch(test_batch)
-        if indicators and len(indicators) > 0:
-            all_indicators.extend(indicators)
-            batch_worked = True
-            print(f"  ✅ Batch funcionou! {len(indicators)} indicadores")
-        else:
-            print(f"  ❌ Batch falhou")
-
-        if batch_worked:
-            print("  ✅ Modo batch ativado. Processando todos...")
-            for i in range(10, len(symbols), batch_size):
-                batch = symbols[i:i + batch_size]
-                print(f"  Indicadores {i+1}-{min(i+batch_size, len(symbols))}...")
-                indicators = self.get_indicators_batch(batch)
-                if indicators is not None and len(indicators) > 0:
-                    all_indicators.extend(indicators)
-                time.sleep(0.3)
-        else:
-            print("  ⚠️ CAMADA 2: Modo individual...")
-            all_indicators = self.get_all_indicators_single(symbols)
-
-        print(f"✅ Total indicadores: {len(all_indicators)}")
-        return all_indicators
+    st.dataframe(pd.DataFrame(valuation_data), hide_index=True, use_container_width=True)
 
 
-def parse_mfinance_stock(stock: Dict) -> Dict[str, Any]:
-    """Extrai campos relevantes de um objeto Stock do MFinance."""
-    return {
-        "Ticker": stock.get("symbol", ""),
-        "Nome": stock.get("name", ""),
-        "Setor": stock.get("sector", ""),
-        "SubSetor": stock.get("subSector", ""),
-        "Segmento": stock.get("segment", ""),
-        "Cotacao": stock.get("lastPrice", 0),
-        "Variacao": stock.get("change", 0),
-        "Abertura": stock.get("priceOpen", 0),
-        "Maxima": stock.get("high", 0),
-        "Minima": stock.get("low", 0),
-        "Fechamento_Anterior": stock.get("closingPrice", 0),
-        "Volume": stock.get("volume", 0),
-        "Volume_Medio": stock.get("volumeAvg", 0),
-        "Market_Cap": stock.get("marketCap", 0),
-        "PE": stock.get("pe", 0),
-        "EPS": stock.get("eps", 0),
-        "DY": stock.get("dividendYield", 0),
-        "Maxima_52s": stock.get("lastYearHigh", 0),
-        "Minima_52s": stock.get("lastYearLow", 0),
-        "Qtd_Acoes": stock.get("shares", 0),
+def pagina_rankings():
+    """Pagina de rankings."""
+    st.markdown('<h1 class="main-header">🏆 Rankings</h1>', unsafe_allow_html=True)
+
+    df = load_data()
+    if df.empty:
+        st.warning("Dados nao disponiveis.")
+        return
+
+    categorias = {
+        "Score CS": "Score_CS",
+        "Dividend Yield": "DY",
+        "P/L (menor)": "PL",
+        "ROE": "ROE",
+        "ROIC": "ROIC",
+        "Margem Liquida": "MargemLiquida",
+        "Graham Upside": "Upside_Graham",
+        "Bazin Upside": "Upside_Bazin",
     }
 
+    categoria = st.selectbox("Categoria", list(categorias.keys()))
+    col = categorias[categoria]
 
-def parse_mfinance_indicator(ind: Dict) -> Dict[str, Any]:
-    """
-    Extrai valores numéricos dos indicadores do MFinance.
+    if categoria in ["P/L (menor)", "Score CS"]:
+        top = df.nsmallest(20, col) if categoria == "P/L (menor)" else df.nlargest(20, col)
+    else:
+        top = df.nlargest(20, col)
 
-    CORREÇÃO v2.1:
-    - PL agora usa priceEarningsRatio (P/L = Preço/Lucro)
-    - PVP agora usa priceToBookValue (P/VP = Preço/Valor Patrimonial)
-    - DivLiquida_Ativos = netDebtToAssets (Dívida Líquida / Ativos Totais)
-    - DivLiquida_PL será calculado no app.py (MFinance não tem diretamente)
-    """
-    def get_val(key: str) -> float:
-        obj = ind.get(key)
-        if isinstance(obj, dict):
-            return obj.get("value", 0) or 0
-        return obj or 0
-
-    return {
-        "Ticker": ind.get("symbol", ""),
-        # CORRIGIDO: PL = P/L = priceEarningsRatio
-        "PL": get_val("priceEarningsRatio"),
-        # CORRIGIDO: PVP = P/VP = priceToBookValue
-        "PVP": get_val("priceToBookValue"),
-        "PSR": get_val("priceToSalesRatio"),
-        "PAtivo": get_val("priceToAssets"),
-        "PCapGiro": get_val("priceToNetCurrentAssets"),
-        "PAtivoCircLiq": get_val("priceToNetNetWorkingCapital"),
-        "PEBIT": get_val("priceToEbit"),
-        "PEBITDA": get_val("priceToEbitda"),
-        "EV_EBIT": get_val("enterpriseValueEbit"),
-        "EV_EBITDA": get_val("enterpriseValueEbitda"),
-        "LPA": get_val("earningsPerShare"),
-        "VPA": get_val("bookValuePerShare"),
-        "ROE": get_val("returnOnEquity"),
-        "ROA": get_val("returnOnAssets"),
-        "ROIC": get_val("returnOnInvestedCapital"),
-        "GiroAtivos": get_val("assetTurnoverRatio"),
-        "MargemBruta": get_val("grossMargin"),
-        "MargemEBITDA": get_val("ebitdaMargin"),
-        "MargemEBIT": get_val("ebitMargin"),
-        "MargemLiquida": get_val("netMargin"),
-        # RENOMEADO: netDebtToAssets = Dívida/Ativos (não Dívida/PL)
-        "DivLiquida_Ativos": get_val("netDebtToAssets"),
-        "DivLiquida_EBIT": get_val("netDebtToEbit"),
-        "DivLiquida_EBITDA": get_val("netDebtToEbitda"),
-        "LiquidezCorrente": get_val("currentLiquidity"),
-        "Passivos_Ativos": get_val("liabilitiesToAssetsRatio"),
-        "PL_Ativos": get_val("equityToAssetsRatio"),
-        "CAGR_Receitas_5a": get_val("cagrRecipesFiveYears"),
-        "CAGR_Lucros_5a": get_val("cagrProfitsFiveYears"),
-    }
+    st.dataframe(top[["Ticker", "Nome", "Setor", col]], hide_index=True, use_container_width=True)
 
 
-def parse_mfinance_dividends(div_data: Dict) -> Dict[str, Any]:
-    """Calcula métricas de dividendos a partir da lista de dividendos."""
-    dividends = div_data.get("dividends", [])
-    symbol = div_data.get("symbol", "")
+def pagina_comparativo():
+    """Pagina de comparativo de ativos."""
+    st.markdown('<h1 class="main-header">📊 Comparativo</h1>', unsafe_allow_html=True)
 
-    if not dividends:
-        return {
-            "Ticker": symbol,
-            "DY_12m": 0,
-            "Dividendo_Medio_12m": 0,
-            "Dividendo_Total_12m": 0,
-            "Dividendo_Ultimo": 0,
-            "Qtd_Dividendos_12m": 0,
-        }
+    df = load_data()
+    if df.empty:
+        st.warning("Dados nao disponiveis.")
+        return
 
-    valid_divs = [d for d in dividends if d.get("date") is not None]
+    tickers = st.multiselect("Selecione ate 5 ativos", sorted(df["Ticker"].tolist()), max_selections=5)
+    if len(tickers) < 2:
+        st.info("Selecione pelo menos 2 ativos para comparar.")
+        return
 
-    if not valid_divs:
-        return {
-            "Ticker": symbol,
-            "DY_12m": 0,
-            "Dividendo_Medio_12m": 0,
-            "Dividendo_Total_12m": 0,
-            "Dividendo_Ultimo": 0,
-            "Qtd_Dividendos_12m": 0,
-        }
+    selecionados = df[df["Ticker"].isin(tickers)]
 
-    sorted_divs = sorted(valid_divs, key=lambda x: x.get("date", ""), reverse=True)
-    recent = sorted_divs[:4]
+    # Radar comparativo
+    categorias = ["ROE", "DY", "Margem Liquida", "ROIC", "CAGR Lucros"]
+    fig = go.Figure()
 
-    total_12m = sum(d.get("value", 0) for d in recent)
-    avg_12m = total_12m / len(recent) if recent else 0
-    ultimo = sorted_divs[0].get("value", 0) if sorted_divs else 0
+    for _, row in selecionados.iterrows():
+        valores = [
+            min(row.get("ROE", 0) / 30 * 100, 100),
+            min(row.get("DY", 0) / 10 * 100, 100),
+            min(row.get("MargemLiquida", 0) / 20 * 100, 100),
+            min(row.get("ROIC", 0) / 20 * 100, 100),
+            min(row.get("CAGR_Lucros_5a", 0) / 15 * 100, 100),
+        ]
+        fig.add_trace(go.Scatterpolar(
+            r=valores + [valores[0]],
+            theta=categorias + [categorias[0]],
+            fill='toself',
+            name=row['Ticker']
+        ))
 
-    return {
-        "Ticker": symbol,
-        "DY_12m": 0,
-        "Dividendo_Medio_12m": round(avg_12m, 4),
-        "Dividendo_Total_12m": round(total_12m, 4),
-        "Dividendo_Ultimo": round(ultimo, 4),
-        "Qtd_Dividendos_12m": len(recent),
-    }
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=True,
+        height=500
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Tabela comparativa
+    st.subheader("📋 Tabela Comparativa")
+    cols_comp = ["Ticker", "Nome", "Cotacao", "DY", "PL", "PVP", "ROE", "ROIC", "MargemLiquida", "Score_CS"]
+    st.dataframe(selecionados[[c for c in cols_comp if c in selecionados.columns]], hide_index=True, use_container_width=True)
 
 
-def merge_mfinance_data(
-    stocks: List[Dict],
-    indicators: List[Dict],
-    dividends_map: Dict[str, Dict]
-) -> List[Dict[str, Any]]:
-    """Mescla dados básicos + indicadores + dividendos em registros únicos."""
-    stock_map = {s.get("symbol", ""): s for s in stocks}
-    ind_map = {i.get("symbol", ""): i for i in indicators}
+def pagina_configuracoes():
+    """Pagina de configuracoes."""
+    st.markdown('<h1 class="main-header">⚙️ Configuracoes</h1>', unsafe_allow_html=True)
 
-    all_tickers = set(stock_map.keys()) | set(ind_map.keys())
+    df = load_data()
+    if df.empty:
+        st.warning("Dados nao disponiveis.")
+        return
 
-    result = []
-    for ticker in sorted(all_tickers):
-        stock = stock_map.get(ticker, {})
-        ind = ind_map.get(ticker, {})
-        div = dividends_map.get(ticker, {"Ticker": ticker, "DY_12m": 0, "Dividendo_Medio_12m": 0,
-                                         "Dividendo_Total_12m": 0, "Dividendo_Ultimo": 0,
-                                         "Qtd_Dividendos_12m": 0})
+    st.subheader("📊 Estatisticas Gerais")
+    st.metric("Total de Ativos", len(df))
+    st.metric("Score CS Medio", round(df["Score_CS"].mean(), 1))
+    st.metric("Score CS Maximo", int(df["Score_CS"].max()))
+    st.metric("Score CS Minimo", int(df["Score_CS"].min()))
 
-        parsed_stock = parse_mfinance_stock(stock)
-        parsed_ind = parse_mfinance_indicator(ind)
+    st.subheader("📅 Informacoes dos Dados")
+    st.info("Dados atualizados diariamente via GitHub Actions.")
+    st.info("Fonte: MFinance API + BRAPI (complementar)")
 
-        merged = {**parsed_ind, **parsed_stock}
+    st.subheader("📋 Colunas Disponiveis")
+    st.write(f"Total de colunas: {len(df.columns)}")
+    st.write(list(df.columns))
 
-        merged["DY_12m"] = div.get("DY_12m", 0)
-        merged["Dividendo_Medio_12m"] = div.get("Dividendo_Medio_12m", 0)
-        merged["Dividendo_Total_12m"] = div.get("Dividendo_Total_12m", 0)
-        merged["Dividendo_Ultimo"] = div.get("Dividendo_Ultimo", 0)
-        merged["Qtd_Dividendos_12m"] = div.get("Qtd_Dividendos_12m", 0)
 
-        cotacao = merged.get("Cotacao", 0)
-        div_total = merged.get("Dividendo_Total_12m", 0)
-        if cotacao > 0 and div_total > 0:
-            merged["DY_12m"] = round((div_total / cotacao) * 100, 2)
+def main():
+    """Funcao principal."""
+    st.sidebar.markdown("## 📈 SOBRAL Invest")
+    st.sidebar.markdown("---")
 
-        result.append(merged)
+    pagina = st.sidebar.radio(
+        "Navegacao",
+        ["🏠 Dashboard", "🔍 Analise de Ativo", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"]
+    )
 
-    return result
+    if pagina == "🏠 Dashboard":
+        pagina_inicial()
+    elif pagina == "🔍 Analise de Ativo":
+        pagina_analise()
+    elif pagina == "🏆 Rankings":
+        pagina_rankings()
+    elif pagina == "📊 Comparativo":
+        pagina_comparativo()
+    elif pagina == "⚙️ Configuracoes":
+        pagina_configuracoes()
+
+
+if __name__ == "__main__":
+    main()
