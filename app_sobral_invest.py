@@ -1184,29 +1184,3 @@ def pagina_configuracoes():
     st.write(f"Total de colunas: {len(df.columns)}")
     st.write(list(df.columns))
 
-
-def main():
-    """Funcao principal."""
-    st.sidebar.markdown("## 📈 SOBRAL Invest")
-    st.sidebar.markdown("---")
-
-    pagina = st.sidebar.radio(
-        "Navegacao",
-        ["🏠 Dashboard", "🔍 Analise", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"],
-        key="nav_radio_main"
-    )
-
-    if pagina == "🏠 Dashboard":
-        pagina_inicial()
-    elif pagina == "🔍 Analise":
-        pagina_analise()
-    elif pagina == "🏆 Rankings":
-        pagina_rankings()
-    elif pagina == "📊 Comparativo":
-        pagina_comparativo()
-    elif pagina == "⚙️ Configuracoes":
-        pagina_configuracoes()
-
-
-if __name__ == "__main__":
-    main()
