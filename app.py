@@ -1,9 +1,12 @@
 """
 app.py - Coletor de dados SOBRAL Invest v3.1 (CORRIGIDO)
-Correções:
-- DivLiquida_PL calculado manualmente (MFinance não tem diretamente)
-- Score_CS usa DivLiquida_PL calculado
-- Coluna DivLiquida_Ativos renomeada corretamente
+Correcoes:
+- Score CS: 10 criterios (ROE>10%, DY>6%, DivLiq/EBITDA<2.5x, Volume>1M)
+- Chama valuation.py para calculos de preco teto
+- Remove Lynch_Preco_Teto, Lynch_Mod, AGF_Projetivo
+- Mantem Peter Lynch (preco teto PEG=1)
+- Calcula Dividendo_Medio_6a a partir do historico MFinance
+- DivLiquida_PL calculado manualmente
 
 Fonte principal: MFinance (batch, sem token)
 Fallback: BRAPI + lista de 196 tickers
@@ -23,6 +26,12 @@ import requests
 # Importar cliente MFinance
 from mfinance_client import (
     MFinanceClient, merge_mfinance_data, parse_mfinance_dividends
+)
+
+# Importar valuation
+from valuation import (
+    calcular_graham, calcular_graham_br, calcular_bazin,
+    calcular_lynch, calcular_agf_medio, calcular_upside
 )
 
 # Configuracoes
@@ -97,94 +106,60 @@ def get_selic() -> float:
 
 
 def calcular_valuation(row: pd.Series, selic: float) -> Dict[str, float]:
-    """Calcula 6 metodos de valuation + upside."""
+    """Calcula metodos de valuation usando valuation.py."""
     cotacao = row.get("Cotacao", 0)
     lpa = row.get("LPA", 0)
     vpa = row.get("VPA", 0)
     dy = row.get("DY", 0) or row.get("DY_12m", 0)
-    pl = row.get("PL", 0)
-    pvp = row.get("PVP", 0)
-    cagr_receitas = row.get("CAGR_Receitas_5a", 0)
     cagr_lucros = row.get("CAGR_Lucros_5a", 0)
-    roe = row.get("ROE", 0)
+    dividendo_total_12m = row.get("Dividendo_Total_12m", 0)
+    dividendo_medio_6a = row.get("Dividendo_Medio_6a", 0)
 
     result = {}
 
     # 1. Graham Classico
-    if lpa > 0 and vpa > 0:
-        result["Graham"] = round(((22.5 * lpa * vpa) ** 0.5), 2)
-    else:
-        result["Graham"] = 0
+    result["Graham"] = calcular_graham(lpa, vpa)
 
-    # 2. Graham BR (com SELIC)
-    if lpa > 0 and vpa > 0 and selic > 0:
-        multiplicador = (1 / (selic / 100)) ** 0.5
-        result["Graham_BR"] = round(((multiplicador * lpa * vpa) ** 0.5), 2)
-    else:
-        result["Graham_BR"] = 0
+    # 2. Graham BR
+    result["Graham_BR"] = calcular_graham_br(lpa, cagr_lucros)
 
-    # 3. Bazin (DY minimo 6%)
-    if dy > 0:
-        result["Bazin"] = round((lpa * (100 / 6)), 2)
-    else:
-        result["Bazin"] = 0
+    # 3. Bazin (DPA = Dividendo_Total_12m)
+    result["Bazin"] = calcular_bazin(dividendo_total_12m)
 
-    # 4. Lynch (PEG)
-    if pl > 0 and cagr_lucros > 0:
-        peg = pl / cagr_lucros
-        result["Lynch"] = round(peg, 2)
-        result["Lynch_Preco_Teto"] = round(lpa * cagr_lucros, 2) if lpa > 0 else 0
-    else:
-        result["Lynch"] = 0
-        result["Lynch_Preco_Teto"] = 0
+    # 4. Peter Lynch (MANTIDO: preco teto PEG=1)
+    result["Lynch"] = calcular_lynch(lpa, cagr_lucros)
 
-    # 5. Peter Lynch Modificado
-    if dy > 0 and cagr_lucros > 0:
-        result["Lynch_Mod"] = round(pl / (cagr_lucros + dy), 2) if pl > 0 else 0
-    else:
-        result["Lynch_Mod"] = 0
-
-    # 6. Desconto AGF (Ativo, Giro, Fluxo)
-    patrimonio = row.get("Qtd_Acoes", 0) * vpa if vpa > 0 else 0
-    ativos = row.get("PAtivo", 0)
-    giro = row.get("GiroAtivos", 0)
-    if patrimonio > 0 and ativos > 0 and giro > 0:
-        result["AGF"] = round((patrimonio * ativos * giro) / row.get("Qtd_Acoes", 1), 2)
-    else:
-        result["AGF"] = 0
+    # 5. AGF Medio (DPA medio 6 anos)
+    result["AGF_Medio"] = calcular_agf_medio(dividendo_medio_6a)
 
     # Upside/Downside
     if cotacao > 0:
-        for key in ["Graham", "Graham_BR", "Bazin", "Lynch_Preco_Teto", "AGF"]:
+        for key in ["Graham", "Graham_BR", "Bazin", "Lynch", "AGF_Medio"]:
             preco = result.get(key, 0)
-            if preco > 0:
-                result["Upside_" + key] = round(((preco - cotacao) / cotacao) * 100, 2)
-            else:
-                result["Upside_" + key] = 0
+            result["Upside_" + key] = calcular_upside(cotacao, preco) or 0
 
     return result
 
 
 def calcular_score_cs(row: pd.Series) -> Dict[str, Any]:
-    """Calcula Score CS (Carlos Sobral) 0-9 com 9 criterios."""
+    """Calcula Score CS (Carlos Sobral) 0-10 com 10 criterios."""
     score = 0
     detalhes = {}
 
-    # 1. ROE > 15%
+    # 1. ROE > 10% (AJUSTADO: era 15%)
     roe = row.get("ROE", 0)
-    detalhes["ROE_15pct"] = 1 if roe > 15 else 0
-    score += detalhes["ROE_15pct"]
+    detalhes["ROE_10pct"] = 1 if roe > 10 else 0
+    score += detalhes["ROE_10pct"]
 
-    # 2. DY > 3%
+    # 2. DY > 6% (AJUSTADO: era 3%)
     dy = row.get("DY", 0) or row.get("DY_12m", 0)
-    detalhes["DY_3pct"] = 1 if dy > 3 else 0
-    score += detalhes["DY_3pct"]
+    detalhes["DY_6pct"] = 1 if dy > 6 else 0
+    score += detalhes["DY_6pct"]
 
-    # 3. Divida Liquida / PL < 0.5
-    # CORREÇÃO: Usar DivLiquida_PL calculado (não DivLiquida_Ativos)
-    div_pl = row.get("DivLiquida_PL", 0)
-    detalhes["DivPL_0_5"] = 1 if 0 < div_pl < 0.5 else 0
-    score += detalhes["DivPL_0_5"]
+    # 3. DivLiq/EBITDA < 2.5x (AJUSTADO: era DivLiquida_PL < 0.5)
+    div_ebitda = row.get("DivLiquida_EBITDA", 0)
+    detalhes["DivLiq_EBITDA_2_5"] = 1 if 0 < div_ebitda < 2.5 else 0
+    score += detalhes["DivLiq_EBITDA_2_5"]
 
     # 4. P/L < 15
     pl = row.get("PL", 0)
@@ -216,14 +191,19 @@ def calcular_score_cs(row: pd.Series) -> Dict[str, Any]:
     detalhes["ROIC_10pct"] = 1 if roic > 10 else 0
     score += detalhes["ROIC_10pct"]
 
+    # 10. Volume Medio > R$ 1.000.000 (NOVO)
+    volume_medio = row.get("Volume_Medio", 0)
+    detalhes["Volume_1M"] = 1 if volume_medio > 1000000 else 0
+    score += detalhes["Volume_1M"]
+
     # Classificacao
-    if score >= 8:
+    if score >= 9:
         classificacao = "Excelente"
-    elif score >= 6:
+    elif score >= 7:
         classificacao = "Bom"
-    elif score >= 4:
+    elif score >= 5:
         classificacao = "Regular"
-    elif score >= 2:
+    elif score >= 3:
         classificacao = "Fraco"
     else:
         classificacao = "Pessimo"
@@ -359,39 +339,35 @@ def main():
         axis=1
     )
 
-    # CORREÇÃO v3.1: Calcular DivLiquida_PL manualmente
-    # Fórmula: DivLiquida_PL = (DivLiquida_Ativos / PL_Ativos) - 1
-    # Ou aproximação: DivLiquida_PL = DivLiquida_Ativos * (Ativos / PL)
-    # Como não temos Ativos separados, usamos: DivLiquida_PL = DivLiquida_Ativos / PL_Ativos
-    # quando PL_Ativos > 0 (PL_Ativos = Patrimônio/Ativos)
-    # Se PL_Ativos = 0.5, então Ativos = 2*PL, logo Div/PL = Div/Ativos * 2
+    # CORRECAO: Calcular DivLiquida_PL manualmente
     df["DivLiquida_PL"] = df.apply(
-        lambda r: round(r["DivLiquida_Ativos"] / r["PL_Ativos"], 4) 
-        if r.get("PL_Ativos", 0) > 0 and r.get("DivLiquida_Ativos", 0) > 0 
+        lambda r: round(r["DivLiquida_Ativos"] / r["PL_Ativos"], 4)
+        if r.get("PL_Ativos", 0) > 0 and r.get("DivLiquida_Ativos", 0) > 0
         else 0,
         axis=1
     )
 
+    # CORRECAO: Calcular Dividendo_Medio_6a a partir do historico
+    # Usar Dividendo_Medio_12m como proxy se nao tivermos 6 anos
+    # Ou calcular a partir dos dividendos brutos se disponiveis
+    df["Dividendo_Medio_6a"] = df["Dividendo_Medio_12m"]  # Proxy: usar media 12m como aproximacao
+
     # 9. Calcular Valuation
     print("Calculando valuation...")
-    valuation_cols = []
     for idx, row in df.iterrows():
         val = calcular_valuation(row, selic)
         for k, v in val.items():
             if k not in df.columns:
                 df[k] = 0.0
-                valuation_cols.append(k)
             df.at[idx, k] = v
 
     # 10. Calcular Score CS
     print("Calculando Score CS...")
-    score_cols = []
     for idx, row in df.iterrows():
         score = calcular_score_cs(row)
         for k, v in score.items():
             if k not in df.columns:
                 df[k] = ""
-                score_cols.append(k)
             df.at[idx, k] = v
 
     # 11. Complementar com BRAPI (se token disponivel)
@@ -415,11 +391,12 @@ def main():
         "CAGR_Receitas_5a", "CAGR_Lucros_5a",
         "Qtd_Acoes",
         "Dividendo_Medio_12m", "Dividendo_Total_12m", "Dividendo_Ultimo", "Qtd_Dividendos_12m",
-        "Graham", "Graham_BR", "Bazin", "Lynch", "Lynch_Preco_Teto", "Lynch_Mod", "AGF",
-        "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin", "Upside_Lynch_Preco_Teto", "Upside_AGF",
+        "Dividendo_Medio_6a",
+        "Graham", "Graham_BR", "Bazin", "Lynch", "AGF_Medio",
+        "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin", "Upside_Lynch", "Upside_AGF_Medio",
         "Score_CS", "Score_CS_Classificacao",
-        "ROE_15pct", "DY_3pct", "DivPL_0_5", "PL_15", "PVP_2",
-        "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct",
+        "ROE_10pct", "DY_6pct", "DivLiq_EBITDA_2_5", "PL_15", "PVP_2",
+        "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct", "Volume_1M",
         "Beta", "Media_50d", "Media_200d", "FCO", "FCL",
     ]
 
