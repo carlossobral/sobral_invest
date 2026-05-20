@@ -1,16 +1,22 @@
 """
-Cliente MFinance API - v2.1 (CORRIGIDO)
-Correcoes:
-- PL <-> PVP trocados no parse_mfinance_indicator()
-- DivLiquida_PL renomeado para DivLiquida_Ativos (netDebtToAssets = Divida/Ativos)
-- Adicionado calculo manual de Divida/PL quando possivel
+Cliente MFinance API - v3.0 (REFATORADO)
+Simplificado para 3 endpoints confirmados:
+- GET /stocks → todos os ativos com dados basicos
+- GET /stocks/indicators → todos os indicadores fundamentais
+- GET /stocks/dividends/{symbol} → dividendos por ticker
 
-Formatos confirmados:
-- /stocks/symbols/ -> ["PETR4", "VALE3", ...] (lista de strings)
-- /stocks?symbols=... -> {"stocks": [{...}, {...}]} (objeto com array 'stocks')
-- /stocks/indicators?symbols=... -> {"indicators": [{symbol, ...}, ...]} (objeto com array 'indicators')
-- /stocks/dividends/{symbol} -> {"symbol": "...", "dividends": [{...}]}
-- /stocks/details/{symbol} -> {"details": [{...}]} (inferido do schema)
+Removidos (codigo morto):
+- get_all_symbols() / /stocks/symbols/ → desnecessario, batch funciona sem lista
+- get_details() / /stocks/details/ → nunca chamado no app.py
+- get_stock_single() / /stocks/{symbol} → fallback nunca usado
+- get_indicators_single() / /stocks/indicators/{symbol} → fallback nunca usado
+- get_all_stocks_single() → fallback removido
+- get_all_indicators_single() → fallback removido
+- Camada de teste batch → batch sempre funciona, simplificado
+
+Correcoes mantidas:
+- PL <-> PVP trocados no parse_mfinance_indicator()
+- DivLiquida_Ativos renomeado (netDebtToAssets = Divida/Ativos)
 """
 
 import requests
@@ -45,11 +51,11 @@ class MFinanceClient:
                 data = response.json()
                 if isinstance(data, dict):
                     keys = list(data.keys())
-                    print(f"  DEBUG {url}: keys={keys[:5]}")
+                    print(f" DEBUG {url}: keys={keys[:5]}")
                 elif isinstance(data, list):
-                    print(f"  DEBUG {url}: list len={len(data)}")
+                    print(f" DEBUG {url}: list len={len(data)}")
                 else:
-                    print(f"  DEBUG {url}: type={type(data).__name__}, value={str(data)[:100]}")
+                    print(f" DEBUG {url}: type={type(data).__name__}, value={str(data)[:100]}")
                 return data
             except requests.exceptions.Timeout:
                 if attempt < self.retries - 1:
@@ -60,7 +66,7 @@ class MFinanceClient:
             except requests.exceptions.HTTPError as e:
                 print(f"⚠️ HTTP {e.response.status_code}: {url}")
                 try:
-                    print(f"  Response: {e.response.text[:200]}")
+                    print(f" Response: {e.response.text[:200]}")
                 except:
                     pass
                 return None
@@ -69,156 +75,67 @@ class MFinanceClient:
                 return None
         return None
 
-    def get_all_symbols(self) -> List[str]:
-        """Retorna lista de todos os tickers de acoes."""
-        data = self._request("GET", "/stocks/symbols/")
-        if isinstance(data, list):
-            return [s for s in data if isinstance(s, str) and s]
-        return []
+    def get_stocks(self) -> List[Dict]:
+        """Busca TODOS os ativos do MFinance (dados basicos).
 
-    def get_stocks_batch(self, symbols: List[str]) -> List[Dict]:
-        """Busca dados basicos de multiplos tickers. Retorna lista de dicts."""
-        if not symbols:
-            return []
-        symbols_str = ",".join(symbols)
-        data = self._request("GET", f"/stocks?symbols={symbols_str}")
+        GET /stocks → retorna {"stocks": [{"symbol": "PETR4", ...}, ...]}
+        Nao precisa de symbols= → retorna todos os 648 tickers.
+        """
+        data = self._request("GET", "/stocks")
         if isinstance(data, dict) and "stocks" in data and data["stocks"] is not None:
-            return data["stocks"]
+            stocks = data["stocks"]
+            print(f"✅ /stocks: {len(stocks)} ativos")
+            return stocks
+        print("❌ /stocks retornou vazio ou formato inesperado")
         return []
 
-    def get_indicators_batch(self, symbols: List[str]) -> List[Dict]:
-        """Busca indicadores de multiplos tickers. Retorna lista de dicts."""
-        if not symbols:
-            return []
-        symbols_str = ",".join(symbols)
-        data = self._request("GET", f"/stocks/indicators?symbols={symbols_str}")
+    def get_indicators(self) -> List[Dict]:
+        """Busca TODOS os indicadores fundamentais do MFinance.
+
+        GET /stocks/indicators → retorna {"indicators": [{"symbol": "PETR4", ...}, ...]}
+        Nao precisa de symbols= → retorna todos os 648 tickers.
+        Cada indicador contem "symbol" para merge posterior.
+        """
+        data = self._request("GET", "/stocks/indicators")
         if isinstance(data, dict) and "indicators" in data and data["indicators"] is not None:
-            return data["indicators"]
+            indicators = data["indicators"]
+            print(f"✅ /stocks/indicators: {len(indicators)} indicadores")
+            return indicators
+        print("❌ /stocks/indicators retornou vazio ou formato inesperado")
         return []
 
     def get_dividends(self, symbol: str) -> Dict[str, Any]:
-        """Busca dividendos de 1 ticker. Retorna {"symbol": "...", "dividends": [...]}."""
+        """Busca dividendos de 1 ticker.
+
+        GET /stocks/dividends/{symbol} → {"symbol": "...", "dividends": [...]}
+        """
         data = self._request("GET", f"/stocks/dividends/{symbol}")
         if isinstance(data, dict) and "dividends" in data:
             return data
         return {"symbol": symbol, "dividends": []}
 
-    def get_details(self, symbol: str) -> Dict[str, Any]:
-        """Busca detalhes de 1 ticker. Retorna dict com type, subSector, segment."""
-        data = self._request("GET", f"/stocks/details/{symbol}")
-        if isinstance(data, dict) and "details" in data:
-            details_list = data["details"]
-            if details_list and isinstance(details_list, list):
-                return details_list[0]
-        return {}
+    def get_all_dividends(self, symbols: List[str]) -> Dict[str, Dict]:
+        """Busca dividendos para uma lista de tickers (1 por 1).
 
-    def get_all_stocks(self, batch_size: int = BATCH_SIZE) -> List[Dict]:
-        """Busca TODOS os ativos do MFinance (dados basicos)."""
-        symbols = self.get_all_symbols()
-        if not symbols:
-            return []
-        print(f"📊 Total de tickers disponiveis: {len(symbols)}")
+        Args:
+            symbols: Lista de tickers (obtida do /stocks ou /stocks/indicators)
 
-        all_stocks = []
-        batch_worked = False
-        test_batch = symbols[:10]
-        print(f"  [CAMADA 1] Testando batch com {len(test_batch)} tickers...")
-        stocks = self.get_stocks_batch(test_batch)
-        if stocks and len(stocks) > 0:
-            all_stocks.extend(stocks)
-            batch_worked = True
-            print(f"  ✅ Batch funcionou! {len(stocks)} ativos")
-        else:
-            print(f"  ❌ Batch falhou")
+        Returns:
+            Dict mapeando ticker → dados de dividendos
+        """
+        dividends_map = {}
+        total = len(symbols)
+        print(f"💰 Buscando dividendos para {total} tickers...")
 
-        if batch_worked:
-            print("  ✅ Modo batch ativado. Processando todos...")
-            for i in range(10, len(symbols), batch_size):
-                batch = symbols[i:i + batch_size]
-                print(f"  Batch {i+1}-{min(i+batch_size, len(symbols))}...")
-                stocks = self.get_stocks_batch(batch)
-                if stocks is not None and len(stocks) > 0:
-                    all_stocks.extend(stocks)
-                time.sleep(0.3)
-        else:
-            print("  ⚠️ CAMADA 2: Modo individual...")
-            all_stocks = self.get_all_stocks_single(symbols)
+        for i, symbol in enumerate(symbols):
+            if i % 50 == 0 and i > 0:
+                print(f"   {i}/{total} dividendos...")
+            div_data = self.get_dividends(symbol)
+            dividends_map[symbol] = parse_mfinance_dividends(div_data)
+            time.sleep(0.1)  # Rate limiting gentil
 
-        print(f"✅ Total coletado: {len(all_stocks)} ativos")
-        return all_stocks
-
-    def get_stock_single(self, symbol: str) -> Optional[Dict]:
-        """Busca dados de 1 ticker individualmente (fallback se batch falhar)."""
-        data = self._request("GET", f"/stocks/{symbol}")
-        if isinstance(data, dict):
-            return data
-        return None
-
-    def get_indicators_single(self, symbol: str) -> Optional[Dict]:
-        """Busca indicadores de 1 ticker individualmente."""
-        data = self._request("GET", f"/stocks/indicators/{symbol}")
-        if isinstance(data, dict):
-            return data
-        return None
-
-    def get_all_stocks_single(self, symbols: List[str]) -> List[Dict]:
-        """Busca TODOS os ativos 1 por 1 (fallback quando batch falha)."""
-        print(f"Usando modo individual para {len(symbols)} ativos...")
-        all_stocks = []
-        for i, sym in enumerate(symbols):
-            if i % 50 == 0:
-                print(f"  {i+1}/{len(symbols)}...")
-            stock = self.get_stock_single(sym)
-            if stock:
-                all_stocks.append(stock)
-            time.sleep(0.2)
-        return all_stocks
-
-    def get_all_indicators_single(self, symbols: List[str]) -> List[Dict]:
-        """Busca indicadores 1 por 1 (fallback quando batch falha)."""
-        print(f"Usando modo individual para {len(symbols)} indicadores...")
-        all_indicators = []
-        for i, sym in enumerate(symbols):
-            if i % 50 == 0:
-                print(f"  {i+1}/{len(symbols)}...")
-            ind = self.get_indicators_single(sym)
-            if ind:
-                all_indicators.append(ind)
-            time.sleep(0.2)
-        return all_indicators
-
-    def get_all_indicators(self, symbols: List[str], batch_size: int = BATCH_SIZE) -> List[Dict]:
-        """Busca indicadores para uma lista de simbolos."""
-        if not symbols:
-            return []
-
-        all_indicators = []
-        batch_worked = False
-        test_batch = symbols[:10]
-        print(f"  [CAMADA 1] Testando batch indicadores {len(test_batch)} tickers...")
-        indicators = self.get_indicators_batch(test_batch)
-        if indicators and len(indicators) > 0:
-            all_indicators.extend(indicators)
-            batch_worked = True
-            print(f"  ✅ Batch funcionou! {len(indicators)} indicadores")
-        else:
-            print(f"  ❌ Batch falhou")
-
-        if batch_worked:
-            print("  ✅ Modo batch ativado. Processando todos...")
-            for i in range(10, len(symbols), batch_size):
-                batch = symbols[i:i + batch_size]
-                print(f"  Indicadores {i+1}-{min(i+batch_size, len(symbols))}...")
-                indicators = self.get_indicators_batch(batch)
-                if indicators is not None and len(indicators) > 0:
-                    all_indicators.extend(indicators)
-                time.sleep(0.3)
-        else:
-            print("  ⚠️ CAMADA 2: Modo individual...")
-            all_indicators = self.get_all_indicators_single(symbols)
-
-        print(f"✅ Total indicadores: {len(all_indicators)}")
-        return all_indicators
+        print(f"✅ Dividendos: {len(dividends_map)} tickers")
+        return dividends_map
 
 
 def parse_mfinance_stock(stock: Dict) -> Dict[str, Any]:
@@ -251,11 +168,11 @@ def parse_mfinance_indicator(ind: Dict) -> Dict[str, Any]:
     """
     Extrai valores numericos dos indicadores do MFinance.
 
-    CORRECAO v2.1:
-    - PL agora usa priceEarningsRatio (P/L = Preco/Lucro)
-    - PVP agora usa priceToBookValue (P/VP = Preco/Valor Patrimonial)
+    CORRECAO v2.1 mantida:
+    - PL usa priceEarningsRatio (P/L = Preco/Lucro)
+    - PVP usa priceToBookValue (P/VP = Preco/Valor Patrimonial)
     - DivLiquida_Ativos = netDebtToAssets (Divida Liquida / Ativos Totais)
-    - DivLiquida_PL sera calculado no app.py (MFinance nao tem diretamente)
+    - DivLiquida_PL sera calculado no app.py
     """
     def get_val(key: str) -> float:
         obj = ind.get(key)
@@ -265,9 +182,7 @@ def parse_mfinance_indicator(ind: Dict) -> Dict[str, Any]:
 
     return {
         "Ticker": ind.get("symbol", ""),
-        # CORRIGIDO: PL = P/L = priceEarningsRatio
         "PL": get_val("priceEarningsRatio"),
-        # CORRIGIDO: PVP = P/VP = priceToBookValue
         "PVP": get_val("priceToBookValue"),
         "PSR": get_val("priceToSalesRatio"),
         "PAtivo": get_val("priceToAssets"),
@@ -287,7 +202,6 @@ def parse_mfinance_indicator(ind: Dict) -> Dict[str, Any]:
         "MargemEBITDA": get_val("ebitdaMargin"),
         "MargemEBIT": get_val("ebitMargin"),
         "MargemLiquida": get_val("netMargin"),
-        # RENOMEADO: netDebtToAssets = Divida/Ativos (nao Divida/PL)
         "DivLiquida_Ativos": get_val("netDebtToAssets"),
         "DivLiquida_EBIT": get_val("netDebtToEbit"),
         "DivLiquida_EBITDA": get_val("netDebtToEbitda"),
@@ -358,9 +272,11 @@ def merge_mfinance_data(
     for ticker in sorted(all_tickers):
         stock = stock_map.get(ticker, {})
         ind = ind_map.get(ticker, {})
-        div = dividends_map.get(ticker, {"Ticker": ticker, "DY_12m": 0, "Dividendo_Medio_12m": 0,
-                                         "Dividendo_Total_12m": 0, "Dividendo_Ultimo": 0,
-                                         "Qtd_Dividendos_12m": 0})
+        div = dividends_map.get(ticker, {
+            "Ticker": ticker, "DY_12m": 0, "Dividendo_Medio_12m": 0,
+            "Dividendo_Total_12m": 0, "Dividendo_Ultimo": 0,
+            "Qtd_Dividendos_12m": 0
+        })
 
         parsed_stock = parse_mfinance_stock(stock)
         parsed_ind = parse_mfinance_indicator(ind)
