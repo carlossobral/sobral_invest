@@ -89,18 +89,24 @@ def load_data() -> pd.DataFrame:
     try:
         df = pd.read_excel("ativos.xlsx", sheet_name="Dados")
 
-        # Converter TODAS as colunas numéricas
+        # Converter TODAS as colunas numéricas (nomes reais do ativos.xlsx)
         numeric_cols = [
-            "Cotacao", "Variacao", "Score_CS", "PL", "PVP", "DY", "ROE", "ROIC",
-            "MargemLiquida", "MargemBruta", "MargemEBIT", "EV_EBIT", "EV_EBITDA",
-            "DividaLiquida_PL", "DividaLiquida_EBITDA", "LiquidezCorrente",
-            "VPA", "LPA", "P_Ativo", "P_EBIT", "P_Ativo_Circ", "PSR",
-            "GiroAtivos", "CAGR_Receitas_5a", "CAGR_Lucros_5a",
-            "Graham", "Graham_BR", "Bazin", "Lynch_Preco_Teto", "AGF",
+            "Cotacao", "Variacao", "Abertura", "Maxima", "Minima", "Fechamento_Anterior",
+            "Volume", "Volume_Medio", "Maxima_52s", "Minima_52s", "Market_Cap",
+            "PE", "EPS", "DY", "DY_12m", "PL", "PVP", "PSR", "PAtivo", "PCapGiro",
+            "PAtivoCircLiq", "PEBIT", "PEBITDA", "EV_EBIT", "EV_EBITDA",
+            "LPA", "VPA", "Patrimonio", "Lucro_Liquido", "EBIT", "Receita_Liquida",
+            "ROE", "ROA", "ROIC", "GiroAtivos", "MargemBruta", "MargemEBITDA",
+            "MargemEBIT", "MargemLiquida", "DivLiquida_PL", "DivLiquida_EBIT",
+            "DivLiquida_EBITDA", "LiquidezCorrente", "Passivos_Ativos", "PL_Ativos",
+            "CAGR_Receitas_5a", "CAGR_Lucros_5a", "Qtd_Acoes", "Dividendo_Medio_12m",
+            "Dividendo_Total_12m", "Dividendo_Ultimo", "Qtd_Dividendos_12m",
+            "Graham", "Graham_BR", "Bazin", "Lynch", "Lynch_Preco_Teto", "Lynch_Mod", "AGF",
             "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin",
             "Upside_Lynch_Preco_Teto", "Upside_AGF",
-            "ROE_15pct", "DY_3pct", "DivPL_0_5", "PL_15", "PVP_2",
-            "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct"
+            "Score_CS", "ROE_15pct", "DY_3pct", "DivPL_0_5", "PL_15", "PVP_2",
+            "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct",
+            "Beta", "Media_50d", "Media_200d", "FCO", "FCL"
         ]
 
         for col in numeric_cols:
@@ -430,13 +436,13 @@ def pagina_analise():
         "Margem EBIT": (ativo.get("MargemEBIT", 0), "%"),
         "EV/EBIT": (ativo.get("EV_EBIT", 0), "x"),
         "EV/EBITDA": (ativo.get("EV_EBITDA", 0), "x"),
-        "Dívida/PL": (ativo.get("DividaLiquida_PL", 0), "x"),
-        "Dívida/EBITDA": (ativo.get("DividaLiquida_EBITDA", 0), "x"),
+        "Dívida/PL": (ativo.get("DivLiquida_PL", 0), "x"),
+        "Dívida/EBITDA": (ativo.get("DivLiquida_EBITDA", 0), "x"),
         "Liquidez Corrente": (ativo.get("LiquidezCorrente", 0), "x"),
         "VPA": (ativo.get("VPA", 0), "R$"),
         "LPA": (ativo.get("LPA", 0), "R$"),
-        "P/Ativo": (ativo.get("P_Ativo", 0), "x"),
-        "P/EBIT": (ativo.get("P_EBIT", 0), "x"),
+        "P/Ativo": (ativo.get("PAtivo", 0), "x"),
+        "P/EBIT": (ativo.get("PEBIT", 0), "x"),
         "Giro Ativos": (ativo.get("GiroAtivos", 0), "x"),
         "CAGR Receitas": (ativo.get("CAGR_Receitas_5a", 0), "%"),
         "CAGR Lucros": (ativo.get("CAGR_Lucros_5a", 0), "%"),
@@ -467,7 +473,7 @@ def pagina_analise():
     criterios = [
         ("ROE > 15%", ativo.get("ROE_15pct", 0) == 1, f"{ativo.get('ROE', 0):.2f}%"),
         ("DY > 3%", ativo.get("DY_3pct", 0) == 1, f"{ativo.get('DY', 0):.2f}%"),
-        ("Dívida/PL < 0.5", ativo.get("DivPL_0_5", 0) == 1, f"{ativo.get('DividaLiquida_PL', 0):.2f}"),
+        ("Dívida/PL < 0.5", ativo.get("DivPL_0_5", 0) == 1, f"{ativo.get('DivLiquida_PL', 0):.2f}"),
         ("P/L < 15", ativo.get("PL_15", 0) == 1, f"{ativo.get('PL', 0):.2f}"),
         ("P/VP < 2", ativo.get("PVP_2", 0) == 1, f"{ativo.get('PVP', 0):.2f}"),
         ("Margem Líquida > 10%", ativo.get("Margem_10pct", 0) == 1, f"{ativo.get('MargemLiquida', 0):.2f}%"),
