@@ -227,240 +227,587 @@ def pagina_inicial():
             st.dataframe(top_altas, hide_index=True)
 
 
+
 def pagina_analise():
-    """Pagina de analise de ativo estilo Investidor10."""
-    st.markdown('<h1 class="main-header">🔍 Analise de Ativo</h1>', unsafe_allow_html=True)
+    """Pagina de analise de ativo estilo Investidor10 - Layout v2.0 Cards."""
+
+    # CSS customizado para esta pagina
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    .analise-container * {
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Cards de metrica */
+    .metric-card-v2 {
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 16px;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        height: 100%;
+    }
+
+    .metric-card-v2:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 12px rgba(0,0,0,0.2);
+        border-color: #3b82f6;
+    }
+
+    .metric-label-v2 {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+        line-height: 1.2;
+    }
+
+    .metric-value-v2 {
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        line-height: 1.2;
+    }
+
+    /* Score Card */
+    .score-card-v2 {
+        border-radius: 16px;
+        padding: 24px;
+        text-align: center;
+        box-shadow: 0 10px 15px rgba(0,0,0,0.2);
+    }
+
+    .score-number-v2 {
+        font-size: 3.5rem;
+        font-weight: 800;
+        line-height: 1;
+        margin-bottom: 8px;
+    }
+
+    .score-label-v2 {
+        font-size: 1.1rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+
+    .score-desc-v2 {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        margin-top: 6px;
+    }
+
+    /* Checklist compacto */
+    .checklist-item-v2 {
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s ease;
+        margin-bottom: 6px;
+    }
+
+    .checklist-item-v2:hover {
+        border-color: #475569;
+    }
+
+    .checklist-icon-v2 {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        flex-shrink: 0;
+        color: white;
+    }
+
+    .checklist-text-v2 {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #e2e8f0;
+        line-height: 1.2;
+    }
+
+    /* Section Title */
+    .section-title-v2 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin: 28px 0 16px 0;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #334155;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Preco Justo Card */
+    .pj-card-v2 {
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+
+    .pj-card-v2:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 12px rgba(0,0,0,0.2);
+    }
+
+    .pj-title-v2 {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 10px;
+    }
+
+    .pj-valor-v2 {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        margin-bottom: 4px;
+    }
+
+    .pj-upside-v2 {
+        font-size: 0.9rem;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 12px;
+        display: inline-block;
+    }
+
+    /* Checklist B&H Cards */
+    .bh-card-v2 {
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+        border: 2px solid;
+        border-radius: 12px;
+        padding: 14px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+
+    .bh-card-v2:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 10px rgba(0,0,0,0.2);
+    }
+
+    .bh-icon-v2 {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 8px auto;
+        font-size: 16px;
+        font-weight: 700;
+        color: white;
+    }
+
+    .bh-title-v2 {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #f1f5f9;
+        margin-bottom: 2px;
+        line-height: 1.2;
+    }
+
+    .bh-desc-v2 {
+        font-size: 0.65rem;
+        color: #94a3b8;
+        line-height: 1.2;
+    }
+
+    /* Header do ativo */
+    .ativo-header-v2 {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .ativo-ticker-v2 {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #f1f5f9;
+    }
+
+    .ativo-nome-v2 {
+        font-size: 1rem;
+        color: #94a3b8;
+        margin-top: 4px;
+    }
+
+    .ativo-setor-v2 {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-top: 8px;
+    }
+
+    .ativo-cotacao-v2 {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        text-align: right;
+    }
+
+    .ativo-var-v2 {
+        font-size: 1rem;
+        font-weight: 600;
+        text-align: right;
+        margin-top: 4px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="analise-container">', unsafe_allow_html=True)
 
     df = load_data()
     if df.empty:
         st.warning("Dados nao disponiveis.")
         return
 
-    # Selecao de ativo
-    ticker = st.selectbox("Selecione o ativo", sorted(df["Ticker"].tolist()))
-    ativo = df[df["Ticker"] == ticker].iloc[0] if len(df[df["Ticker"] == ticker]) > 0 else None
+    # ============================================================
+    # 1. SELETOR DE ATIVO
+    # ============================================================
+    df['Display'] = df['Ticker'] + ' — ' + df['Nome']
+    ativo_selecionado = st.selectbox(
+        "🔍 Selecione o ativo",
+        options=sorted(df['Display'].tolist()),
+        index=0,
+        key="ativo_selector_v2"
+    )
+
+    ticker = ativo_selecionado.split(' — ')[0]
+    ativo = df[df['Ticker'] == ticker].iloc[0] if len(df[df['Ticker'] == ticker]) > 0 else None
 
     if ativo is None:
         st.error("Ativo nao encontrado.")
         return
 
-    # Header
-    col1, col2, col3 = st.columns([2, 1, 1])
-    with col1:
-        st.markdown(f"### {ativo['Ticker']} - {ativo['Nome']}")
-        st.markdown(f"**Setor:** {ativo.get('Setor', 'N/A')} | **Subsetor:** {ativo.get('SubSetor', 'N/A')}")
-    with col2:
-        cotacao = ativo.get("Cotacao", 0)
-        variacao = ativo.get("Variacao", 0)
-        color = "green" if variacao >= 0 else "red"
-        st.markdown(f"### R$ {cotacao:.2f}")
-        st.markdown(f"<span style='color:{color}'>{variacao:+.2f}%</span>", unsafe_allow_html=True)
-    with col3:
-        score = int(ativo.get("Score_CS", 0))
-        score_class = ativo.get("Score_CS_Classificacao", "N/A")
-        score_color = {
-            "Excelente": "score-excelente",
-            "Bom": "score-bom",
-            "Regular": "score-regular",
-            "Fraco": "score-fraco",
-            "Pessimo": "score-pessimo"
-        }.get(score_class, "")
-        st.markdown(f"### Score CS: {score}/10")
-        st.markdown(f"<span class='{score_color}'>{score_class}</span>", unsafe_allow_html=True)
+    # ============================================================
+    # HEADER DO ATIVO
+    # ============================================================
+    cotacao = ativo.get("Cotacao", 0)
+    variacao = ativo.get("Variacao", 0)
+    var_color = "#10b981" if variacao >= 0 else "#ef4444"
 
-    # Widget TradingView para o ativo
-    st.subheader("📈 Grafico")
-    tv_symbol = f"BMFBOVESPA:{ticker}"
-    tv_chart = f"""
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
-      {{
-        "symbols": [
-          ["{tv_symbol}|1D"]
-        ],
-        "chartOnly": false,
-        "width": "100%",
-        "height": "300",
-        "locale": "br",
-        "colorTheme": "dark",
-        "autosize": true,
-        "showVolume": true,
-        "showMA": false,
-        "hideDateRanges": false,
-        "hideMarketStatus": false,
-        "hideSymbolLogo": false,
-        "scalePosition": "right",
-        "scaleMode": "Normal",
-        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
-        "fontSize": "10",
-        "noTimeScale": false,
-        "valuesTracking": "1",
-        "changeMode": "price-and-percent",
-        "chartType": "area",
-        "maLineColor": "#2962FF",
-        "maLineWidth": 1,
-        "maLength": 9,
-        "lineWidth": 2,
-        "lineType": 0,
-        "dateRanges": [
-          "1d|1",
-          "1m|30",
-          "3m|60",
-          "12m|1D",
-          "60m|1W",
-          "all|1M"
+    col_h1, col_h2 = st.columns([2, 1])
+    with col_h1:
+        st.markdown(f"""
+        <div class="ativo-header-v2">
+            <div class="ativo-ticker-v2">{ativo['Ticker']}</div>
+            <div class="ativo-nome-v2">{ativo['Nome']}</div>
+            <div class="ativo-setor-v2">{ativo.get('Setor', 'N/A')} › {ativo.get('SubSetor', 'N/A')} › {ativo.get('Segmento', 'N/A')}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_h2:
+        st.markdown(f"""
+        <div class="ativo-header-v2">
+            <div class="ativo-cotacao-v2">R$ {cotacao:.2f}</div>
+            <div class="ativo-var-v2" style="color: {var_color};">{variacao:+.2f}%</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 2. SCORE CS + CHECKLIST COMPACTO
+    # ============================================================
+    st.markdown('<div class="section-title-v2">🎯 Score CS</div>', unsafe_allow_html=True)
+
+    score = int(ativo.get('Score_CS', 0))
+    if score >= 7:
+        score_color, score_bg, score_label = "#10b981", "#065f46", "Excelente"
+    elif score >= 4:
+        score_color, score_bg, score_label = "#f59e0b", "#92400e", "Bom"
+    else:
+        score_color, score_bg, score_label = "#ef4444", "#991b1b", "Fraco"
+
+    col_score, col_check = st.columns([1, 2])
+
+    with col_score:
+        st.markdown(f"""
+        <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
+            <div class="score-number-v2" style="color: {score_color};">{score}</div>
+            <div class="score-label-v2" style="color: {score_color};">{score_label}</div>
+            <div class="score-desc-v2">de 10 pontos</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_check:
+        checklist_items = [
+            ("ROE > 10%", ativo.get('ROE_10pct', 0)),
+            ("DY > 6%", ativo.get('DY_6pct', 0)),
+            ("Dív.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0)),
+            ("PL < 15", ativo.get('PL_15', 0)),
+            ("PVP < 2", ativo.get('PVP_2', 0)),
+            ("Margem > 10%", ativo.get('Margem_10pct', 0)),
+            ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0)),
+            ("CAGR > 5%", ativo.get('CAGR_5pct', 0)),
+            ("ROIC > 10%", ativo.get('ROIC_10pct', 0)),
+            ("Volume > 1M", ativo.get('Volume_1M', 0)),
         ]
-      }}
-      </script>
-    </div>
-    """
-    components.html(tv_chart, height=310)
 
-    # Precos Justos
-    st.subheader("🎯 Precos Justos")
-    col1, col2, col3, col4, col5 = st.columns(5)
+        cols_check = st.columns(3)
+        for i, (label, value) in enumerate(checklist_items):
+            is_true = bool(value) if not pd.isna(value) else False
+            icon = "✓" if is_true else "✗"
+            bg_color = "#10b981" if is_true else "#ef4444"
 
-    valuations = [
-        ("Graham", "Graham", "Upside_Graham"),
-        ("Graham BR", "Graham_BR", "Upside_Graham_BR"),
-        ("Bazin (6%)", "Bazin", "Upside_Bazin"),
-        ("Lynch", "Lynch", "Upside_Lynch"),
-        ("AGF Medio", "AGF_Medio", "Upside_AGF_Medio"),
+            cols_check[i % 3].markdown(f"""
+            <div class="checklist-item-v2">
+                <div class="checklist-icon-v2" style="background: {bg_color};">{icon}</div>
+                <div class="checklist-text-v2">{label}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 3. VALUATION - 6 colunas x 2 linhas
+    # ============================================================
+    st.markdown('<div class="section-title-v2">📈 Valuation</div>', unsafe_allow_html=True)
+
+    valuation_data = [
+        ("P/L (PL)", f"{ativo.get('PL', 0):.2f}x"),
+        ("P/VP (PVP)", f"{ativo.get('PVP', 0):.2f}x"),
+        ("P/E (PE)", f"{ativo.get('PE', 0):.2f}x"),
+        ("EPS", f"R$ {ativo.get('EPS', 0):.2f}"),
+        ("PSR (P/Receita)", f"{ativo.get('PSR', 0):.2f}x"),
+        ("P/Ativo", f"{ativo.get('PAtivo', 0):.2f}x"),
+        ("P/Cap.Giro", f"{ativo.get('PCapGiro', 0):.2f}x"),
+        ("P/Ativo Circ. Líq.", f"{ativo.get('PAtivoCircLiq', 0):.2f}x"),
+        ("P/EBIT", f"{ativo.get('PEBIT', 0):.2f}x"),
+        ("P/EBITDA", f"{ativo.get('PEBITDA', 0):.2f}x"),
+        ("EV/EBIT", f"{ativo.get('EV_EBIT', 0):.2f}x"),
+        ("EV/EBITDA", f"{ativo.get('EV_EBITDA', 0):.2f}x"),
     ]
 
-    for i, (nome, col_val, col_up) in enumerate(valuations):
-        with [col1, col2, col3, col4, col5][i]:
-            preco = ativo.get(col_val, 0)
-            upside = ativo.get(col_up, 0)
-            if preco > 0:
-                color = "green" if upside >= 0 else "red"
-                st.metric(nome, f"R$ {preco:.2f}", f"{upside:+.1f}%", delta_color="inverse")
+    for row_idx in range(2):
+        cols = st.columns(6)
+        for col_idx in range(6):
+            idx = row_idx * 6 + col_idx
+            if idx < len(valuation_data):
+                label, value = valuation_data[idx]
+                cols[col_idx].markdown(f"""
+                <div class="metric-card-v2">
+                    <div class="metric-label-v2">{label}</div>
+                    <div class="metric-value-v2">{value}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 4. RENTABILIDADE - 4 colunas x 2 linhas
+    # ============================================================
+    st.markdown('<div class="section-title-v2">💰 Rentabilidade</div>', unsafe_allow_html=True)
+
+    rent_data = [
+        ("ROE", f"{ativo.get('ROE', 0):.2f}%"),
+        ("ROA", f"{ativo.get('ROA', 0):.2f}%"),
+        ("ROIC", f"{ativo.get('ROIC', 0):.2f}%"),
+        ("Giro Ativos", f"{ativo.get('GiroAtivos', 0):.2f}x"),
+        ("Margem Bruta", f"{ativo.get('MargemBruta', 0):.2f}%"),
+        ("Margem EBITDA", f"{ativo.get('MargemEBITDA', 0):.2f}%"),
+        ("Margem EBIT", f"{ativo.get('MargemEBIT', 0):.2f}%"),
+        ("Margem Líquida", f"{ativo.get('MargemLiquida', 0):.2f}%"),
+    ]
+
+    for row_idx in range(2):
+        cols = st.columns(4)
+        for col_idx in range(4):
+            idx = row_idx * 4 + col_idx
+            if idx < len(rent_data):
+                label, value = rent_data[idx]
+                cols[col_idx].markdown(f"""
+                <div class="metric-card-v2">
+                    <div class="metric-label-v2">{label}</div>
+                    <div class="metric-value-v2">{value}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 5. ENDIVIDAMENTO - 4 colunas x 2 linhas
+    # ============================================================
+    st.markdown('<div class="section-title-v2">⚠️ Endividamento</div>', unsafe_allow_html=True)
+
+    endiv_data = [
+        ("Dív.Líq / Ativos", f"{ativo.get('DivLiquida_Ativos', 0):.2f}x"),
+        ("Dív.Líq / PL", f"{ativo.get('DivLiquida_PL', 0):.2f}x"),
+        ("Dív.Líq / EBIT", f"{ativo.get('DivLiquida_EBIT', 0):.2f}x"),
+        ("Dív.Líq / EBITDA", f"{ativo.get('DivLiquida_EBITDA', 0):.2f}x"),
+        ("Liquidez Corrente", f"{ativo.get('LiquidezCorrente', 0):.2f}x"),
+        ("Passivos / Ativos", f"{ativo.get('Passivos_Ativos', 0):.2f}x"),
+        ("PL / Ativos", f"{ativo.get('PL_Ativos', 0):.2f}x"),
+    ]
+
+    for row_idx in range(2):
+        cols = st.columns(4)
+        for col_idx in range(4):
+            idx = row_idx * 4 + col_idx
+            if idx < len(endiv_data):
+                label, value = endiv_data[idx]
+                cols[col_idx].markdown(f"""
+                <div class="metric-card-v2">
+                    <div class="metric-label-v2">{label}</div>
+                    <div class="metric-value-v2">{value}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 6. RESULTADO - 6 colunas x 1 linha
+    # ============================================================
+    st.markdown('<div class="section-title-v2">📊 Resultado</div>', unsafe_allow_html=True)
+
+    res_data = [
+        ("LPA", f"R$ {ativo.get('LPA', 0):.2f}"),
+        ("VPA", f"R$ {ativo.get('VPA', 0):.2f}"),
+        ("Patrimônio Líq.", f"R$ {ativo.get('Patrimonio', 0)/1e9:.2f}B"),
+        ("Lucro Líquido", f"R$ {ativo.get('Lucro_Liquido', 0)/1e9:.2f}B"),
+        ("EBIT", f"R$ {ativo.get('EBIT', 0)/1e9:.2f}B"),
+        ("Receita Líq.", f"R$ {ativo.get('Receita_Liquida', 0)/1e9:.2f}B"),
+    ]
+
+    cols_res = st.columns(6)
+    for i, (label, value) in enumerate(res_data):
+        cols_res[i].markdown(f"""
+        <div class="metric-card-v2">
+            <div class="metric-label-v2">{label}</div>
+            <div class="metric-value-v2">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 7. CRESCIMENTO - 1 linha
+    # ============================================================
+    st.markdown('<div class="section-title-v2">🚀 Crescimento</div>', unsafe_allow_html=True)
+
+    cresc_data = [
+        ("CAGR Receitas 5a", f"{ativo.get('CAGR_Receitas_5a', 0):.2f}%"),
+        ("CAGR Lucros 5a", f"{ativo.get('CAGR_Lucros_5a', 0):.2f}%"),
+        ("Qtd. de Ações", f"{ativo.get('Qtd_Acoes', 0)/1e9:.2f}B"),
+    ]
+
+    cols_cresc = st.columns(3)
+    for i, (label, value) in enumerate(cresc_data):
+        cols_cresc[i].markdown(f"""
+        <div class="metric-card-v2">
+            <div class="metric-label-v2">{label}</div>
+            <div class="metric-value-v2">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 8. DIVIDENDOS - 1 linha
+    # ============================================================
+    st.markdown('<div class="section-title-v2">💵 Dividendos</div>', unsafe_allow_html=True)
+
+    div_data = [
+        ("DY Atual", f"{ativo.get('DY', 0):.2f}%"),
+        ("DY 12 meses", f"{ativo.get('DY_12m', 0):.2f}%"),
+        ("Div. Médio 12m", f"R$ {ativo.get('Dividendo_Medio_12m', 0):.4f}"),
+        ("Div. Total 12m", f"R$ {ativo.get('Dividendo_Total_12m', 0):.4f}"),
+        ("Div. Último", f"R$ {ativo.get('Dividendo_Ultimo', 0):.4f}"),
+        ("Qtd. Div. 12m", f"{int(ativo.get('Qtd_Dividendos_12m', 0))}"),
+        ("Div. Médio 6a", f"R$ {ativo.get('Dividendo_Medio_6a', 0):.4f}"),
+    ]
+
+    cols_div = st.columns(7)
+    for i, (label, value) in enumerate(div_data):
+        cols_div[i].markdown(f"""
+        <div class="metric-card-v2">
+            <div class="metric-label-v2">{label}</div>
+            <div class="metric-value-v2">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 9. PREÇO JUSTO - lado a lado com upside
+    # ============================================================
+    st.markdown('<div class="section-title-v2">🎯 Preço Justo</div>', unsafe_allow_html=True)
+
+    pj_data = [
+        ("Graham", ativo.get('Graham', 0), ativo.get('Upside_Graham', 0)),
+        ("Graham BR", ativo.get('Graham_BR', 0), ativo.get('Upside_Graham_BR', 0)),
+        ("Bazin", ativo.get('Bazin', 0), ativo.get('Upside_Bazin', 0)),
+        ("Lynch", ativo.get('Lynch', 0), ativo.get('Upside_Lynch', 0)),
+        ("AGF Médio", ativo.get('AGF_Medio', 0), ativo.get('Upside_AGF_Medio', 0)),
+    ]
+
+    cols_pj = st.columns(5)
+    for i, (title, preco, upside) in enumerate(pj_data):
+        try:
+            upside_val = float(upside)
+            if upside_val > 0:
+                up_color, up_bg = "#10b981", "#065f46"
+            elif upside_val < 0:
+                up_color, up_bg = "#ef4444", "#991b1b"
             else:
-                st.metric(nome, "N/A", "—")
+                up_color, up_bg = "#94a3b8", "#475569"
+        except:
+            up_color, up_bg = "#94a3b8", "#475569"
+            upside_val = 0
 
-    # Indicadores
-    st.subheader("📊 Indicadores Fundamentalistas")
-    cols = st.columns(5)
-    indicadores = [
-        ("P/L", "PL", "x"),
-        ("P/VP", "PVP", "x"),
-        ("DY", "DY", "%"),
-        ("ROE", "ROE", "%"),
-        ("ROIC", "ROIC", "%"),
-        ("Margem Liquida", "MargemLiquida", "%"),
-        ("Margem Bruta", "MargemBruta", "%"),
-        ("Margem EBITDA", "MargemEBITDA", "%"),
-        ("EV/EBIT", "EV_EBIT", "x"),
-        ("EV/EBITDA", "EV_EBITDA", "x"),
-        ("LPA", "LPA", "R$"),
-        ("VPA", "VPA", "R$"),
-        ("CAGR Receitas 5a", "CAGR_Receitas_5a", "%"),
-        ("CAGR Lucros 5a", "CAGR_Lucros_5a", "%"),
-        ("Liquidez Corrente", "LiquidezCorrente", "x"),
-        ("Div.Liq/EBITDA", "DivLiquida_EBITDA", "x"),
-        ("Div.Liq/PL", "DivLiquida_PL", "x"),
-        ("Passivos/Ativos", "Passivos_Ativos", "x"),
-        ("PL/Ativos", "PL_Ativos", "x"),
-        ("Giro Ativos", "GiroAtivos", "x"),
+        preco_str = f"R$ {preco:.2f}" if preco > 0 else "N/A"
+        upside_str = f"{upside_val:+.1f}%" if preco > 0 else "—"
+
+        cols_pj[i].markdown(f"""
+        <div class="pj-card-v2" style="border-color: {up_color}40;">
+            <div class="pj-title-v2">{title}</div>
+            <div class="pj-valor-v2">{preco_str}</div>
+            <div class="pj-upside-v2" style="background: {up_bg}40; color: {up_color};">{upside_str}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 10. CHECKLIST BUY & HOLD - Cards melhorados
+    # ============================================================
+    st.markdown('<div class="section-title-v2">✅ Checklist Buy & Hold</div>', unsafe_allow_html=True)
+
+    bh_items = [
+        ("ROE > 10%", ativo.get('ROE_10pct', 0), "Rentabilidade do patrimônio"),
+        ("DY > 6%", ativo.get('DY_6pct', 0), "Dividend Yield atrativo"),
+        ("Dív.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0), "Endividamento controlado"),
+        ("PL < 15", ativo.get('PL_15', 0), "Preço não está caro"),
+        ("PVP < 2", ativo.get('PVP_2', 0), "Próximo do valor patrimonial"),
+        ("Margem > 10%", ativo.get('Margem_10pct', 0), "Lucratividade saudável"),
+        ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0), "Capacidade de pagamento"),
+        ("CAGR > 5%", ativo.get('CAGR_5pct', 0), "Crescimento consistente"),
+        ("ROIC > 10%", ativo.get('ROIC_10pct', 0), "Retorno sobre capital"),
+        ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diária"),
     ]
 
-    for i, (nome, col, unit) in enumerate(indicadores):
-        with cols[i % 5]:
-            val = ativo.get(col, 0)
-            if unit == "%":
-                st.metric(nome, f"{val:.2f}%")
-            elif unit == "x":
-                st.metric(nome, f"{val:.2f}x")
-            elif unit == "R$":
-                st.metric(nome, f"R$ {val:.2f}")
-            else:
-                st.metric(nome, f"{val:.2f}")
+    cols_bh = st.columns(5)
+    for i, (title, value, desc) in enumerate(bh_items):
+        is_true = bool(value) if not pd.isna(value) else False
+        icon = "✓" if is_true else "✗"
+        border_color = "#10b981" if is_true else "#ef4444"
+        bg_icon = "#10b981" if is_true else "#ef4444"
 
-    # Checklist Score CS
-    st.subheader("✅ Checklist Score CS (Carlos Sobral)")
+        cols_bh[i % 5].markdown(f"""
+        <div class="bh-card-v2" style="border-color: {border_color}60;">
+            <div class="bh-icon-v2" style="background: {bg_icon};">{icon}</div>
+            <div class="bh-title-v2">{title}</div>
+            <div class="bh-desc-v2">{desc}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    checklist = [
-        ("ROE > 10%", "ROE_10pct", "ROE", "%", 10),
-        ("DY > 6%", "DY_6pct", "DY", "%", 6),
-        ("Div.Liq/EBITDA < 2.5x", "DivLiq_EBITDA_2_5", "DivLiquida_EBITDA", "x", 2.5),
-        ("P/L < 15", "PL_15", "PL", "x", 15),
-        ("P/VP < 2", "PVP_2", "PVP", "x", 2),
-        ("Margem Liquida > 10%", "Margem_10pct", "MargemLiquida", "%", 10),
-        ("Liquidez Corrente > 1", "LiqCorrente_1", "LiquidezCorrente", "x", 1),
-        ("CAGR Lucros 5a > 5%", "CAGR_5pct", "CAGR_Lucros_5a", "%", 5),
-        ("ROIC > 10%", "ROIC_10pct", "ROIC", "%", 10),
-        ("Volume Medio > R$ 1M", "Volume_1M", "Volume_Medio", "R$", 1000000),
-    ]
-
-    cols_check = st.columns(2)
-    for i, (nome, check_col, val_col, unit, limite) in enumerate(checklist):
-        with cols_check[i % 2]:
-            passou = ativo.get(check_col, 0) == 1
-            valor = ativo.get(val_col, 0)
-            icon = "✅" if passou else "❌"
-            status = "PASSOU" if passou else "NAO PASSOU"
-            color = "green" if passou else "red"
-
-            if unit == "%":
-                val_str = f"{valor:.2f}%"
-            elif unit == "x":
-                val_str = f"{valor:.2f}x"
-            elif unit == "R$":
-                val_str = f"R$ {valor:,.0f}"
-            else:
-                val_str = f"{valor:.2f}"
-
-            st.markdown(f"{icon} **{nome}** — Valor atual: {val_str} (limite: {limite}{unit})")
-            st.markdown(f"<span style='color:{color}'>{status}</span>", unsafe_allow_html=True)
-            st.markdown("---")
-
-    # Radar de Indicadores
-    st.subheader("🎯 Radar de Indicadores")
-    categorias = ["ROE", "DY", "Margem Liquida", "ROIC", "CAGR Lucros"]
-    valores = [
-        min(ativo.get("ROE", 0) / 30 * 100, 100),
-        min(ativo.get("DY", 0) / 10 * 100, 100),
-        min(ativo.get("MargemLiquida", 0) / 20 * 100, 100),
-        min(ativo.get("ROIC", 0) / 20 * 100, 100),
-        min(ativo.get("CAGR_Lucros_5a", 0) / 15 * 100, 100),
-    ]
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(
-        r=valores + [valores[0]],
-        theta=categorias + [categorias[0]],
-        fill='toself',
-        name=ativo['Ticker']
-    ))
-    fig.add_trace(go.Scatterpolar(
-        r=[100, 100, 100, 100, 100, 100],
-        theta=categorias + [categorias[0]],
-        mode='lines',
-        line=dict(color='gray', dash='dash'),
-        name='Referencia'
-    ))
-    fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-        showlegend=True,
-        height=400
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Valuation Completo
-    st.subheader("📋 Valuation Completo")
-    valuation_data = []
-    for nome, col_val, col_up in valuations:
-        preco = ativo.get(col_val, 0)
-        upside = ativo.get(col_up, 0)
-        valuation_data.append({
-            "Metodo": nome,
-            "Preco Justo": f"R$ {preco:.2f}" if preco > 0 else "N/A",
-            "Upside": f"{upside:+.1f}%" if preco > 0 else "N/A",
-            "Sinal": "🟢 Compra" if upside >= 20 else ("🟡 Atencao" if upside >= 0 else "🔴 Acima do teto") if preco > 0 else "—"
-        })
-
-    st.dataframe(pd.DataFrame(valuation_data), hide_index=True, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def pagina_rankings():
