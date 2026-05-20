@@ -1116,7 +1116,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()def pagina_rankings():
+    main()
+
+def pagina_rankings():
     """Pagina de rankings."""
     st.markdown('<h1 class="main-header">🏆 Rankings</h1>', unsafe_allow_html=True)
 
