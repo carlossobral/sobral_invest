@@ -1,4 +1,5 @@
 # id: fetch_urls:6#0 (https://raw.githubusercontent.com/carlossobral/sobral_invest/refs/heads/main/.github/workflows/update.yml) mime: text/plainname: Atualizar Dados SOBRAL Invest
+name: Atualizar Dados SOBRAL Invest
 
 on:
   schedule:
