@@ -677,58 +677,6 @@ def pagina_analise():
     components.html(tv_chart, height=360)
 
     # ============================================================
-    # 2. WIDGET TRADINGVIEW DO ATIVO
-    # ============================================================
-    st.markdown("<div style='margin: 16px 0;'></div>", unsafe_allow_html=True)
-
-    tv_symbol = f"BMFBOVESPA:{ticker}"
-    tv_chart = f"""
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
-      {{
-        "symbols": [
-          ["{tv_symbol}|1D"]
-        ],
-        "chartOnly": false,
-        "width": "100%",
-        "height": "350",
-        "locale": "br",
-        "colorTheme": "dark",
-        "autosize": false,
-        "showVolume": true,
-        "showMA": false,
-        "hideDateRanges": false,
-        "hideMarketStatus": false,
-        "hideSymbolLogo": false,
-        "scalePosition": "right",
-        "scaleMode": "Normal",
-        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
-        "fontSize": "10",
-        "noTimeScale": false,
-        "valuesTracking": "1",
-        "changeMode": "price-and-percent",
-        "chartType": "area",
-        "maLineColor": "#2962FF",
-        "maLineWidth": 1,
-        "maLength": 9,
-        "lineWidth": 2,
-        "lineType": 0,
-        "dateRanges": [
-          "1d|1",
-          "1m|30",
-          "3m|60",
-          "12m|1D",
-          "60m|1W",
-          "all|1M"
-        ]
-      }}
-      </script>
-    </div>
-    """
-    components.html(tv_chart, height=360)
-
-    # ============================================================
     # 3. VALUATION - 6 colunas x 2 linhas
     # ============================================================
     st.markdown('<div class="section-title-v2">📈 Valuation</div>', unsafe_allow_html=True)
@@ -927,6 +875,21 @@ def pagina_analise():
     # 10. SCORE CS
     # ============================================================
     st.markdown('<div class="section-title-v2">🎯 SCORE CS</div>', unsafe_allow_html=True)
+    
+    # Critérios do Score CS
+    bh_items = [
+        ("ROE > 10%", ativo.get('ROE_10pct', 0), "Rentabilidade do patrimônio"),
+        ("DY > 6%", ativo.get('DY_6pct', 0), "Dividend Yield atrativo"),
+        ("Dív.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0), "Endividamento controlado"),
+        ("PL < 15", ativo.get('PL_15', 0), "Preço não está caro"),
+        ("PVP < 2", ativo.get('PVP_2', 0), "Próximo do valor patrimonial"),
+        ("Margem > 10%", ativo.get('Margem_10pct', 0), "Lucratividade saudável"),
+        ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0), "Capacidade de pagamento"),
+        ("CAGR > 5%", ativo.get('CAGR_5pct', 0), "Crescimento consistente"),
+        ("ROIC > 10%", ativo.get('ROIC_10pct', 0), "Retorno sobre capital"),
+        ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diária"),
+    ]
+
 
     score = int(ativo.get('Score_CS', 0))
     if score >= 9:
@@ -1100,12 +1063,13 @@ def main():
 
     pagina = st.sidebar.radio(
         "Navegacao",
-        ["🏠 Dashboard", "🔍 Analise de Ativo", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"]
+        ["🏠 Dashboard", "🔍 Analise", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"],
+        key="nav_radio_main"
     )
 
     if pagina == "🏠 Dashboard":
         pagina_inicial()
-    elif pagina == "🔍 Analise de Ativo":
+    elif pagina == "🔍 Analise":
         pagina_analise()
     elif pagina == "🏆 Rankings":
         pagina_rankings()
@@ -1228,12 +1192,13 @@ def main():
 
     pagina = st.sidebar.radio(
         "Navegacao",
-        ["🏠 Dashboard", "🔍 Analise de Ativo", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"]
+        ["🏠 Dashboard", "🔍 Analise", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"],
+        key="nav_radio_main"
     )
 
     if pagina == "🏠 Dashboard":
         pagina_inicial()
-    elif pagina == "🔍 Analise de Ativo":
+    elif pagina == "🔍 Analise":
         pagina_analise()
     elif pagina == "🏆 Rankings":
         pagina_rankings()
