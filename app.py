@@ -1,6 +1,12 @@
 """
-app.py - Coletor de dados SOBRAL Invest v3.1 (CORRIGIDO)
-Correcoes:
+app.py - Coletor de dados SOBRAL Invest v3.2 (REFATORADO)
+Ajustes para mfinance_client.py v3.0:
+- client.get_all_stocks() → client.get_stocks() (batch simplificado)
+- client.get_all_indicators() → client.get_indicators() (batch simplificado)
+- Remove fallback de get_stocks_batch() com TICKERS_PRIORITARIOS
+- Remove batch_size dos parametros (nao mais necessario)
+
+Correcoes mantidas:
 - Score CS: 10 criterios (ROE>10%, DY>6%, DivLiq/EBITDA<2.5x, Volume>1M)
 - Chama valuation.py para calculos de preco teto
 - Remove Lynch_Preco_Teto, Lynch_Mod, AGF_Projetivo
@@ -23,7 +29,7 @@ from typing import List, Dict, Any
 import pandas as pd
 import requests
 
-# Importar cliente MFinance
+# Importar cliente MFinance REFATORADO
 from mfinance_client import (
     MFinanceClient, merge_mfinance_data, parse_mfinance_dividends
 )
@@ -37,33 +43,6 @@ from valuation import (
 # Configuracoes
 BRAPI_TOKEN = os.environ.get("BRAPI_TOKEN", "")
 USEBOLSAI_TOKEN = os.environ.get("USEBOLSAI_TOKEN", "")
-TICKERS_PRIORITARIOS = [
-    "AALR3","ABCB4","ABEV3","AERI3","AGRO3","AGXY3","ALLD3","ALOS3","ALPA4","ALPK3",
-    "ALUP11","ALUP4","AMAR3","AMBP3","AMER3","AMOB3","ANIM3","ARML3","ASAI3","ATED3",
-    "AURA33","AURE3","AZEV4","AZTE3","AZZA3","B3SA3","BAZA3","BBAS3","BBDC3","BBDC4",
-    "BBSE3","BEEF3","BEES4","BGIP4","BHIA3","BIOM3","BLAU3","BMEB4","BMGB4","BMOB3",
-    "BPAC11","BRAP3","BRAP4","BRAV3","BRBI11","BRKM3","BRKM5","BRSR6","BRST3","BSLI4",
-    "CAMB3","CAML3","CASH3","CBAV3","CEAB3","CGRA4","CLSC4","CMIG3","CMIG4","CMIN3",
-    "COCE5","COGN3","CPFE3","CPLE3","CSAN3","CSED3","CSMG3","CSNA3","CURY3","CVCB3",
-    "CXSE3","CYRE3","DASA3","DESK3","DEXP3","DEXP4","DIRR3","DMVF3","DOTZ3","DXCO3",
-    "EALT4","ECOR3","EGIE3","EMAE4","ENEV3","ENGI11","ENGI3","ENJU3","EQPA3","EQTL3",
-    "ESPA3","EUCA3","EUCA4","EVEN3","EZTC3","FESA4","FHER3","FICT3","FIQE3","FLRY3",
-    "FRAS3","G2DI33","GFSA3","GGBR3","GGBR4","GGPS3","GMAT3","GOAU3","GOAU4","GRND3",
-    "HAPV3","HBOR3","HBRE3","HBSA3","HYPE3","IFCM3","IGTI11","IGTI3","INTB3","IRBR3",
-    "ISAE4","ITSA4","ITUB4","JALL3","JHSF3","JSLG3","KEPL3","KLBN11","KLBN4","LAND3",
-    "LAVV3","LEVE3","LIGT3","LJQQ3","LOGG3","LOGN3","LPSB3","LREN3","LUPA3","LWSA3",
-    "MATD3","MBRF3","MDIA3","MDNE3","MEAL3","MELK3","MGLU3","MILS3","MLAS3","MOTV3",
-    "MOVI3","MRVE3","MTRE3","MULT3","MYPK3","NATU3","NEOE3","NGRD3","ODPV3","OFSA3",
-    "OIBR3","ONCO3","OPCT3","ORVR3","PCAR3","PDGR3","PDTC3","PETR3","PETR4","PFRM3",
-    "PGMN3","PINE4","PLPL3","PMAM3","PNVL3","POMO3","POMO4","POSI3","PRIO3","PRNR3",
-    "PSSA3","PTBL3","PTNT4","QUAL3","RADL3","RAIL3","RAIZ4","RANI3","RAPT3","RAPT4",
-    "RCSL4","RDOR3","RECV3","RENT3","ROMI3","SANB11","SAPR11","SAPR4","SBFG3","SBSP3",
-    "SCAR3","SEER3","SEQL3","SHOW3","SHUL4","SIMH3","SLCE3","SMFT3","SMTO3","SOJA3",
-    "SUZB3","SYNE3","TAEE11","TAEE4","TCSA3","TECN3","TEND3","TFCO4","TGMA3","TIMS3",
-    "TOTS3","TPIS3","TRAD3","TRIS3","TTEN3","TUPY3","UCAS3","UGPA3","UNIP6","USIM3",
-    "USIM5","VALE3","VAMO3","VBBR3","VITT3","VIVA3","VIVR3","VIVT3","VLID3","VSTE3",
-    "VTRU3","VULC3","VVEO3","WEGE3","WEST3","WIZC3","YDUQ3"
-]
 
 
 def get_selic() -> float:
@@ -98,11 +77,11 @@ def get_selic() -> float:
     except Exception as e:
         print("Erro SELIC: " + str(e))
 
-    # Fallback final
-    if os.path.exists("selic.json"):
-        with open("selic.json", "r") as f:
-            return json.load(f).get("selic", 10.75)
-    return 10.75
+        # Fallback final
+        if os.path.exists("selic.json"):
+            with open("selic.json", "r") as f:
+                return json.load(f).get("selic", 10.75)
+        return 10.75
 
 
 def calcular_valuation(row: pd.Series, selic: float) -> Dict[str, float]:
@@ -269,7 +248,7 @@ def complementar_brapi(df: pd.DataFrame, token: str = "") -> pd.DataFrame:
 
 def main():
     print("=" * 70)
-    print("SOBRAL INVEST - Coletor de Dados v3.1 (CORRIGIDO)")
+    print("SOBRAL INVEST - Coletor de Dados v3.2 (REFATORADO)")
     print("=" * 70)
     print("Inicio: " + str(pd.Timestamp.now()))
 
@@ -285,13 +264,9 @@ def main():
     # 2. Inicializar cliente MFinance
     client = MFinanceClient(timeout=25, retries=3)
 
-    # 3. Buscar todos os ativos do MFinance
+    # 3. Buscar TODOS os ativos do MFinance (batch simplificado)
     print("[1/4] Buscando ativos do MFinance...")
-    all_stocks = client.get_all_stocks(batch_size=50)
-
-    if not all_stocks:
-        print("MFinance retornou vazio. Usando fallback com lista priorizada...")
-        all_stocks = client.get_stocks_batch(TICKERS_PRIORITARIOS)
+    all_stocks = client.get_stocks()
 
     print("Ativos coletados: " + str(len(all_stocks)))
 
@@ -299,24 +274,19 @@ def main():
         print("Nenhum ativo coletado. Abortando.")
         sys.exit(1)
 
-    # 4. Buscar indicadores
-    symbols = [s.get("symbol", "") for s in all_stocks if s.get("symbol")]
-    print("[2/4] Buscando indicadores para " + str(len(symbols)) + " ativos...")
-    all_indicators = client.get_all_indicators(symbols, batch_size=50)
+    # 4. Buscar TODOS os indicadores (batch simplificado)
+    print("[2/4] Buscando indicadores...")
+    all_indicators = client.get_indicators()
     print("Indicadores coletados: " + str(len(all_indicators)))
 
-    # 5. Buscar dividendos (1 por 1 - MFinance nao tem batch)
-    print("[3/4] Buscando dividendos para " + str(len(symbols)) + " ativos...")
-    dividends_map = {}
-    for i, sym in enumerate(symbols):
-        if i % 50 == 0:
-            print("  Dividendos " + str(i+1) + "/" + str(len(symbols)) + "...")
-        div_data = client.get_dividends(sym)
-        parsed = parse_mfinance_dividends(div_data)
-        dividends_map[sym] = parsed
-        time.sleep(0.1)
+    # 5. Extrair symbols para buscar dividendos
+    symbols = [s.get("symbol", "") for s in all_stocks if s.get("symbol")]
 
-    # 6. Mesclar dados
+    # 6. Buscar dividendos (1 por 1 - MFinance nao tem batch)
+    print("[3/4] Buscando dividendos para " + str(len(symbols)) + " ativos...")
+    dividends_map = client.get_all_dividends(symbols)
+
+    # 7. Mesclar dados
     print("[4/4] Mesclando e processando dados...")
     merged = merge_mfinance_data(all_stocks, all_indicators, dividends_map)
 
@@ -324,10 +294,10 @@ def main():
         print("Nenhum dado mesclado. Abortando.")
         sys.exit(1)
 
-    # 7. Criar DataFrame
+    # 8. Criar DataFrame
     df = pd.DataFrame(merged)
 
-    # 8. Calcular campos derivados
+    # 9. Calcular campos derivados
     df["Patrimonio"] = df["Qtd_Acoes"] * df["VPA"]
     df["Lucro_Liquido"] = df["Qtd_Acoes"] * df["LPA"]
     df["EBIT"] = df.apply(
@@ -349,10 +319,9 @@ def main():
 
     # CORRECAO: Calcular Dividendo_Medio_6a a partir do historico
     # Usar Dividendo_Medio_12m como proxy se nao tivermos 6 anos
-    # Ou calcular a partir dos dividendos brutos se disponiveis
     df["Dividendo_Medio_6a"] = df["Dividendo_Medio_12m"]  # Proxy: usar media 12m como aproximacao
 
-    # 9. Calcular Valuation
+    # 10. Calcular Valuation
     print("Calculando valuation...")
     for idx, row in df.iterrows():
         val = calcular_valuation(row, selic)
@@ -361,7 +330,7 @@ def main():
                 df[k] = 0.0
             df.at[idx, k] = v
 
-    # 10. Calcular Score CS
+    # 11. Calcular Score CS
     print("Calculando Score CS...")
     for idx, row in df.iterrows():
         score = calcular_score_cs(row)
@@ -370,11 +339,11 @@ def main():
                 df[k] = ""
             df.at[idx, k] = v
 
-    # 11. Complementar com BRAPI (se token disponivel)
+    # 12. Complementar com BRAPI (se token disponivel)
     if BRAPI_TOKEN:
         df = complementar_brapi(df, BRAPI_TOKEN)
 
-    # 12. Ordenar colunas
+    # 13. Ordenar colunas
     col_order = [
         "Ticker", "Nome", "Setor", "SubSetor", "Segmento",
         "Cotacao", "Variacao", "Abertura", "Maxima", "Minima",
@@ -407,7 +376,7 @@ def main():
 
     df = df[[c for c in col_order if c in df.columns]]
 
-    # 13. Salvar
+    # 14. Salvar
     print("[5/4] Salvando arquivos...")
 
     # Excel
@@ -417,7 +386,7 @@ def main():
     # CSV
     df.to_csv("ativos.csv", index=False, encoding="utf-8-sig")
 
-    # 14. Resumo
+    # 15. Resumo
     print("=" * 70)
     print("RESUMO")
     print("=" * 70)
