@@ -88,9 +88,29 @@ def load_data() -> pd.DataFrame:
     """Carrega ativos.xlsx da raiz do projeto."""
     try:
         df = pd.read_excel("ativos.xlsx", sheet_name="Dados")
-        df["Cotacao"] = pd.to_numeric(df["Cotacao"], errors="coerce").fillna(0)
-        df["Variacao"] = pd.to_numeric(df["Variacao"], errors="coerce").fillna(0)
-        df["Score_CS"] = pd.to_numeric(df["Score_CS"], errors="coerce").fillna(0)
+
+        # Converter TODAS as colunas numéricas
+        numeric_cols = [
+            "Cotacao", "Variacao", "Score_CS", "PL", "PVP", "DY", "ROE", "ROIC",
+            "MargemLiquida", "MargemBruta", "MargemEBIT", "EV_EBIT", "EV_EBITDA",
+            "DividaLiquida_PL", "DividaLiquida_EBITDA", "LiquidezCorrente",
+            "VPA", "LPA", "P_Ativo", "P_EBIT", "P_Ativo_Circ", "PSR",
+            "GiroAtivos", "CAGR_Receitas_5a", "CAGR_Lucros_5a",
+            "Graham", "Graham_BR", "Bazin", "Lynch_Preco_Teto", "AGF",
+            "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin",
+            "Upside_Lynch_Preco_Teto", "Upside_AGF",
+            "ROE_15pct", "DY_3pct", "DivPL_0_5", "PL_15", "PVP_2",
+            "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct"
+        ]
+
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+        # Converter Ticker para string
+        if "Ticker" in df.columns:
+            df["Ticker"] = df["Ticker"].astype(str)
+
         return df
     except Exception as e:
         st.error(f"Erro ao carregar ativos.xlsx: {e}")
@@ -253,129 +273,235 @@ def pagina_inicial():
 
 # ==================== ANÁLISE DE ATIVO ====================
 def pagina_analise():
-    st.markdown('<div class="main-header">🔍 Análise Fundamentalista</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">🔍 Análise de Ativo</div>', unsafe_allow_html=True)
 
     df = load_data()
     if df.empty:
         st.warning("Nenhum dado disponivel.")
         return
 
-    ticker = st.selectbox("Selecione o ativo", sorted(df["Ticker"].astype(str).tolist()))
+    ticker = st.selectbox("Selecione o ativo", sorted(df["Ticker"].tolist()))
 
     if not ticker:
         return
 
     ativo = df[df["Ticker"] == ticker].iloc[0]
 
-    # Header
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # ─── HEADER DO ATIVO ──────────────────────────────────────────────────────
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+
     with col1:
-        st.header(f"{ticker} - {ativo.get('Nome', '')}")
-        st.caption(f"{ativo.get('Setor', '')} > {ativo.get('SubSetor', '')} > {ativo.get('Segmento', '')}")
+        st.markdown(f"""
+        <div style="display:flex; align-items:center; gap:15px;">
+            <div style="width:60px; height:60px; background:linear-gradient(135deg, #667eea, #764ba2); 
+                        border-radius:12px; display:flex; align-items:center; justify-content:center; 
+                        color:white; font-size:1.5rem; font-weight:700;">
+                {ticker[:2]}
+            </div>
+            <div>
+                <div style="font-size:1.5rem; font-weight:700;">{ticker}</div>
+                <div style="font-size:0.9rem; color:#666;">{ativo.get('Nome', '')}</div>
+                <div style="font-size:0.8rem; color:#888;">{ativo.get('Setor', '')} › {ativo.get('SubSetor', '')}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     with col2:
-        score = int(ativo.get("Score_CS", 0))
-        classif = ativo.get("Score_CS_Classificacao", "")
-        st.metric("Score CS", f"{score}/9", classif)
+        st.metric("Cotação", f"R$ {ativo.get('Cotacao', 0):.2f}")
+
     with col3:
-        st.metric("Cotacao", f"R$ {ativo.get('Cotacao', 0):.2f}")
+        var = ativo.get("Variacao", 0)
+        delta_color = "normal" if var == 0 else ("inverse" if var < 0 else "normal")
+        st.metric("Variação", f"{var:+.2f}%", delta_color=delta_color)
+
+    with col4:
+        score = int(ativo.get("Score_CS", 0))
+        score_colors = {8: "🟢", 6: "🟡", 4: "🟠", 0: "🔴"}
+        score_emoji = next((v for k, v in sorted(score_colors.items(), reverse=True) if score >= k), "🔴")
+        st.metric("Score CS", f"{score_emoji} {score}/9")
 
     st.markdown("---")
 
-    # Indicadores principais
-    st.subheader("📊 Indicadores Principais")
+    # ─── GRÁFICO DO ATIVO (TradingView) ───────────────────────────────────────
+    tv_ativo = f"""
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <div class="tradingview-widget-copyright"><a href="https://br.tradingview.com/" rel="noopener nofollow" target="_blank"><span class="blue-text">Track all markets on TradingView</span></a></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
+      {{
+        "symbols": [
+          ["BMFBOVESPA:{ticker}|1D"]
+        ],
+        "chartOnly": false,
+        "width": "100%",
+        "height": "300",
+        "locale": "br",
+        "colorTheme": "dark",
+        "isTransparent": true,
+        "autosize": true,
+        "showVolume": false,
+        "scalePosition": "right",
+        "scaleMode": "Normal",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
+        "fontSize": "10",
+        "noTimeScale": false,
+        "valuesTracking": "1",
+        "changeMode": "price-and-percent",
+        "chartType": "area",
+        "lineWidth": 2,
+        "lineType": 0,
+        "dateRanges": [
+          "1d|1",
+          "1m|30",
+          "3m|60",
+          "12m|1D",
+          "60m|1W",
+          "all|1M"
+        ]
+      }}
+      </script>
+    </div>
+    """
+    import streamlit.components.v1 as components
+    components.html(tv_ativo, height=310)
 
-    cols = st.columns(4)
-    metrics = [
-        ("P/L", ativo.get("PL", 0), "x"),
-        ("P/VP", ativo.get("PVP", 0), "x"),
-        ("DY", ativo.get("DY", 0), "%"),
-        ("ROE", ativo.get("ROE", 0), "%"),
-        ("ROIC", ativo.get("ROIC", 0), "%"),
-        ("Margem Liquida", ativo.get("MargemLiquida", 0), "%"),
-        ("EV/EBIT", ativo.get("EV_EBIT", 0), "x"),
-        ("EV/EBITDA", ativo.get("EV_EBITDA", 0), "x"),
+    st.markdown("---")
+
+    # ─── PREÇO JUSTO (Graham) ────────────────────────────────────────────────
+    st.subheader("💰 Preço Justo")
+
+    col_g1, col_g2, col_g3 = st.columns(3)
+
+    with col_g1:
+        graham = ativo.get("Graham", 0)
+        upside_g = ativo.get("Upside_Graham", 0)
+        color_g = "#00c853" if upside_g > 0 else "#ff1744" if upside_g < 0 else "#ffab00"
+        st.markdown(f"""
+        <div style="background:#f8f9fa; border-radius:12px; padding:20px; text-align:center;">
+            <div style="font-size:0.9rem; color:#666; margin-bottom:5px;">Graham</div>
+            <div style="font-size:1.8rem; font-weight:700; color:#667eea;">R$ {graham:.2f}</div>
+            <div style="font-size:0.9rem; color:{color_g}; margin-top:5px; font-weight:600;">
+                {f"Upside: {upside_g:+.1f}%" if graham > 0 else "N/A"}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_g2:
+        bazin = ativo.get("Bazin", 0)
+        upside_b = ativo.get("Upside_Bazin", 0)
+        color_b = "#00c853" if upside_b > 0 else "#ff1744" if upside_b < 0 else "#ffab00"
+        st.markdown(f"""
+        <div style="background:#f8f9fa; border-radius:12px; padding:20px; text-align:center;">
+            <div style="font-size:0.9rem; color:#666; margin-bottom:5px;">Bazin (6% DY)</div>
+            <div style="font-size:1.8rem; font-weight:700; color:#667eea;">R$ {bazin:.2f}</div>
+            <div style="font-size:0.9rem; color:{color_b}; margin-top:5px; font-weight:600;">
+                {f"Upside: {upside_b:+.1f}%" if bazin > 0 else "N/A"}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_g3:
+        lynch = ativo.get("Lynch_Preco_Teto", 0)
+        upside_l = ativo.get("Upside_Lynch_Preco_Teto", 0)
+        color_l = "#00c853" if upside_l > 0 else "#ff1744" if upside_l < 0 else "#ffab00"
+        st.markdown(f"""
+        <div style="background:#f8f9fa; border-radius:12px; padding:20px; text-align:center;">
+            <div style="font-size:0.9rem; color:#666; margin-bottom:5px;">Lynch</div>
+            <div style="font-size:1.8rem; font-weight:700; color:#667eea;">R$ {lynch:.2f}</div>
+            <div style="font-size:0.9rem; color:{color_l}; margin-top:5px; font-weight:600;">
+                {f"Upside: {upside_l:+.1f}%" if lynch > 0 else "N/A"}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ─── INDICADORES PRINCIPAIS ────────────────────────────────────────────────
+    st.subheader("📊 Indicadores Fundamentalistas")
+
+    indicadores = {
+        "P/L": (ativo.get("PL", 0), "x"),
+        "P/VP": (ativo.get("PVP", 0), "x"),
+        "DY": (ativo.get("DY", 0), "%"),
+        "ROE": (ativo.get("ROE", 0), "%"),
+        "ROIC": (ativo.get("ROIC", 0), "%"),
+        "Margem Líquida": (ativo.get("MargemLiquida", 0), "%"),
+        "Margem Bruta": (ativo.get("MargemBruta", 0), "%"),
+        "Margem EBIT": (ativo.get("MargemEBIT", 0), "%"),
+        "EV/EBIT": (ativo.get("EV_EBIT", 0), "x"),
+        "EV/EBITDA": (ativo.get("EV_EBITDA", 0), "x"),
+        "Dívida/PL": (ativo.get("DividaLiquida_PL", 0), "x"),
+        "Dívida/EBITDA": (ativo.get("DividaLiquida_EBITDA", 0), "x"),
+        "Liquidez Corrente": (ativo.get("LiquidezCorrente", 0), "x"),
+        "VPA": (ativo.get("VPA", 0), "R$"),
+        "LPA": (ativo.get("LPA", 0), "R$"),
+        "P/Ativo": (ativo.get("P_Ativo", 0), "x"),
+        "P/EBIT": (ativo.get("P_EBIT", 0), "x"),
+        "Giro Ativos": (ativo.get("GiroAtivos", 0), "x"),
+        "CAGR Receitas": (ativo.get("CAGR_Receitas_5a", 0), "%"),
+        "CAGR Lucros": (ativo.get("CAGR_Lucros_5a", 0), "%"),
+    }
+
+    cols = st.columns(5)
+    idx = 0
+    for nome, (valor, unidade) in indicadores.items():
+        if valor != 0 or nome in ["P/L", "P/VP", "DY", "ROE"]:
+            with cols[idx % 5]:
+                suffix = f"{unidade}" if unidade != "R$" else ""
+                prefix = "R$ " if unidade == "R$" else ""
+                st.markdown(f"""
+                <div style="background:#f8f9fa; border-radius:10px; padding:12px; text-align:center; margin:3px 0;">
+                    <div style="font-size:0.75rem; color:#888;">{nome}</div>
+                    <div style="font-size:1.1rem; font-weight:700; color:#1a1a2e;">
+                        {prefix}{valor:.2f}{suffix}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            idx += 1
+
+    st.markdown("---")
+
+    # ─── CHECKLIST SCORE CS ──────────────────────────────────────────────────
+    st.subheader("✅ Checklist Score CS (Carlos Sobral)")
+
+    criterios = [
+        ("ROE > 15%", ativo.get("ROE_15pct", 0) == 1, f"{ativo.get('ROE', 0):.2f}%"),
+        ("DY > 3%", ativo.get("DY_3pct", 0) == 1, f"{ativo.get('DY', 0):.2f}%"),
+        ("Dívida/PL < 0.5", ativo.get("DivPL_0_5", 0) == 1, f"{ativo.get('DividaLiquida_PL', 0):.2f}"),
+        ("P/L < 15", ativo.get("PL_15", 0) == 1, f"{ativo.get('PL', 0):.2f}"),
+        ("P/VP < 2", ativo.get("PVP_2", 0) == 1, f"{ativo.get('PVP', 0):.2f}"),
+        ("Margem Líquida > 10%", ativo.get("Margem_10pct", 0) == 1, f"{ativo.get('MargemLiquida', 0):.2f}%"),
+        ("Liquidez Corrente > 1", ativo.get("LiqCorrente_1", 0) == 1, f"{ativo.get('LiquidezCorrente', 0):.2f}"),
+        ("CAGR Lucros > 5%", ativo.get("CAGR_5pct", 0) == 1, f"{ativo.get('CAGR_Lucros_5a', 0):.2f}%"),
+        ("ROIC > 10%", ativo.get("ROIC_10pct", 0) == 1, f"{ativo.get('ROIC', 0):.2f}%"),
     ]
 
-    for i, (nome, valor, unidade) in enumerate(metrics):
-        with cols[i % 4]:
-            if unidade == "%":
-                st.metric(nome, f"{valor:.2f}%")
-            else:
-                st.metric(nome, f"{valor:.2f}{unidade}")
+    col1, col2 = st.columns(2)
+    for i, (criterio, passou, valor) in enumerate(criterios):
+        with col1 if i < 5 else col2:
+            status = "✅ PASSOU" if passou else "❌ NÃO PASSOU"
+            cor = "#e8f5e9" if passou else "#ffebee"
+            cor_borda = "#00c853" if passou else "#ff1744"
+            st.markdown(f"""
+            <div style="background:{cor}; border-left:4px solid {cor_borda}; border-radius:8px; 
+                        padding:10px 15px; margin:5px 0; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div style="font-weight:600; font-size:0.9rem;">{criterio}</div>
+                    <div style="font-size:0.8rem; color:#666;">Valor atual: {valor}</div>
+                </div>
+                <div style="font-weight:700; font-size:0.85rem; color:{cor_borda};">{status}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # Valuation
-    st.subheader("💰 Valuation")
-
-    col_v1, col_v2 = st.columns(2)
-
-    with col_v1:
-        st.markdown("**Precos Alvo**")
-        valuation_data = {
-            "Metodo": ["Graham", "Graham BR", "Bazin", "Lynch", "AGF"],
-            "Preco Alvo": [
-                ativo.get("Graham", 0),
-                ativo.get("Graham_BR", 0),
-                ativo.get("Bazin", 0),
-                ativo.get("Lynch_Preco_Teto", 0),
-                ativo.get("AGF", 0),
-            ],
-            "Upside": [
-                ativo.get("Upside_Graham", 0),
-                ativo.get("Upside_Graham_BR", 0),
-                ativo.get("Upside_Bazin", 0),
-                ativo.get("Upside_Lynch_Preco_Teto", 0),
-                ativo.get("Upside_AGF", 0),
-            ]
-        }
-        df_val = pd.DataFrame(valuation_data)
-        df_val["Preco Alvo"] = df_val["Preco Alvo"].apply(lambda x: f"R$ {x:.2f}" if x > 0 else "N/A")
-        df_val["Upside"] = df_val["Upside"].apply(lambda x: f"{x:.1f}%" if x != 0 else "N/A")
-        st.dataframe(df_val, use_container_width=True, hide_index=True)
-
-    with col_v2:
-        st.markdown("**Composicao Score CS**")
-        score_details = {
-            "Criterio": [
-                "ROE > 15%", "DY > 3%", "Div/PL < 0.5", "P/L < 15",
-                "P/VP < 2", "Margem > 10%", "Liq. Corr. > 1", "CAGR > 5%", "ROIC > 10%"
-            ],
-            "Status": [
-                "✅" if ativo.get("ROE_15pct", 0) == 1 else "❌",
-                "✅" if ativo.get("DY_3pct", 0) == 1 else "❌",
-                "✅" if ativo.get("DivPL_0_5", 0) == 1 else "❌",
-                "✅" if ativo.get("PL_15", 0) == 1 else "❌",
-                "✅" if ativo.get("PVP_2", 0) == 1 else "❌",
-                "✅" if ativo.get("Margem_10pct", 0) == 1 else "❌",
-                "✅" if ativo.get("LiqCorrente_1", 0) == 1 else "❌",
-                "✅" if ativo.get("CAGR_5pct", 0) == 1 else "❌",
-                "✅" if ativo.get("ROIC_10pct", 0) == 1 else "❌",
-            ],
-            "Valor": [
-                f"{ativo.get('ROE', 0):.2f}%",
-                f"{ativo.get('DY', 0):.2f}%",
-                f"{ativo.get('DivLiquida_PL', 0):.2f}",
-                f"{ativo.get('PL', 0):.2f}",
-                f"{ativo.get('PVP', 0):.2f}",
-                f"{ativo.get('MargemLiquida', 0):.2f}%",
-                f"{ativo.get('LiquidezCorrente', 0):.2f}",
-                f"{ativo.get('CAGR_Lucros_5a', 0):.2f}%",
-                f"{ativo.get('ROIC', 0):.2f}%",
-            ]
-        }
-        df_score = pd.DataFrame(score_details)
-        st.dataframe(df_score, use_container_width=True, hide_index=True)
-
-    st.markdown("---")
-
-    # Radar
+    # ─── RADAR DE INDICADORES ────────────────────────────────────────────────
     st.subheader("🎯 Radar de Indicadores")
 
     radar_metrics = {
         "ROE": min(ativo.get("ROE", 0) / 30 * 100, 100),
         "DY": min(ativo.get("DY", 0) / 10 * 100, 100),
-        "Margem Liq.": min(ativo.get("MargemLiquida", 0) / 20 * 100, 100),
+        "Margem Líq.": min(ativo.get("MargemLiquida", 0) / 20 * 100, 100),
         "ROIC": min(ativo.get("ROIC", 0) / 20 * 100, 100),
         "Liquidez": min(ativo.get("LiquidezCorrente", 0) / 2 * 100, 100),
     }
@@ -384,15 +510,50 @@ def pagina_analise():
     fig_radar.add_trace(go.Scatterpolar(
         r=list(radar_metrics.values()) + [list(radar_metrics.values())[0]],
         theta=list(radar_metrics.keys()) + [list(radar_metrics.keys())[0]],
-        fill='toself',
+        fill="toself",
+        fillcolor="rgba(102, 126, 234, 0.3)",
+        line=dict(color="#667eea", width=2),
         name=ticker
+    ))
+    fig_radar.add_trace(go.Scatterpolar(
+        r=[100, 100, 100, 100, 100, 100],
+        theta=list(radar_metrics.keys()) + [list(radar_metrics.keys())[0]],
+        line=dict(color="#ccc", width=1, dash="dash"),
+        name="Referência"
     ))
     fig_radar.update_layout(
         polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-        showlegend=False,
+        showlegend=True,
         height=400
     )
     st.plotly_chart(fig_radar, use_container_width=True)
+
+    st.markdown("---")
+
+    # ─── TABELA COMPLETA DE VALUATION ────────────────────────────────────────
+    st.subheader("📋 Valuation Completo")
+
+    valuation_data = {
+        "Método": ["Graham", "Graham BR", "Bazin", "Lynch", "AGF"],
+        "Preço Alvo": [
+            ativo.get("Graham", 0),
+            ativo.get("Graham_BR", 0),
+            ativo.get("Bazin", 0),
+            ativo.get("Lynch_Preco_Teto", 0),
+            ativo.get("AGF", 0),
+        ],
+        "Upside": [
+            ativo.get("Upside_Graham", 0),
+            ativo.get("Upside_Graham_BR", 0),
+            ativo.get("Upside_Bazin", 0),
+            ativo.get("Upside_Lynch_Preco_Teto", 0),
+            ativo.get("Upside_AGF", 0),
+        ]
+    }
+    df_val = pd.DataFrame(valuation_data)
+    df_val["Preço Alvo"] = df_val["Preço Alvo"].apply(lambda x: f"R$ {x:.2f}" if x > 0 else "N/A")
+    df_val["Upside"] = df_val["Upside"].apply(lambda x: f"{x:+.1f}%" if x != 0 else "N/A")
+    st.dataframe(df_val, use_container_width=True, hide_index=True)
 
 
 # ==================== RANKINGS ====================
