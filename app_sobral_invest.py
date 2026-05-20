@@ -504,29 +504,56 @@ def pagina_analise():
         return
 
     # ============================================================
-    # HEADER DO ATIVO
+    # WIDGET TRADINGVIEW DO ATIVO
     # ============================================================
-    cotacao = ativo.get("Cotacao", 0)
-    variacao = ativo.get("Variacao", 0)
-    var_color = "#10b981" if variacao >= 0 else "#ef4444"
+    st.markdown("<div style='margin: 16px 0;'></div>", unsafe_allow_html=True)
 
-    col_h1, col_h2 = st.columns([2, 1])
-    with col_h1:
-        st.markdown(f"""
-        <div class="ativo-header-v2">
-            <div class="ativo-ticker-v2">{ativo['Ticker']}</div>
-            <div class="ativo-nome-v2">{ativo['Nome']}</div>
-            <div class="ativo-setor-v2">{ativo.get('Setor', 'N/A')} › {ativo.get('SubSetor', 'N/A')} › {ativo.get('Segmento', 'N/A')}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_h2:
-        st.markdown(f"""
-        <div class="ativo-header-v2">
-            <div class="ativo-cotacao-v2">R$ {cotacao:.2f}</div>
-            <div class="ativo-var-v2" style="color: {var_color};">{variacao:+.2f}%</div>
-        </div>
-        """, unsafe_allow_html=True)
+    tv_symbol = f"BMFBOVESPA:{ticker}"
+    tv_chart = f"""
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
+      {{
+        "symbols": [
+          ["{tv_symbol}|1D"]
+        ],
+        "chartOnly": false,
+        "width": "100%",
+        "height": "350",
+        "locale": "br",
+        "colorTheme": "dark",
+        "autosize": false,
+        "showVolume": true,
+        "showMA": false,
+        "hideDateRanges": false,
+        "hideMarketStatus": false,
+        "hideSymbolLogo": false,
+        "scalePosition": "right",
+        "scaleMode": "Normal",
+        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
+        "fontSize": "10",
+        "noTimeScale": false,
+        "valuesTracking": "1",
+        "changeMode": "price-and-percent",
+        "chartType": "area",
+        "maLineColor": "#2962FF",
+        "maLineWidth": 1,
+        "maLength": 9,
+        "lineWidth": 2,
+        "lineType": 0,
+        "dateRanges": [
+          "1d|1",
+          "1m|30",
+          "3m|60",
+          "12m|1D",
+          "60m|1W",
+          "all|1M"
+        ]
+      }}
+      </script>
+    </div>
+    """
+    components.html(tv_chart, height=360)
 
     # ============================================================
     # 2. SCORE CS + CHECKLIST COMPACTO
