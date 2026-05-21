@@ -36,7 +36,7 @@ MF_BASE = "https://mfinance.com.br/api/v1"
 BRAPI_BASE = "https://brapi.dev/api/quote"
 
 # SELIC
-SELIC_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json"
+SELIC_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial=01/01/2016&dataFinal=31/12/2026"
 
 # ---------------------------------------------------------------------------
 # CLIENTE MFINANCE (3 endpoints)
@@ -218,6 +218,9 @@ def parse_mfinance_dividends(data):
         # Parse da data (pode vir com ou sem timezone)
         try:
             dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            # Remover timezone para comparar com cutoff (que é naive)
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
         except:
             continue
 
