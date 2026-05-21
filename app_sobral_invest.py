@@ -654,29 +654,41 @@ def pagina_analise():
         st.error("Ativo nao encontrado.")
         return
 
-    # ============================================================
+        # ============================================================
     # PERFIL DO ATIVO (TradingView Symbol Profile)
     # ============================================================
     st.markdown('<div class="section-title-v2">📋 Perfil</div>', unsafe_allow_html=True)
 
     tv_symbol = f"BMFBOVESPA:{ticker}"
     tv_perfil = f"""
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <div class="tradingview-widget-copyright"><a href="https://br.tradingview.com/symbols/{tv_symbol}/" rel="noopener nofollow" target="_blank"><span class="blue-text">Track all markets on TradingView</span></a></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-profile.js" async>
-      {{
-        "symbol": "{tv_symbol}",
-        "colorTheme": "dark",
-        "isTransparent": false,
-        "locale": "br",
-        "width": "100%",
-        "height": "100%"
-      }}
+    <div class="tradingview-widget-container" style="width:100%; height:400px;">
+      <div class="tradingview-widget-container__widget" style="width:100%; height:400px;"></div>
+      <div class="tradingview-widget-copyright" style="display:none;">
+        <a href="https://br.tradingview.com/symbols/{tv_symbol}/" rel="noopener nofollow" target="_blank">
+          <span class="blue-text">Track all markets on TradingView</span>
+        </a>
+      </div>
+      <script type="text/javascript">
+        (function() {{
+          var script = document.createElement('script');
+          script.type = 'text/javascript';
+          script.async = true;
+          script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-symbol-profile.js';
+          script.innerHTML = JSON.stringify({{
+            "symbol": "{tv_symbol}",
+            "colorTheme": "dark",
+            "isTransparent": false,
+            "locale": "br",
+            "width": "100%",
+            "height": "400"
+          }});
+          document.currentScript.parentNode.insertBefore(script, document.currentScript);
+        }})();
       </script>
     </div>
     """
-    components.html(tv_perfil, height=500)
+    components.html(tv_perfil, height=420)
+    
 
     # ============================================================
     # WIDGET TRADINGVIEW DO ATIVO
