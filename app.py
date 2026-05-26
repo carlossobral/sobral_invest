@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 # pyfundamentus para dados do balanco
-from fundamentus import Pipeline
 
 # Configuracao de logging
 logging.basicConfig(
@@ -103,155 +102,6 @@ class MFinanceClient:
             time.sleep(delay)
         logger.info(f"  -> {len(results)} tickers com dividendos")
         return results
-
-
-# ---------------------------------------------------------------------------
-# FUNDOFUNDAMENTUS - DADOS DO BALANCO PARA KANITZ
-# ---------------------------------------------------------------------------
-
-def get_fundamentus_balance(ticker):
-    """
-    Busca dados do balanco patrimonial via pyfundamentus.
-    Retorna dict com: Ativo_Circulante, Realizavel_LP, Passivo_Circulante,
-                      Exigivel_LP, Estoques, Patrimonio_Liquido, Lucro_Liquido
-    """
-    try:
-        pipeline = Pipeline(ticker)
-        response = pipeline.get_all_information()
-        bs = response.transformed_information['balance_sheet']
-
-        # Mapear nomes do Fundamentus para nossas colunas
-        mapping = {
-            'Ativo Circulante': 'Ativo_Circulante',
-            'Realizavel Longo Prazo': 'Realizavel_LP',
-            'Passivo Circulante': 'Passivo_Circulante',
-            'Exigivel Longo Prazo': 'Exigivel_LP',
-            'Estoques': 'Estoques',
-            'Patrimonio Liquido': 'Patrimonio_Liquido',
-            'Lucro Liquido': 'Lucro_Liquido_Kanitz',
-        }
-
-        result = {}
-        for fund_key, our_key in mapping.items():
-            val = bs.get(fund_key, 0)
-            # Converter de string formatada para float
-            if isinstance(val, str):
-                val = val.replace('.', '').replace(',', '.').replace('R$', '').strip()
-                try:
-                    val = float(val)
-                except:
-                    val = 0
-            result[our_key] = float(val) if val else 0
-
-        return result
-    except Exception as e:
-        logger.debug(f"Fundamentus falhou para {ticker}: {e}")
-        return {}
-
-
-def get_all_fundamentus_data(tickers, delay=1.0):
-    """Busca dados do balanco para todos os tickers"""
-    logger.info(f"Buscando dados do Fundamentus para {len(tickers)} tickers...")
-    results = {}
-    for i, ticker in enumerate(tickers):
-        if i % 50 == 0 and i > 0:
-            logger.info(f"  -> {i}/{len(tickers)} fundamentus...")
-        data = get_fundamentus_balance(ticker)
-        if data:
-            results[ticker] = data
-        time.sleep(delay)
-    logger.info(f"  -> {len(results)} tickers com dados do Fundamentus")
-    return results
-
-
-# ---------------------------------------------------------------------------
-# CALCULO DO TERMOmetro DE KANITZ
-# ---------------------------------------------------------------------------
-
-def calcular_kanitz(row):
-    """
-    Termometro de Kanitz - Fator de Insolvencia
-
-    X1 = ROE * 0.05
-    X2 = Liquidez Geral * 1.65
-    X3 = Liquidez Seca * 3.55
-    X4 = Liquidez Corrente * 1.06
-    X5 = Alavancagem do PL * 0.33
-
-    Fator = X1 + X2 + X3 - X4 - X5
-
-    Escala:
-    -7 a -3: Vermelho (Risco de falencia)
-    -3 a 0: Amarelo (Penumbra)
-    0 a 7: Verde (Solvencia)
-    """
-    # Dados do balanco (do Fundamentus)
-    ativo_circ = row.get('Ativo_Circulante', 0)
-    realizavel_lp = row.get('Realizavel_LP', 0)
-    passivo_circ = row.get('Passivo_Circulante', 0)
-    exigivel_lp = row.get('Exigivel_LP', 0)
-    estoques = row.get('Estoques', 0)
-    patrimonio = row.get('Patrimonio_Liquido', 0)
-    lucro_liq = row.get('Lucro_Liquido_Kanitz', 0)
-
-    # Se nao tem dados do Fundamentus, retorna vazio
-    if patrimonio == 0 or passivo_circ == 0:
-        return {
-            'Kanitz_X1': 0, 'Kanitz_X2': 0, 'Kanitz_X3': 0,
-            'Kanitz_X4': 0, 'Kanitz_X5': 0,
-            'Kanitz_Fator': None, 'Kanitz_Status': 'Sem Dados'
-        }
-
-    # X1 - ROE * 0.05 (usamos ROE do MFinance se disponivel, senao calculamos)
-    roe = row.get('ROE', 0)
-    if roe == 0 and patrimonio > 0:
-        roe = (lucro_liq / patrimonio) * 100
-    x1 = roe * 0.05
-
-    # X2 - Liquidez Geral * 1.65
-    # Liquidez Geral = (Ativo Circulante + Realizavel LP) / (Passivo Circulante + Exigivel LP)
-    liquidez_geral = (ativo_circ + realizavel_lp) / (passivo_circ + exigivel_lp) if (passivo_circ + exigivel_lp) > 0 else 0
-    x2 = liquidez_geral * 1.65
-
-    # X3 - Liquidez Seca * 3.55
-    # Liquidez Seca = (Ativo Circulante - Estoques) / Passivo Circulante
-    liquidez_seca = (ativo_circ - estoques) / passivo_circ if passivo_circ > 0 else 0
-    x3 = liquidez_seca * 3.55
-
-    # X4 - Liquidez Corrente * 1.06
-    # Liquidez Corrente = Ativo Circulante / Passivo Circulante
-    liquidez_corrente = ativo_circ / passivo_circ if passivo_circ > 0 else 0
-    x4 = liquidez_corrente * 1.06
-
-    # X5 - Alavancagem do PL * 0.33
-    # Alavancagem = Exigivel LP / Patrimonio Liquido
-    alavancagem = exigivel_lp / patrimonio if patrimonio > 0 else 0
-    x5 = alavancagem * 0.33
-
-    # Fator de Insolvencia
-    fator = x1 + x2 + x3 - x4 - x5
-
-    # Status
-    if fator >= 0:
-        status = 'Solvencia'
-    elif fator >= -3:
-        status = 'Penumbra'
-    else:
-        status = 'Risco de Falencia'
-
-    return {
-        'Kanitz_X1': round(x1, 4),
-        'Kanitz_X2': round(x2, 4),
-        'Kanitz_X3': round(x3, 4),
-        'Kanitz_X4': round(x4, 4),
-        'Kanitz_X5': round(x5, 4),
-        'Kanitz_Fator': round(fator, 4),
-        'Kanitz_Status': status,
-        'Kanitz_Liquidez_Geral': round(liquidez_geral, 4),
-        'Kanitz_Liquidez_Seca': round(liquidez_seca, 4),
-        'Kanitz_Liquidez_Corrente': round(liquidez_corrente, 4),
-        'Kanitz_Alavancagem': round(alavancagem, 4),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -563,9 +413,6 @@ def main():
     merged = merge_mfinance_data(stocks, indicators, dividends_map)
     logger.info(f"Total antes do filtro: {len(merged)} tickers")
 
-    # 6. Busca dados do Fundamentus (balanco para Kanitz)
-    fundamentus_map = get_all_fundamentus_data(all_symbols, delay=1.0)
-
     # 7. Calcula metricas adicionais
     for row in merged:
         # DY_12m
@@ -582,13 +429,7 @@ def main():
         val = calcular_valuation(row, selic)
         row.update(val)
 
-        # Fundamentus (balanco)
-        fund_data = fundamentus_map.get(row["Ticker"], {})
-        row.update(fund_data)
 
-        # Kanitz
-        kanitz = calcular_kanitz(row)
-        row.update(kanitz)
 
     # 8. FILTRO: Remove tickers com Nome = "#N/A" ou vazio
     merged_filtrado = [r for r in merged if r.get("Nome") and r.get("Nome") != "#N/A"]
@@ -626,17 +467,9 @@ def main():
         "ROE_10pct", "DY_6pct", "DivLiq_EBITDA_2_5", "PL_15", "PVP_2",
         "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct", "Volume_1M",
     ]
-    colunas_kanitz = [
-        "Ativo_Circulante", "Realizavel_LP", "Passivo_Circulante", "Exigivel_LP", "Estoques",
-        "Patrimonio_Liquido", "Lucro_Liquido_Kanitz",
-        "Kanitz_X1", "Kanitz_X2", "Kanitz_X3", "Kanitz_X4", "Kanitz_X5",
-        "Kanitz_Fator", "Kanitz_Status",
-        "Kanitz_Liquidez_Geral", "Kanitz_Liquidez_Seca", "Kanitz_Liquidez_Corrente", "Kanitz_Alavancagem",
-    ]
+    colunas_extras = [c for c in df.columns if c not in colunas_primeiras + colunas_valuation + colunas_score + colunas_checks]
 
-    colunas_extras = [c for c in df.columns if c not in colunas_primeiras + colunas_valuation + colunas_score + colunas_checks + colunas_kanitz]
-
-    ordem_final = colunas_primeiras + colunas_valuation + colunas_score + colunas_checks + colunas_kanitz + colunas_extras
+    ordem_final = colunas_primeiras + colunas_valuation + colunas_score + colunas_checks + colunas_extras
     ordem_final = [c for c in ordem_final if c in df.columns]
     df = df[ordem_final]
 
@@ -657,12 +490,7 @@ def main():
         if cls in score_counts:
             logger.info(f"   {cls}: {score_counts[cls]}")
 
-    # Estatisticas Kanitz
-    kanitz_counts = df["Kanitz_Status"].value_counts().to_dict()
-    logger.info(f"\n🌡️ Distribuicao Kanitz:")
-    for status in ["Solvencia", "Penumbra", "Risco de Falencia", "Sem Dados"]:
-        if status in kanitz_counts:
-            logger.info(f"   {status}: {kanitz_counts[status]}")
+
 
     return df
 
