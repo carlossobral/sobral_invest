@@ -103,7 +103,13 @@ def load_data():
         "Graham", "Graham_BR", "Bazin", "Lynch", "AGF_Medio",
         "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin", "Upside_Lynch", "Upside_AGF_Medio",
         "Score_CS",
-        "Beta", "Media_50d", "Media_200d", "FCO", "FCL"
+        "Beta", "Media_50d", "Media_200d", "FCO", "FCL",
+        # Kanitz
+        "Ativo_Circulante", "Realizavel_LP", "Passivo_Circulante", "Exigivel_LP", "Estoques",
+        "Patrimonio_Liquido", "Lucro_Liquido_Kanitz",
+        "Kanitz_X1", "Kanitz_X2", "Kanitz_X3", "Kanitz_X4", "Kanitz_X5",
+        "Kanitz_Fator", "Kanitz_Liquidez_Geral", "Kanitz_Liquidez_Seca", 
+        "Kanitz_Liquidez_Corrente", "Kanitz_Alavancagem"
     ]
 
     for col in numeric_cols:
@@ -640,10 +646,24 @@ def pagina_analise():
     # 1. SELETOR DE ATIVO
     # ============================================================
     df['Display'] = df['Ticker'] + ' — ' + df['Nome']
+    display_list = sorted([str(x) for x in df['Display'].tolist()])
+
+    # Verificar se veio ticker do ranking
+    ticker_from_ranking = st.session_state.get("ticker_from_ranking", None)
+    default_index = 0
+    if ticker_from_ranking:
+        # Encontrar o display correspondente ao ticker
+        for i, disp in enumerate(display_list):
+            if disp.startswith(ticker_from_ranking + ' —'):
+                default_index = i
+                break
+        # Limpar para não ficar persistente
+        del st.session_state["ticker_from_ranking"]
+
     ativo_selecionado = st.selectbox(
         "🔍 Selecione o ativo",
-        options=sorted([str(x) for x in df['Display'].tolist()]),
-        index=0,
+        options=display_list,
+        index=default_index,
         key="ativo_selector_v2"
     )
 
@@ -921,6 +941,79 @@ def pagina_analise():
             <div class="pj-upside-v2" style="background: {up_bg}40; color: {up_color};">{upside_str}</div>
         </div>
         """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 9.5 TERMOmetro DE KANITZ
+    # ============================================================
+    st.markdown('<div class="section-title-v2">🌡️ Termometro de Kanitz</div>', unsafe_allow_html=True)
+
+    kanitz_fator = ativo.get('Kanitz_Fator', None)
+    kanitz_status = ativo.get('Kanitz_Status', 'Sem Dados')
+
+    if kanitz_fator is not None and not pd.isna(kanitz_fator):
+        # Cor do card baseado no fator
+        if kanitz_fator >= 0:
+            k_color, k_bg, k_border = "#10b981", "#065f46", "#10b981"
+            k_icon = "✅"
+        elif kanitz_fator >= -3:
+            k_color, k_bg, k_border = "#f59e0b", "#92400e", "#f59e0b"
+            k_icon = "⚠️"
+        else:
+            k_color, k_bg, k_border = "#dc2626", "#7f1d1d", "#dc2626"
+            k_icon = "🚨"
+
+        # Card principal do Kanitz
+        k_cols = st.columns([2, 3, 2])
+        with k_cols[1]:
+            st.markdown(f"""
+            <div class="score-card-v2" style="background: linear-gradient(135deg, {k_bg} 0%, {k_color}20 100%); border: 2px solid {k_border};">
+                <div style="font-size: 2.5rem; margin-bottom: 8px;">{k_icon}</div>
+                <div class="score-number-v2" style="color: {k_color};">{kanitz_fator:+.2f}</div>
+                <div class="score-label-v2" style="color: {k_color};">{kanitz_status}</div>
+                <div class="score-desc-v2">Fator de Insolvencia</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Cards dos 5 componentes
+        st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+
+        kanitz_items = [
+            ("X1 — ROE", f"{ativo.get('Kanitz_X1', 0):.4f}", "ROE × 0.05", "#38bdf8"),
+            ("X2 — Liq. Geral", f"{ativo.get('Kanitz_X2', 0):.4f}", "Liq.Geral × 1.65", "#34d399"),
+            ("X3 — Liq. Seca", f"{ativo.get('Kanitz_X3', 0):.4f}", "Liq.Seca × 3.55", "#a78bfa"),
+            ("X4 — Liq. Corrente", f"{ativo.get('Kanitz_X4', 0):.4f}", "Liq.Corrente × 1.06", "#fbbf24"),
+            ("X5 — Alavancagem", f"{ativo.get('Kanitz_X5', 0):.4f}", "Exig.LP/PL × 0.33", "#f87171"),
+        ]
+
+        cols_k = st.columns(5)
+        for i, (title, value, desc, color) in enumerate(kanitz_items):
+            cols_k[i].markdown(f"""
+            <div class="metric-card-v2" style="border-left: 3px solid {color};">
+                <div class="metric-label-v2" style="color: {color};">{title}</div>
+                <div class="metric-value-v2">{value}</div>
+                <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">{desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Cards auxiliares
+        st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
+        aux_items = [
+            ("Liq. Geral", f"{ativo.get('Kanitz_Liquidez_Geral', 0):.2f}x", "(AC+RLP)/(PC+ELP)"),
+            ("Liq. Seca", f"{ativo.get('Kanitz_Liquidez_Seca', 0):.2f}x", "(AC-Estoques)/PC"),
+            ("Liq. Corrente", f"{ativo.get('Kanitz_Liquidez_Corrente', 0):.2f}x", "AC/PC"),
+            ("Alavancagem", f"{ativo.get('Kanitz_Alavancagem', 0):.2f}x", "ELP/PL"),
+        ]
+        cols_aux = st.columns(4)
+        for i, (title, value, desc) in enumerate(aux_items):
+            cols_aux[i].markdown(f"""
+            <div class="metric-card-v2">
+                <div class="metric-label-v2">{title}</div>
+                <div class="metric-value-v2">{value}</div>
+                <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">{desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("🌡️ Dados do Termometro de Kanitz nao disponiveis para este ativo. Execute o workflow para atualizar.")
 
     # ============================================================
     # 10. SCORE CS
@@ -1239,20 +1332,26 @@ def pagina_rankings():
                     nome_curto = nome[:22] + "..." if len(nome) > 22 else nome
                     setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
 
-                    cols[col_idx].markdown(f"""
-                    <div class="ranking-card">
-                        <div class="ranking-ticker">{ticker}</div>
-                        <div class="ranking-nome">{nome_curto}</div>
-                        <div class="ranking-valor" style="color: {cor_valor};">{valor}</div>
-                        <div style="margin-top:6px;">
-                            <span class="ranking-badge" style="background:{badge_bg}40; color:{badge_text};">{badge_label}</span>
+                    with cols[col_idx]:
+                        # Card visual em HTML
+                        st.markdown(f"""
+                        <div class="ranking-card" style="position: relative;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div class="ranking-ticker">{ticker}</div>
+                            </div>
+                            <div class="ranking-nome">{nome_curto}</div>
+                            <div class="ranking-valor" style="color: {cor_valor};">{valor}</div>
+                            <div style="margin-top:6px;">
+                                <span class="ranking-badge" style="background:{badge_bg}40; color:{badge_text};">{badge_label}</span>
+                            </div>
+                            <div class="ranking-footer">
+                                <span class="ranking-score" style="color:{sc_color};">● CS {score}</span>
+                                <span class="ranking-setor">{setor_curto}</span>
+                            </div>
                         </div>
-                        <div class="ranking-footer">
-                            <span class="ranking-score" style="color:{sc_color};">● CS {score}</span>
-                            <span class="ranking-setor">{setor_curto}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """, unsafe_allow_html=True)
+                        # Botão para ir à Análise
+                        st.link_button("🔍 Analisar", f"/?page=Analise&ticker={ticker}", use_container_width=True)
 
     # ============================================================
     # ABAS
@@ -1322,20 +1421,24 @@ def pagina_rankings():
                     idx = row_idx * 5 + col_idx
                     if idx < len(items):
                         ticker, nome_curto, score, score_color, score_bg, score_label, setor_curto, card_border = items[idx]
-                        cols[col_idx].markdown(f"""
-                        <div class="ranking-card" style="border: 2px solid {card_border};">
-                            <div class="ranking-ticker">{ticker}</div>
-                            <div class="ranking-nome">{nome_curto}</div>
-                            <div style="margin: 10px 0;">
-                                <div style="font-size: 2.2rem; font-weight: 800; color: {score_color}; line-height: 1;">{score}</div>
-                                <div style="font-size: 0.75rem; font-weight: 700; color: {score_color}; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">{score_label}</div>
+                        with cols[col_idx]:
+                            st.markdown(f"""
+                            <div class="ranking-card" style="border: 2px solid {card_border}; position: relative;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div class="ranking-ticker">{ticker}</div>
+                                </div>
+                                <div class="ranking-nome">{nome_curto}</div>
+                                <div style="margin: 10px 0;">
+                                    <div style="font-size: 2.2rem; font-weight: 800; color: {score_color}; line-height: 1;">{score}</div>
+                                    <div style="font-size: 0.75rem; font-weight: 700; color: {score_color}; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;">{score_label}</div>
+                                </div>
+                                <div class="ranking-footer">
+                                    <span style="color:#64748b; font-size:0.7rem; font-weight:600;">de 10</span>
+                                    <span class="ranking-setor">{setor_curto}</span>
+                                </div>
                             </div>
-                            <div class="ranking-footer">
-                                <span style="color:#64748b; font-size:0.7rem; font-weight:600;">de 10</span>
-                                <span class="ranking-setor">{setor_curto}</span>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)
+                            st.link_button("🔍 Analisar", f"/?page=Analise&ticker={ticker}", use_container_width=True)
         else:
             st.info("Dados de Score CS nao disponiveis.")
 
@@ -1344,6 +1447,16 @@ def main():
     """Funcao principal."""
     st.sidebar.markdown("## 📈 SOBRAL Invest")
     st.sidebar.markdown("---")
+
+    # Capturar query params para navegação do Ranking -> Análise
+    query_params = st.query_params
+    ticker_from_ranking = query_params.get("ticker", None)
+    page_from_ranking = query_params.get("page", None)
+
+    # Se veio do ranking com ticker, forçar página Análise e salvar ticker
+    if ticker_from_ranking and page_from_ranking == "Analise":
+        st.session_state["nav_radio_main"] = "🔍 Analise"
+        st.session_state["ticker_from_ranking"] = ticker_from_ranking
 
     pagina = st.sidebar.radio(
         "Navegacao",
