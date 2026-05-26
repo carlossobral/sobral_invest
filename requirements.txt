@@ -30,4 +30,3 @@ plotly==6.0.1
 # Utilitarios
 schedule==1.2.2
 gunicorn==23.0.0
-pyfundamentus
