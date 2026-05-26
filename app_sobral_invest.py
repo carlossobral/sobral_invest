@@ -1073,6 +1073,18 @@ def pagina_rankings():
         st.warning("Dados nao disponiveis.")
         return
 
+    # ============================================================
+    # FILTRO: Excluir registros com #N/A na coluna Nome
+    # ============================================================
+    df = df[df['Nome'] != '#N/A']
+    df = df[df['Nome'].notna()]
+    df = df[df['Nome'].str.strip() != '']
+    df = df[df['Nome'].str.strip() != 'nan']
+
+    if df.empty:
+        st.warning("Nenhum ativo valido encontrado apos filtro de Nome.")
+        return
+
     # CSS dos cards de ranking
     st.markdown("""
     <style>
@@ -1142,10 +1154,10 @@ def pagina_rankings():
     """, unsafe_allow_html=True)
 
     # ============================================================
-    # FILTROS
+    # FILTROS: Setor + SubSetor + Busca por Nome
     # ============================================================
-    setores = ["Todos"] + sorted([str(x) for x in df['Setor'].dropna().unique().tolist() if str(x) != 'nan'])
-    subsetores = ["Todos"] + sorted([str(x) for x in df['SubSetor'].dropna().unique().tolist() if str(x) != 'nan'])
+    setores = ["Todos"] + sorted([str(x) for x in df['Setor'].dropna().unique().tolist() if str(x) not in ['nan', 'N/A', '#N/A', '']])
+    subsetores = ["Todos"] + sorted([str(x) for x in df['SubSetor'].dropna().unique().tolist() if str(x) not in ['nan', 'N/A', '#N/A', '']])
 
     col_f1, col_f2, col_f3 = st.columns([2, 2, 3])
     with col_f1:
@@ -1157,7 +1169,7 @@ def pagina_rankings():
         ativos_count = len(df)
         st.markdown(f'<p style="color:#94a3b8; font-size:0.85rem; margin:0;">📊 {ativos_count} ativos carregados</p>', unsafe_allow_html=True)
 
-    # Aplicar filtros
+    # Aplicar filtros Setor/SubSetor
     df_filt = df.copy()
     if setor_sel != "Todos":
         df_filt = df_filt[df_filt['Setor'] == setor_sel]
