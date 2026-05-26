@@ -103,13 +103,7 @@ def load_data():
         "Graham", "Graham_BR", "Bazin", "Lynch", "AGF_Medio",
         "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin", "Upside_Lynch", "Upside_AGF_Medio",
         "Score_CS",
-        "Beta", "Media_50d", "Media_200d", "FCO", "FCL",
-        # Kanitz
-        "Ativo_Circulante", "Realizavel_LP", "Passivo_Circulante", "Exigivel_LP", "Estoques",
-        "Patrimonio_Liquido", "Lucro_Liquido_Kanitz",
-        "Kanitz_X1", "Kanitz_X2", "Kanitz_X3", "Kanitz_X4", "Kanitz_X5",
-        "Kanitz_Fator", "Kanitz_Liquidez_Geral", "Kanitz_Liquidez_Seca", 
-        "Kanitz_Liquidez_Corrente", "Kanitz_Alavancagem"
+        "Beta", "Media_50d", "Media_200d", "FCO", "FCL"
     ]
 
     for col in numeric_cols:
@@ -236,28 +230,6 @@ def pagina_inicial():
     </div>
     """
     components.html(tv_hotlists, height=560)
-
-    # Rankings rapidos
-    st.subheader("🏆 Rankings")
-    df = load_data()
-    if not df.empty:
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.markdown("**📊 Score CS**")
-            top_score = df.nlargest(5, "Score_CS")[["Ticker", "Nome", "Score_CS"]]
-            st.dataframe(top_score, hide_index=True)
-
-        with col2:
-            st.markdown("**💰 Dividend Yield**")
-            top_dy = df.nlargest(5, "DY")[["Ticker", "Nome", "DY"]]
-            st.dataframe(top_dy, hide_index=True)
-
-        with col3:
-            st.markdown("**📈 Maiores Altas**")
-            top_altas = df.nlargest(5, "Variacao")[["Ticker", "Nome", "Variacao"]]
-            st.dataframe(top_altas, hide_index=True)
-
 
 
 def pagina_analise():
@@ -941,79 +913,6 @@ def pagina_analise():
             <div class="pj-upside-v2" style="background: {up_bg}40; color: {up_color};">{upside_str}</div>
         </div>
         """, unsafe_allow_html=True)
-
-    # ============================================================
-    # 9.5 TERMOmetro DE KANITZ
-    # ============================================================
-    st.markdown('<div class="section-title-v2">🌡️ Termometro de Kanitz</div>', unsafe_allow_html=True)
-
-    kanitz_fator = ativo.get('Kanitz_Fator', None)
-    kanitz_status = ativo.get('Kanitz_Status', 'Sem Dados')
-
-    if kanitz_fator is not None and not pd.isna(kanitz_fator):
-        # Cor do card baseado no fator
-        if kanitz_fator >= 0:
-            k_color, k_bg, k_border = "#10b981", "#065f46", "#10b981"
-            k_icon = "✅"
-        elif kanitz_fator >= -3:
-            k_color, k_bg, k_border = "#f59e0b", "#92400e", "#f59e0b"
-            k_icon = "⚠️"
-        else:
-            k_color, k_bg, k_border = "#dc2626", "#7f1d1d", "#dc2626"
-            k_icon = "🚨"
-
-        # Card principal do Kanitz
-        k_cols = st.columns([2, 3, 2])
-        with k_cols[1]:
-            st.markdown(f"""
-            <div class="score-card-v2" style="background: linear-gradient(135deg, {k_bg} 0%, {k_color}20 100%); border: 2px solid {k_border};">
-                <div style="font-size: 2.5rem; margin-bottom: 8px;">{k_icon}</div>
-                <div class="score-number-v2" style="color: {k_color};">{kanitz_fator:+.2f}</div>
-                <div class="score-label-v2" style="color: {k_color};">{kanitz_status}</div>
-                <div class="score-desc-v2">Fator de Insolvencia</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # Cards dos 5 componentes
-        st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-
-        kanitz_items = [
-            ("X1 — ROE", f"{ativo.get('Kanitz_X1', 0):.4f}", "ROE × 0.05", "#38bdf8"),
-            ("X2 — Liq. Geral", f"{ativo.get('Kanitz_X2', 0):.4f}", "Liq.Geral × 1.65", "#34d399"),
-            ("X3 — Liq. Seca", f"{ativo.get('Kanitz_X3', 0):.4f}", "Liq.Seca × 3.55", "#a78bfa"),
-            ("X4 — Liq. Corrente", f"{ativo.get('Kanitz_X4', 0):.4f}", "Liq.Corrente × 1.06", "#fbbf24"),
-            ("X5 — Alavancagem", f"{ativo.get('Kanitz_X5', 0):.4f}", "Exig.LP/PL × 0.33", "#f87171"),
-        ]
-
-        cols_k = st.columns(5)
-        for i, (title, value, desc, color) in enumerate(kanitz_items):
-            cols_k[i].markdown(f"""
-            <div class="metric-card-v2" style="border-left: 3px solid {color};">
-                <div class="metric-label-v2" style="color: {color};">{title}</div>
-                <div class="metric-value-v2">{value}</div>
-                <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # Cards auxiliares
-        st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
-        aux_items = [
-            ("Liq. Geral", f"{ativo.get('Kanitz_Liquidez_Geral', 0):.2f}x", "(AC+RLP)/(PC+ELP)"),
-            ("Liq. Seca", f"{ativo.get('Kanitz_Liquidez_Seca', 0):.2f}x", "(AC-Estoques)/PC"),
-            ("Liq. Corrente", f"{ativo.get('Kanitz_Liquidez_Corrente', 0):.2f}x", "AC/PC"),
-            ("Alavancagem", f"{ativo.get('Kanitz_Alavancagem', 0):.2f}x", "ELP/PL"),
-        ]
-        cols_aux = st.columns(4)
-        for i, (title, value, desc) in enumerate(aux_items):
-            cols_aux[i].markdown(f"""
-            <div class="metric-card-v2">
-                <div class="metric-label-v2">{title}</div>
-                <div class="metric-value-v2">{value}</div>
-                <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.info("🌡️ Dados do Termometro de Kanitz nao disponiveis para este ativo. Execute o workflow para atualizar.")
 
     # ============================================================
     # 10. SCORE CS
