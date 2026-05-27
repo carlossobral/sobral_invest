@@ -340,11 +340,12 @@ def calcular_valuation(row, selic):
     }
 
 # ---------------------------------------------------------------------------
-# SELIC HISTORICA (serie 432 - para grafico + valuation)
+# SELIC HISTORICA (serie 432 - META SELIC % ao ano, nao precisa converter)
 # ---------------------------------------------------------------------------
 
 def get_selic_historico():
-    """Busca historico dos ultimos 10 anos da SELIC (serie 432) do BCB."""
+    """Busca historico dos ultimos 10 anos da SELIC META (serie 432) do BCB.
+    Serie 432 ja vem em % ao ano - NAO converte de % ao dia."""
     hoje = datetime.now()
     data_inicial = hoje.replace(year=hoje.year - 10)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
@@ -356,16 +357,15 @@ def get_selic_historico():
         resp.raise_for_status()
         dados = resp.json()
 
-        # Converter e calcular % ao ano
+        # Serie 432 ja vem em % ao ano - usar valor direto
         registros = []
         for d in dados:
-            valor_dia = safe_float(d.get("valor"), 0.0)
-            if valor_dia > 0:
-                valor_anual = ((1 + valor_dia / 100) ** 252 - 1) * 100
+            valor_ano = safe_float(d.get("valor"), 0.0)
+            if valor_ano > 0:
                 registros.append({
                     "data": d.get("data"),
-                    "valor_dia": round(valor_dia, 6),
-                    "valor_anual": round(valor_anual, 2)
+                    "valor_dia": None,
+                    "valor_anual": round(valor_ano, 2)
                 })
 
         return registros
@@ -380,7 +380,7 @@ def salvar_selic_json(historico):
 
     selic_data = {
         "atualizacao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "fonte": "BCB - SGS Serie 432",
+        "fonte": "BCB - SGS Serie 432 (Meta SELIC)",
         "periodo_dias": 10,
         "total_registros": len(historico),
         "atual": historico[-1]["valor_anual"] if historico else 0,
@@ -404,14 +404,14 @@ def main():
     logger.info("SOBRAL INVEST - Atualizacao de Ativos")
     logger.info("=" * 60)
 
-    # 1. Busca SELIC historica (serie 11) e salva JSON
-    logger.info("Buscando SELIC historica (serie 11)...")
+    # 1. Busca SELIC historica (serie 432 - META SELIC) e salva JSON
+    logger.info("Buscando SELIC historica (serie 432 - Meta SELIC)...")
     selic_historico = get_selic_historico()
     salvar_selic_json(selic_historico)
 
     # 2. Pega SELIC atual do historico para valuation
     selic = selic_historico[-1]["valor_anual"] if selic_historico else 13.75
-    logger.info(f"SELIC atual (serie 11): {selic}%")
+    logger.info(f"SELIC atual (serie 432 - Meta): {selic}%")
 
     # 3. Busca dados MFinance
     client = MFinanceClient()
