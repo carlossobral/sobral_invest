@@ -1,9 +1,8 @@
-# id: fetch_urls:6#0 (https://raw.githubusercontent.com/carlossobral/sobral_invest/refs/heads/main/.github/workflows/update.yml) mime: text/plainname: Atualizar Dados SOBRAL Invest
 name: Atualizar Dados SOBRAL Invest
 
 on:
   schedule:
-    - cron: '0 4 * * *'  # 6h UTC = 3h BRT
+    - cron: '0 4 * * *'  # 4h UTC = 1h BRT
   workflow_dispatch:
 
 jobs:
@@ -37,23 +36,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Verificar se ativos.xlsx foi gerado e não está vazio
-          if [ ! -f "ativos.xlsx" ]; then
-            echo "❌ ativos.xlsx não foi gerado!"
+          # Verificar se ativos.xlsx foi gerado na pasta data/
+          if [ ! -f "data/ativos.xlsx" ]; then
+            echo "❌ data/ativos.xlsx não foi gerado!"
             exit 1
           fi
 
-          # Verificar tamanho mínimo (cabeçalho = ~2KB)
-          SIZE=$(stat -c%s "ativos.xlsx")
+          # Verificar tamanho mínimo
+          SIZE=$(stat -c%s "data/ativos.xlsx")
           if [ $SIZE -lt 5000 ]; then
-            echo "❌ ativos.xlsx muito pequeno ($SIZE bytes) - provavelmente vazio!"
+            echo "❌ data/ativos.xlsx muito pequeno ($SIZE bytes) - provavelmente vazio!"
             exit 1
           fi
 
-          echo "✅ ativos.xlsx: $SIZE bytes"
+          echo "✅ data/ativos.xlsx: $SIZE bytes"
 
           # Commit seletivo
-          git add ativos.xlsx ativos.csv selic.json
+          git add data/ativos.xlsx data/ativos.csv data/selic.json
 
           if git diff --cached --quiet; then
             echo "✅ Nenhuma mudança para commitar"
@@ -74,15 +73,15 @@ jobs:
           echo "=========================================="
           echo "RESUMO DO WORKFLOW"
           echo "=========================================="
-          if [ -f "ativos.xlsx" ]; then
-            SIZE=$(stat -c%s "ativos.xlsx")
-            echo "✅ ativos.xlsx: $SIZE bytes"
+          if [ -f "data/ativos.xlsx" ]; then
+            SIZE=$(stat -c%s "data/ativos.xlsx")
+            echo "✅ data/ativos.xlsx: $SIZE bytes"
           else
-            echo "❌ ativos.xlsx não encontrado"
+            echo "❌ data/ativos.xlsx não encontrado"
           fi
-          if [ -f "selic.json" ]; then
-            echo "✅ selic.json: $(cat selic.json)"
+          if [ -f "data/selic.json" ]; then
+            echo "✅ data/selic.json: $(cat data/selic.json)"
           else
-            echo "❌ selic.json não encontrado"
+            echo "❌ data/selic.json não encontrado"
           fi
           echo "=========================================="
