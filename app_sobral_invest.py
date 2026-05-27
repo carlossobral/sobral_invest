@@ -78,12 +78,12 @@ st.markdown("""
 def load_data():
     """Carrega dados do ativos.xlsx com conversao correta."""
     try:
-        df = pd.read_excel("ativos.xlsx", sheet_name="Dados")
+        df = pd.read_excel("data/ativos.xlsx", sheet_name="Dados")
     except:
         try:
-            df = pd.read_csv("ativos.csv", encoding="utf-8-sig")
+            df = pd.read_csv("data/ativos.csv", encoding="utf-8-sig")
         except:
-            st.error("Erro ao carregar dados. Verifique se ativos.xlsx ou ativos.csv existem.")
+            st.error("Erro ao carregar dados. Verifique se data/ativos.xlsx ou data/ativos.csv existem.")
             return pd.DataFrame()
 
     # Converter colunas numericas
