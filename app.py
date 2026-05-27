@@ -36,9 +36,6 @@ MF_BASE = "https://mfinance.com.br/api/v1"
 # BRAPI (fallback cotacao)
 BRAPI_BASE = "https://brapi.dev/api/quote"
 
-# SELIC
-SELIC_URL = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial=01/01/2016&dataFinal=31/12/2026"
-
 # ---------------------------------------------------------------------------
 # CLIENTE MFINANCE (3 endpoints)
 # ---------------------------------------------------------------------------
@@ -343,24 +340,7 @@ def calcular_valuation(row, selic):
     }
 
 # ---------------------------------------------------------------------------
-# SELIC (série 432 - atual)
-# ---------------------------------------------------------------------------
-
-def get_selic():
-    """Busca SELIC atual do BCB (série 432)"""
-    try:
-        resp = requests.get(SELIC_URL, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        if data and len(data) > 0:
-            valor_str = data[-1].get("valor", "0")
-            return safe_float(valor_str.replace(",", "."))
-    except Exception as e:
-        logger.warning(f"Erro ao buscar SELIC 432: {e}")
-    return 13.75
-
-# ---------------------------------------------------------------------------
-# SELIC HISTÓRICA (série 11 - para gráfico)
+# SELIC HISTÓRICA (série 11 - para gráfico + valuation)
 # ---------------------------------------------------------------------------
 
 def get_selic_historico():
@@ -413,7 +393,7 @@ def salvar_selic_json(historico):
     with open(SELIC_FILE, "w", encoding="utf-8") as f:
         json.dump(selic_data, f, ensure_ascii=False, indent=2)
 
-    logger.info(f"✅ SELIC salva: {SELIC_FILE} ({len(historico)} registros)")
+    logger.info(f"✅ SELIC salva: {SELIC_FILE} ({len(historico)} registros)
 
 # ---------------------------------------------------------------------------
 # MAIN
@@ -429,9 +409,9 @@ def main():
     selic_historico = get_selic_historico()
     salvar_selic_json(selic_historico)
 
-    # 2. Busca SELIC atual (série 432) para valuation
-    selic = get_selic()
-    logger.info(f"SELIC atual (432): {selic}%")
+    # 2. Pega SELIC atual do histórico para valuation
+    selic = selic_historico[-1]["valor_anual"] if selic_historico else 13.75
+    logger.info(f"SELIC atual (série 11): {selic}%")
 
     # 3. Busca dados MFinance
     client = MFinanceClient()
