@@ -71,7 +71,7 @@ def main():
 
     pagina = st.sidebar.radio(
         "Navegacao",
-        ["🏠 Dashboard", "🔍 Analise", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"],
+        ["🏠 Home", "🔍 Analise", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"],
         key="nav_radio_main"
     )
 
