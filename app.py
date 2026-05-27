@@ -352,26 +352,34 @@ def get_selic_historico():
 
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial={data_inicial_str}"
 
-    try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        dados = resp.json()
+    # Retry com timeout maior
+    for attempt in range(3):
+        try:
+            logger.info(f"Tentativa {attempt+1}/3 - BCB SELIC 432...")
+            resp = requests.get(url, timeout=60)
+            resp.raise_for_status()
+            dados = resp.json()
 
-        # Serie 432 ja vem em % ao ano - usar valor direto
-        registros = []
-        for d in dados:
-            valor_ano = safe_float(d.get("valor"), 0.0)
-            if valor_ano > 0:
-                registros.append({
-                    "data": d.get("data"),
-                    "valor_dia": None,
-                    "valor_anual": round(valor_ano, 2)
-                })
+            # Serie 432 ja vem em % ao ano - usar valor direto
+            registros = []
+            for d in dados:
+                valor_ano = safe_float(d.get("valor"), 0.0)
+                if valor_ano > 0:
+                    registros.append({
+                        "data": d.get("data"),
+                        "valor_dia": None,
+                        "valor_anual": round(valor_ano, 2)
+                    })
 
-        return registros
-    except Exception as e:
-        logger.warning(f"Erro ao buscar SELIC 432: {e}")
-        return []
+            logger.info(f"SELIC 432 OK: {len(registros)} registros")
+            return registros
+        except Exception as e:
+            logger.warning(f"Tentativa {attempt+1} falhou: {e}")
+            if attempt < 2:
+                time.sleep(5)
+            else:
+                logger.error(f"Todas as tentativas falharam para SELIC 432")
+                return []
 
 def salvar_selic_json(historico):
     """Salva historico SELIC em data/selic.json"""
