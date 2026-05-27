@@ -75,7 +75,7 @@ def main():
         key="nav_radio_main"
     )
 
-    if pagina == "🏠 Dashboard":
+    if pagina == "🏠 Home":
         pagina_inicial()
     elif pagina == "🔍 Analise":
         pagina_analise()
