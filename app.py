@@ -272,7 +272,7 @@ def calcular_dy_12m(row):
     return 0
 
 def calcular_score_cs(row):
-    """Score CS (Carlos Sobral) — 0 a 10"""
+    """Score CS (Carlos Sobral) - 0 a 10"""
     score = 0
     checks = {
         "ROE_10pct": row.get("ROE", 0) > 10,
@@ -340,11 +340,11 @@ def calcular_valuation(row, selic):
     }
 
 # ---------------------------------------------------------------------------
-# SELIC HISTÓRICA (série 11 - para gráfico + valuation)
+# SELIC HISTORICA (serie 11 - para grafico + valuation)
 # ---------------------------------------------------------------------------
 
 def get_selic_historico():
-    """Busca histórico dos últimos 10 anos da SELIC (série 11) do BCB."""
+    """Busca historico dos ultimos 10 anos da SELIC (serie 11) do BCB."""
     hoje = datetime.now()
     data_inicial = hoje.replace(year=hoje.year - 10)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
@@ -374,13 +374,13 @@ def get_selic_historico():
         return []
 
 def salvar_selic_json(historico):
-    """Salva histórico SELIC em data/selic.json"""
+    """Salva historico SELIC em data/selic.json"""
     if not historico:
         return
 
     selic_data = {
         "atualizacao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "fonte": "BCB - SGS Série 11",
+        "fonte": "BCB - SGS Serie 11",
         "periodo_dias": 10,
         "total_registros": len(historico),
         "atual": historico[-1]["valor_anual"] if historico else 0,
@@ -393,7 +393,7 @@ def salvar_selic_json(historico):
     with open(SELIC_FILE, "w", encoding="utf-8") as f:
         json.dump(selic_data, f, ensure_ascii=False, indent=2)
 
-logger.info(f"SELIC salva: {SELIC_FILE} ({len(historico)} registros)")
+    logger.info(f"SELIC salva: {SELIC_FILE} ({len(historico)} registros)")
 
 # ---------------------------------------------------------------------------
 # MAIN
@@ -404,14 +404,14 @@ def main():
     logger.info("SOBRAL INVEST - Atualizacao de Ativos")
     logger.info("=" * 60)
 
-    # 1. Busca SELIC histórica (série 11) e salva JSON
-    logger.info("Buscando SELIC histórica (série 11)...")
+    # 1. Busca SELIC historica (serie 11) e salva JSON
+    logger.info("Buscando SELIC historica (serie 11)...")
     selic_historico = get_selic_historico()
     salvar_selic_json(selic_historico)
 
-    # 2. Pega SELIC atual do histórico para valuation
+    # 2. Pega SELIC atual do historico para valuation
     selic = selic_historico[-1]["valor_anual"] if selic_historico else 13.75
-    logger.info(f"SELIC atual (série 11): {selic}%")
+    logger.info(f"SELIC atual (serie 11): {selic}%")
 
     # 3. Busca dados MFinance
     client = MFinanceClient()
@@ -479,14 +479,14 @@ def main():
     df.to_excel(ATIVOS_FILE, index=False, engine="openpyxl")
     df.to_csv(ATIVOS_CSV, index=False)
 
-    logger.info(f"\n✅ Planilha salva:")
+    logger.info(f"\nPlanilha salva:")
     logger.info(f" Excel: {ATIVOS_FILE}")
     logger.info(f" CSV: {ATIVOS_CSV}")
     logger.info(f" Linhas: {len(df)}")
     logger.info(f" Colunas: {len(df.columns)}")
 
     score_counts = df["Score_CS_Classificacao"].value_counts().to_dict()
-    logger.info(f"\n📊 Distribuicao Score CS:")
+    logger.info(f"\nDistribuicao Score CS:")
     for cls in ["Excelente", "Bom", "Regular", "Fraco", "Pessimo"]:
         if cls in score_counts:
             logger.info(f" {cls}: {score_counts[cls]}")
