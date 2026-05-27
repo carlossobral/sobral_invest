@@ -1,11 +1,82 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import requests
+import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime
+
+def get_selic_historico():
+    """Busca histórico dos últimos 10 anos da SELIC (série 11) do BCB."""
+    hoje = datetime.now()
+    data_inicial = hoje.replace(year=hoje.year - 10)
+    data_inicial_str = data_inicial.strftime("%d/%m/%Y")
+
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial={data_inicial_str}"
+
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        dados = resp.json()
+        df = pd.DataFrame(dados)
+        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+        df['valor'] = df['valor'].astype(float)
+        df['valor_anual'] = ((1 + df['valor'] / 100) ** 252 - 1) * 100
+        return df.sort_values('data')
+    except Exception as e:
+        st.warning(f"Erro ao buscar SELIC: {e}")
+        return pd.DataFrame()
+
+def plot_selic(df):
+    """Plota gráfico de área da SELIC histórica."""
+    if df.empty:
+        return None
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df['data'],
+        y=df['valor_anual'],
+        fill='tozeroy',
+        mode='lines',
+        line=dict(color='#10b981', width=2),
+        fillcolor='rgba(16, 185, 129, 0.15)',
+        name='SELIC % a.a.'
+    ))
+
+    fig.update_layout(
+        title=dict(
+            text='📈 Taxa SELIC Histórica (% ao ano)',
+            font=dict(size=16, color='#f1f5f9'),
+            x=0.5
+        ),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#94a3b8', size=11),
+        xaxis=dict(
+            showgrid=True,
+            gridcolor='rgba(51, 65, 85, 0.3)',
+            gridwidth=1,
+            zeroline=False
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor='rgba(51, 65, 85, 0.3)',
+            gridwidth=1,
+            zeroline=False,
+            ticksuffix='%'
+        ),
+        margin=dict(l=40, r=40, t=50, b=40),
+        height=320,
+        hovermode='x unified'
+    )
+    return fig
 
 def pagina_inicial():
-    """Dashboard principal com TradingView widgets."""
+    """Dashboard principal: Ibovespa -> Maiores Altas/Baixas -> SELIC."""
     st.markdown('<h1 class="main-header">📈 SOBRAL Invest</h1>', unsafe_allow_html=True)
 
-    # Widget TradingView - Ibovespa Symbol Overview
+    # ============================================================
+    # 1. WIDGET TRADINGVIEW - IBOVESPA
+    # ============================================================
     st.subheader("📊 Ibovespa")
     tv_ibov = """
     <div class="tradingview-widget-container">
@@ -53,7 +124,9 @@ def pagina_inicial():
     """
     components.html(tv_ibov, height=410)
 
-    # Widget TradingView - Hotlists (Maiores Altas/Baixas)
+    # ============================================================
+    # 2. WIDGET TRADINGVIEW - HOTLISTS (MAIORES ALTAS/BAIXAS)
+    # ============================================================
     st.subheader("🔥 Maiores Altas e Baixas")
     tv_hotlists = """
     <div class="tradingview-widget-container">
@@ -114,3 +187,27 @@ def pagina_inicial():
     </div>
     """
     components.html(tv_hotlists, height=560)
+
+    # ============================================================
+    # 3. GRÁFICO SELIC HISTÓRICA (POR ÚLTIMO)
+    # ============================================================
+    st.markdown("---")
+    st.subheader("🏛️ Taxa SELIC")
+    df_selic = get_selic_historico()
+    if not df_selic.empty:
+        fig = plot_selic(df_selic)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+
+        selic_atual = df_selic['valor_anual'].iloc[-1]
+        selic_min = df_selic['valor_anual'].min()
+        selic_max = df_selic['valor_anual'].max()
+        selic_media = df_selic['valor_anual'].mean()
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Atual", f"{selic_atual:.2f}%")
+        c2.metric("Mínima", f"{selic_min:.2f}%")
+        c3.metric("Máxima", f"{selic_max:.2f}%")
+        c4.metric("Média", f"{selic_media:.2f}%")
+    else:
+        st.info("Dados da SELIC não disponíveis no momento.")
