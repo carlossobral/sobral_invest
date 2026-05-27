@@ -1,6 +1,6 @@
 """
 Sobral Invest - Coletor de Dados de Ativos B3
-Atualiza data/ativos.xlsx com dados de multiplas fontes
+Atualiza data/ativos.xlsx e data/selic.json
 """
 
 import os
@@ -28,6 +28,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 ATIVOS_FILE = OUTPUT_DIR / "ativos.xlsx"
 ATIVOS_CSV = OUTPUT_DIR / "ativos.csv"
+SELIC_FILE = OUTPUT_DIR / "selic.json"
 
 # MFinance API
 MF_BASE = "https://mfinance.com.br/api/v1"
@@ -342,11 +343,11 @@ def calcular_valuation(row, selic):
     }
 
 # ---------------------------------------------------------------------------
-# SELIC
+# SELIC (série 432 - atual)
 # ---------------------------------------------------------------------------
 
 def get_selic():
-    """Busca SELIC atual do BCB"""
+    """Busca SELIC atual do BCB (série 432)"""
     try:
         resp = requests.get(SELIC_URL, timeout=15)
         resp.raise_for_status()
@@ -355,8 +356,64 @@ def get_selic():
             valor_str = data[-1].get("valor", "0")
             return safe_float(valor_str.replace(",", "."))
     except Exception as e:
-        logger.warning(f"Erro ao buscar SELIC: {e}")
+        logger.warning(f"Erro ao buscar SELIC 432: {e}")
     return 13.75
+
+# ---------------------------------------------------------------------------
+# SELIC HISTÓRICA (série 11 - para gráfico)
+# ---------------------------------------------------------------------------
+
+def get_selic_historico():
+    """Busca histórico dos últimos 10 anos da SELIC (série 11) do BCB."""
+    hoje = datetime.now()
+    data_inicial = hoje.replace(year=hoje.year - 10)
+    data_inicial_str = data_inicial.strftime("%d/%m/%Y")
+
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial={data_inicial_str}"
+
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        dados = resp.json()
+
+        # Converter e calcular % ao ano
+        registros = []
+        for d in dados:
+            valor_dia = safe_float(d.get("valor"), 0.0)
+            if valor_dia > 0:
+                valor_anual = ((1 + valor_dia / 100) ** 252 - 1) * 100
+                registros.append({
+                    "data": d.get("data"),
+                    "valor_dia": round(valor_dia, 6),
+                    "valor_anual": round(valor_anual, 2)
+                })
+
+        return registros
+    except Exception as e:
+        logger.warning(f"Erro ao buscar SELIC 11: {e}")
+        return []
+
+def salvar_selic_json(historico):
+    """Salva histórico SELIC em data/selic.json"""
+    if not historico:
+        return
+
+    selic_data = {
+        "atualizacao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "fonte": "BCB - SGS Série 11",
+        "periodo_dias": 10,
+        "total_registros": len(historico),
+        "atual": historico[-1]["valor_anual"] if historico else 0,
+        "minima": min(r["valor_anual"] for r in historico) if historico else 0,
+        "maxima": max(r["valor_anual"] for r in historico) if historico else 0,
+        "media": round(sum(r["valor_anual"] for r in historico) / len(historico), 2) if historico else 0,
+        "historico": historico
+    }
+
+    with open(SELIC_FILE, "w", encoding="utf-8") as f:
+        json.dump(selic_data, f, ensure_ascii=False, indent=2)
+
+    logger.info(f"✅ SELIC salva: {SELIC_FILE} ({len(historico)} registros)")
 
 # ---------------------------------------------------------------------------
 # MAIN
@@ -367,11 +424,17 @@ def main():
     logger.info("SOBRAL INVEST - Atualizacao de Ativos")
     logger.info("=" * 60)
 
-    client = MFinanceClient()
+    # 1. Busca SELIC histórica (série 11) e salva JSON
+    logger.info("Buscando SELIC histórica (série 11)...")
+    selic_historico = get_selic_historico()
+    salvar_selic_json(selic_historico)
 
+    # 2. Busca SELIC atual (série 432) para valuation
     selic = get_selic()
-    logger.info(f"SELIC: {selic}%")
+    logger.info(f"SELIC atual (432): {selic}%")
 
+    # 3. Busca dados MFinance
+    client = MFinanceClient()
     stocks = client.get_stocks()
     indicators = client.get_indicators()
 
