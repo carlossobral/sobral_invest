@@ -5,6 +5,9 @@ on:
     - cron: '0 4 * * *'  # 4h UTC = 1h BRT
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -13,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -23,48 +28,76 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          echo "✅ Dependencias instaladas"
+
+      - name: Criar pasta data se nao existir
+        run: |
+          mkdir -p data
+          echo "✅ Pasta data/ criada/verificada"
 
       - name: Coletar dados MFinance
         run: |
+          echo "🚀 Iniciando coleta de dados..."
           python app.py
+          echo "✅ Coleta finalizada"
         env:
           BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
           USEBOLSAI_TOKEN: ${{ secrets.USEBOLSAI_TOKEN }}
 
-      - name: Verificar e commitar
+      - name: Verificar arquivos gerados
+        run: |
+          echo "📁 Verificando arquivos em data/..."
+          ls -lah data/ || echo "❌ Pasta data/ nao encontrada"
+
+          if [ ! -f "data/ativos.xlsx" ]; then
+            echo "❌ data/ativos.xlsx NAO FOI GERADO!"
+            exit 1
+          fi
+
+          if [ ! -f "data/ativos.csv" ]; then
+            echo "❌ data/ativos.csv NAO FOI GERADO!"
+            exit 1
+          fi
+
+          SIZE_XLSX=$(stat -c%s "data/ativos.xlsx")
+          SIZE_CSV=$(stat -c%s "data/ativos.csv")
+
+          echo "✅ data/ativos.xlsx: $SIZE_XLSX bytes"
+          echo "✅ data/ativos.csv: $SIZE_CSV bytes"
+
+          if [ $SIZE_XLSX -lt 5000 ]; then
+            echo "❌ data/ativos.xlsx muito pequeno - provavelmente vazio!"
+            exit 1
+          fi
+
+      - name: Commit e push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Verificar se ativos.xlsx foi gerado na pasta data/
-          if [ ! -f "data/ativos.xlsx" ]; then
-            echo "❌ data/ativos.xlsx não foi gerado!"
-            exit 1
+          # Adiciona apenas arquivos que existem
+          if [ -f "data/ativos.xlsx" ]; then
+            git add data/ativos.xlsx
           fi
-
-          # Verificar tamanho mínimo
-          SIZE=$(stat -c%s "data/ativos.xlsx")
-          if [ $SIZE -lt 5000 ]; then
-            echo "❌ data/ativos.xlsx muito pequeno ($SIZE bytes) - provavelmente vazio!"
-            exit 1
+          if [ -f "data/ativos.csv" ]; then
+            git add data/ativos.csv
           fi
-
-          echo "✅ data/ativos.xlsx: $SIZE bytes"
-
-          # Commit seletivo
-          git add data/ativos.xlsx data/ativos.csv data/selic.json
+          if [ -f "data/selic.json" ]; then
+            git add data/selic.json
+          fi
 
           if git diff --cached --quiet; then
-            echo "✅ Nenhuma mudança para commitar"
+            echo "⚠️ Nenhuma mudanca para commitar (arquivos identicos)"
           else
             git commit -m "📊 Dados atualizados - $(date +'%Y-%m-%d %H:%M')"
 
-            # Retry push (3 tentativas)
             for i in 1 2 3; do
               git pull --rebase origin main && git push && break
               echo "⚠️ Push falhou, tentativa $i/3..."
               sleep 5
             done
+
+            echo "✅ Dados commitados e pushados com sucesso!"
           fi
 
       - name: Resumo
@@ -77,11 +110,12 @@ jobs:
             SIZE=$(stat -c%s "data/ativos.xlsx")
             echo "✅ data/ativos.xlsx: $SIZE bytes"
           else
-            echo "❌ data/ativos.xlsx não encontrado"
+            echo "❌ data/ativos.xlsx nao encontrado"
           fi
-          if [ -f "data/selic.json" ]; then
-            echo "✅ data/selic.json: $(cat data/selic.json)"
+          if [ -f "data/ativos.csv" ]; then
+            SIZE=$(stat -c%s "data/ativos.csv")
+            echo "✅ data/ativos.csv: $SIZE bytes"
           else
-            echo "❌ data/selic.json não encontrado"
+            echo "❌ data/ativos.csv nao encontrado"
           fi
           echo "=========================================="
