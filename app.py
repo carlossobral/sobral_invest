@@ -393,7 +393,7 @@ def salvar_selic_json(historico):
     with open(SELIC_FILE, "w", encoding="utf-8") as f:
         json.dump(selic_data, f, ensure_ascii=False, indent=2)
 
-    logger.info(f"✅ SELIC salva: {SELIC_FILE} ({len(historico)} registros)
+logger.info(f"SELIC salva: {SELIC_FILE} ({len(historico)} registros)")
 
 # ---------------------------------------------------------------------------
 # MAIN
