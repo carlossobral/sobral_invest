@@ -33,9 +33,6 @@ SELIC_FILE = OUTPUT_DIR / "selic.json"
 # MFinance API
 MF_BASE = "https://mfinance.com.br/api/v1"
 
-# BRAPI (fallback cotacao)
-BRAPI_BASE = "https://brapi.dev/api/quote"
-
 # ---------------------------------------------------------------------------
 # CLIENTE MFINANCE (3 endpoints)
 # ---------------------------------------------------------------------------
@@ -136,43 +133,50 @@ def parse_mfinance_stock(stock):
     }
 
 def parse_mfinance_indicators(ind):
-    """Parse dos dados de /stocks/indicators"""
+    """Parse dos dados de /stocks/indicators - estrutura aninhada"""
+    def get_val(key, default=0.0):
+        """Extrai .value de campo aninhado, ou retorna default"""
+        field = ind.get(key)
+        if isinstance(field, dict):
+            return safe_float(field.get("value"), default)
+        return safe_float(field, default)
+    
     return {
         "Ticker": ind.get("symbol", ""),
-        "PL": safe_float(ind.get("p_L")),
-        "PVP": safe_float(ind.get("p_VP")),
-        "PSR": safe_float(ind.get("p_SR")),
-        "PAtivo": safe_float(ind.get("p_Ativos")),
-        "PCapGiro": safe_float(ind.get("p_CapitalGiro")),
-        "PAtivoCircLiq": safe_float(ind.get("p_AtivCircLiq")),
-        "PEBIT": safe_float(ind.get("p_EBIT")),
-        "PEBITDA": safe_float(ind.get("p_EBITDA")),
-        "EV_EBIT": safe_float(ind.get("ev_EBIT")),
-        "EV_EBITDA": safe_float(ind.get("ev_EBITDA")),
-        "LPA": safe_float(ind.get("lpa")),
-        "VPA": safe_float(ind.get("vpa")),
-        "Patrimonio": safe_float(ind.get("patrimonio")),
-        "Lucro_Liquido": safe_float(ind.get("lucroLiquido")),
-        "EBIT": safe_float(ind.get("ebit")),
-        "Receita_Liquida": safe_float(ind.get("receitaLiquida")),
-        "ROE": safe_float(ind.get("roe")),
-        "ROA": safe_float(ind.get("roa")),
-        "ROIC": safe_float(ind.get("roic")),
-        "GiroAtivos": safe_float(ind.get("giroAtivos")),
-        "MargemBruta": safe_float(ind.get("margemBruta")),
-        "MargemEBITDA": safe_float(ind.get("margemEBITDA")),
-        "MargemEBIT": safe_float(ind.get("margemEBIT")),
-        "MargemLiquida": safe_float(ind.get("margemLiquida")),
-        "DivLiquida_Ativos": safe_float(ind.get("divLiquida_Ativos")),
-        "DivLiquida_PL": safe_float(ind.get("divLiquida_Patrimonio")),
-        "DivLiquida_EBIT": safe_float(ind.get("divLiquida_EBIT")),
-        "DivLiquida_EBITDA": safe_float(ind.get("divLiquida_EBITDA")),
-        "LiquidezCorrente": safe_float(ind.get("liquidezCorrente")),
-        "Passivos_Ativos": safe_float(ind.get("passivos_Ativos")),
-        "PL_Ativos": safe_float(ind.get("patrimonio_Ativos")),
-        "CAGR_Receitas_5a": safe_float(ind.get("cagr_Receitas_5a")),
-        "CAGR_Lucros_5a": safe_float(ind.get("cagr_Lucros_5a")),
-        "Qtd_Acoes": safe_float(ind.get("quantidadeAcoes")),
+        "PL": get_val("priceEarningsRatio"),
+        "PVP": get_val("priceToBookValue"),
+        "PSR": get_val("priceToSalesRatio"),
+        "PAtivo": get_val("priceToAssets"),
+        "PCapGiro": get_val("priceToNetCurrentAssets"),
+        "PAtivoCircLiq": get_val("priceToNetNetWorkingCapital"),
+        "PEBIT": get_val("priceToEbit"),
+        "PEBITDA": get_val("priceToEbitda"),
+        "EV_EBIT": get_val("enterpriseValueEbit"),
+        "EV_EBITDA": get_val("enterpriseValueEbitda"),
+        "LPA": get_val("earningsPerShare"),
+        "VPA": get_val("bookValuePerShare"),
+        "Patrimonio": get_val("equity"),
+        "Lucro_Liquido": get_val("netProfit"),
+        "EBIT": get_val("ebit"),
+        "Receita_Liquida": get_val("netRevenue"),
+        "ROE": get_val("returnOnEquity"),
+        "ROA": get_val("returnOnAssets"),
+        "ROIC": get_val("returnOnInvestedCapital"),
+        "GiroAtivos": get_val("assetTurnoverRatio"),
+        "MargemBruta": get_val("grossMargin"),
+        "MargemEBITDA": get_val("ebitdaMargin"),
+        "MargemEBIT": get_val("ebitMargin"),
+        "MargemLiquida": get_val("netMargin"),
+        "DivLiquida_Ativos": get_val("netDebtToAssets"),
+        "DivLiquida_PL": get_val("netDebtToEquity"),
+        "DivLiquida_EBIT": get_val("netDebtToEbit"),
+        "DivLiquida_EBITDA": get_val("netDebtToEbitda"),
+        "LiquidezCorrente": get_val("currentLiquidity"),
+        "Passivos_Ativos": get_val("liabilitiesToAssetsRatio"),
+        "PL_Ativos": get_val("equityToAssetsRatio"),
+        "CAGR_Receitas_5a": get_val("cagrRecipesFiveYears"),
+        "CAGR_Lucros_5a": get_val("cagrProfitsFiveYears"),
+        "Qtd_Acoes": get_val("sharesOutstanding"),
     }
 
 def parse_mfinance_dividends(data):
@@ -340,55 +344,54 @@ def calcular_valuation(row, selic):
     }
 
 # ---------------------------------------------------------------------------
-# SELIC HISTORICA (serie 432 - META SELIC % ao ano, nao precisa converter)
+# SELIC HISTORICA (serie 11 - Taxa Over diaria -> converter para anual)
 # ---------------------------------------------------------------------------
 
 def get_selic_historico():
-    """Busca historico dos ultimos 10 anos da SELIC META (serie 432) do BCB.
-    Serie 432 ja vem em % ao ano - NAO converte de % ao dia."""
+    """Busca historico dos ultimos 10 anos da SELIC (serie 11 - taxa over diaria).
+    Serie 11 vem em % ao DIA -> precisa converter para % ao ano com 252 dias uteis."""
     hoje = datetime.now()
     data_inicial = hoje.replace(year=hoje.year - 10)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
 
-    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial={data_inicial_str}"
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial={data_inicial_str}"
 
-    # Retry com timeout maior
     for attempt in range(3):
         try:
-            logger.info(f"Tentativa {attempt+1}/3 - BCB SELIC 432...")
+            logger.info(f"Tentativa {attempt+1}/3 - BCB SELIC serie 11...")
             resp = requests.get(url, timeout=60)
             resp.raise_for_status()
             dados = resp.json()
 
-            # Serie 432 ja vem em % ao ano - usar valor direto
             registros = []
             for d in dados:
-                valor_ano = safe_float(d.get("valor"), 0.0)
-                if valor_ano > 0:
+                valor_dia = safe_float(d.get("valor"), 0.0)
+                if valor_dia > 0:
+                    valor_anual = ((1 + valor_dia / 100) ** 252 - 1) * 100
                     registros.append({
                         "data": d.get("data"),
-                        "valor_dia": None,
-                        "valor_anual": round(valor_ano, 2)
+                        "valor_dia": round(valor_dia, 4),
+                        "valor_anual": round(valor_anual, 2)
                     })
 
-            logger.info(f"SELIC 432 OK: {len(registros)} registros")
+            logger.info(f"SELIC serie 11 OK: {len(registros)} registros")
             return registros
         except Exception as e:
             logger.warning(f"Tentativa {attempt+1} falhou: {e}")
             if attempt < 2:
                 time.sleep(5)
             else:
-                logger.error(f"Todas as tentativas falharam para SELIC 432")
+                logger.error(f"Todas as tentativas falharam para SELIC serie 11")
                 return []
 
 def salvar_selic_json(historico):
-    """Salva historico SELIC em data/selic.json"""
+    """Salva historico SELIC em data/selic.json como dict com chave 'historico'"""
     if not historico:
         return
 
     selic_data = {
         "atualizacao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "fonte": "BCB - SGS Serie 432 (Meta SELIC)",
+        "fonte": "BCB - SGS Serie 11 (Taxa Over)",
         "periodo_dias": 10,
         "total_registros": len(historico),
         "atual": historico[-1]["valor_anual"] if historico else 0,
@@ -412,14 +415,14 @@ def main():
     logger.info("SOBRAL INVEST - Atualizacao de Ativos")
     logger.info("=" * 60)
 
-    # 1. Busca SELIC historica (serie 432 - META SELIC) e salva JSON
-    logger.info("Buscando SELIC historica (serie 432 - Meta SELIC)...")
+    # 1. Busca SELIC historica (serie 11) e salva JSON
+    logger.info("Buscando SELIC historica (serie 11 - Taxa Over)...")
     selic_historico = get_selic_historico()
     salvar_selic_json(selic_historico)
 
     # 2. Pega SELIC atual do historico para valuation
     selic = selic_historico[-1]["valor_anual"] if selic_historico else 13.75
-    logger.info(f"SELIC atual (serie 432 - Meta): {selic}%")
+    logger.info(f"SELIC atual (serie 11 - Taxa Over anualizada): {selic}%")
 
     # 3. Busca dados MFinance
     client = MFinanceClient()
@@ -452,7 +455,6 @@ def main():
 
     df = pd.DataFrame(merged_filtrado)
 
-    # === ORDEM FINAL DAS COLUNAS (sem Beta, Media_50d, Media_200d, FCO, FCL) ===
     colunas_primeiras = [
         "Ticker", "Nome", "Setor", "SubSetor", "Segmento",
         "Cotacao", "Variacao", "Abertura", "Maxima", "Minima",
