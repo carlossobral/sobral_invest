@@ -1,29 +1,26 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import requests
+import json
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
+from pathlib import Path
 
 def get_selic_historico():
-    """Busca histórico dos últimos 10 anos da SELIC (série 11) do BCB."""
-    hoje = datetime.now()
-    data_inicial = hoje.replace(year=hoje.year - 10)
-    data_inicial_str = data_inicial.strftime("%d/%m/%Y")
-
-    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial={data_inicial_str}"
-
+    """Lê histórico SELIC de data/selic.json (gerado pelo coletor)."""
+    selic_file = Path("data/selic.json")
     try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        dados = resp.json()
-        df = pd.DataFrame(dados)
+        with open(selic_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        historico = data.get("historico", [])
+        if not historico:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(historico)
         df['data'] = pd.to_datetime(df['data'], dayfirst=True)
-        df['valor'] = df['valor'].astype(float)
-        df['valor_anual'] = ((1 + df['valor'] / 100) ** 252 - 1) * 100
         return df.sort_values('data')
     except Exception as e:
-        st.warning(f"Erro ao buscar SELIC: {e}")
+        st.warning(f"Erro ao ler SELIC: {e}")
         return pd.DataFrame()
 
 def plot_selic(df):
