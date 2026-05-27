@@ -1232,11 +1232,13 @@ def pagina_rankings():
                     setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
 
                     with cols[col_idx]:
-                        # Card visual em HTML
+                        # Card visual em HTML - ticker linkável com lupa
                         st.markdown(f"""
                         <div class="ranking-card" style="position: relative;">
                             <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div class="ranking-ticker">{ticker}</div>
+                                <a href="/?page=Analise&ticker={ticker}" target="_self" style="text-decoration: none;">
+                                    <div class="ranking-ticker">{ticker} 🔍</div>
+                                </a>
                             </div>
                             <div class="ranking-nome">{nome_curto}</div>
                             <div class="ranking-valor" style="color: {cor_valor};">{valor}</div>
@@ -1249,8 +1251,6 @@ def pagina_rankings():
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
-                        # Botão para ir à Análise
-                        st.link_button("🔍 Analisar", f"/?page=Analise&ticker={ticker}", use_container_width=True)
 
     # ============================================================
     # ABAS
@@ -1324,7 +1324,9 @@ def pagina_rankings():
                             st.markdown(f"""
                             <div class="ranking-card" style="border: 2px solid {card_border}; position: relative;">
                                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div class="ranking-ticker">{ticker}</div>
+                                    <a href="/?page=Analise&ticker={ticker}" target="_self" style="text-decoration: none;">
+                                        <div class="ranking-ticker">{ticker} 🔍</div>
+                                    </a>
                                 </div>
                                 <div class="ranking-nome">{nome_curto}</div>
                                 <div style="margin: 10px 0;">
@@ -1337,7 +1339,6 @@ def pagina_rankings():
                                 </div>
                             </div>
                             """, unsafe_allow_html=True)
-                            st.link_button("🔍 Analisar", f"/?page=Analise&ticker={ticker}", use_container_width=True)
         else:
             st.info("Dados de Score CS nao disponiveis.")
 
