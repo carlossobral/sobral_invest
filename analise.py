@@ -3,56 +3,56 @@ import streamlit.components.v1 as components
 import pandas as pd
 from data import load_data
 
-# Dicionário de descrições para tooltips
+# Dicionario de descricoes para tooltips
 TOOLTIP_DESC = {
-    "P/L (PL)": "Preço / Lucro. Indica quantos anos de lucro seriam necessários para pagar o preço da ação. Quanto menor, mais barata.",
-    "P/VP (PVP)": "Preço / Valor Patrimonial. Mostra se a ação está negociando acima ou abaixo do valor contábil. < 1 = abaixo do patrimônio.",
-    "P/E (PE)": "Price / Earnings Ratio. Versão americana do P/L. Mesma interpretação: quanto menor, mais barata.",
-    "EPS": "Earnings Per Share. Lucro líquido dividido pelo número de ações. Quanto maior, mais lucrativa a empresa por ação.",
-    "PSR (P/Receita)": "Preço / Receita. Útil para empresas que ainda não têm lucro. < 1 é considerado atraente.",
-    "P/Ativo": "Preço / Ativo Total. Indica quanto o mercado paga pelos ativos da empresa. Útil para holdings.",
-    "P/Cap.Giro": "Preço / Capital de Giro. Mede a relação entre preço e o capital de giro da empresa.",
-    "P/Ativo Circ. Líq.": "Preço / Ativo Circulante Líquido. Negativo pode indicar empresa com mais caixa que dívidas de curto prazo.",
-    "P/EBIT": "Preço / EBIT. Valuation baseado no lucro operacional antes de juros e impostos.",
-    "P/EBITDA": "Preço / EBITDA. Elimina efeitos de depreciação. Útil para comparar empresas de setores diferentes.",
-    "EV/EBIT": "Enterprise Value / EBIT. Considera dívida líquida. Melhor que P/EBIT para comparar empresas alavancadas.",
-    "EV/EBITDA": "EV / EBITDA. O valuation mais completo: considera dívida, depreciação e lucro operacional.",
-    "ROE": "Return on Equity. Retorno sobre o Patrimônio Líquido. > 15% é excelente. Mede eficiência na geração de lucro.",
-    "ROA": "Return on Assets. Retorno sobre Ativos. Mede eficiência total da empresa em gerar lucro com todos os recursos.",
-    "ROIC": "Return on Invested Capital. Retorno sobre Capital Investido. > 10% é bom. Considera dívida + patrimônio.",
+    "P/L (PL)": "Preco / Lucro. Indica quantos anos de lucro seriam necessarios para pagar o preco da acao. Quanto menor, mais barata.",
+    "P/VP (PVP)": "Preco / Valor Patrimonial. Mostra se a acao esta negociando acima ou abaixo do valor contabil. < 1 = abaixo do patrimonio.",
+    "P/E (PE)": "Price / Earnings Ratio. Versao americana do P/L. Mesma interpretacao: quanto menor, mais barata.",
+    "EPS": "Earnings Per Share. Lucro liquido dividido pelo numero de acoes. Quanto maior, mais lucrativa a empresa por acao.",
+    "PSR (P/Receita)": "Preco / Receita. Util para empresas que ainda nao tem lucro. < 1 e considerado atraente.",
+    "P/Ativo": "Preco / Ativo Total. Indica quanto o mercado paga pelos ativos da empresa. Util para holdings.",
+    "P/Cap.Giro": "Preco / Capital de Giro. Mede a relacao entre preco e o capital de giro da empresa.",
+    "P/Ativo Circ. Liq.": "Preco / Ativo Circulante Liquido. Negativo pode indicar empresa com mais caixa que dividas de curto prazo.",
+    "P/EBIT": "Preco / EBIT. Valuation baseado no lucro operacional antes de juros e impostos.",
+    "P/EBITDA": "Preco / EBITDA. Elimina efeitos de depreciacao. Util para comparar empresas de setores diferentes.",
+    "EV/EBIT": "Enterprise Value / EBIT. Considera divida liquida. Melhor que P/EBIT para comparar empresas alavancadas.",
+    "EV/EBITDA": "EV / EBITDA. O valuation mais completo: considera divida, depreciacao e lucro operacional.",
+    "ROE": "Return on Equity. Retorno sobre o Patrimonio Liquido. > 15% e excelente. Mede eficiencia na geracao de lucro.",
+    "ROA": "Return on Assets. Retorno sobre Ativos. Mede eficiencia total da empresa em gerar lucro com todos os recursos.",
+    "ROIC": "Return on Invested Capital. Retorno sobre Capital Investido. > 10% e bom. Considera divida + patrimonio.",
     "Giro Ativos": "Receita / Ativos Totais. Mede quantas vezes a empresa 'gira' seus ativos em receita no ano.",
-    "Margem Bruta": "(Receita - CMV) / Receita. Lucro antes de despesas operacionais. > 30% é bom para maioria dos setores.",
-    "Margem EBITDA": "EBITDA / Receita. Lucro operacional antes de depreciação. Mostra eficiência operacional pura.",
+    "Margem Bruta": "(Receita - CMV) / Receita. Lucro antes de despesas operacionais. > 30% e bom para maioria dos setores.",
+    "Margem EBITDA": "EBITDA / Receita. Lucro operacional antes de depreciacao. Mostra eficiencia operacional pura.",
     "Margem EBIT": "EBIT / Receita. Lucro operacional. > 10% indica empresa com bom controle de custos.",
-    "Margem Líquida": "Lucro Líquido / Receita. Lucro final após todas as despesas e impostos. > 5% é saudável.",
-    "Dív.Líq / Ativos": "Dívida Líquida / Ativos. < 0.5 indica empresa com pouca alavancagem financeira.",
-    "Dív.Líq / PL": "Dívida Líquida / Patrimônio. < 1 é ideal: patrimônio maior que dívida.",
-    "Dív.Líq / EBIT": "Dívida Líquida / EBIT. Indica quantos anos de lucro operacional levaria para quitar dívidas. < 3 é bom.",
-    "Dív.Líq / EBITDA": "Dívida Líquida / EBITDA. < 2.5 é considerado saudável pelo Score CS. Principal indicador de endividamento.",
-    "Liquidez Corrente": "Ativo Circulante / Passivo Circulante. > 1 indica capacidade de pagar dívidas de curto prazo.",
+    "Margem Liquida": "Lucro Liquido / Receita. Lucro final apos todas as despesas e impostos. > 5% e saudavel.",
+    "Div.Liq / Ativos": "Divida Liquida / Ativos. < 0.5 indica empresa com pouca alavancagem financeira.",
+    "Div.Liq / PL": "Divida Liquida / Patrimonio. < 1 e ideal: patrimonio maior que divida.",
+    "Div.Liq / EBIT": "Divida Liquida / EBIT. Indica quantos anos de lucro operacional levaria para quitar dividas. < 3 e bom.",
+    "Div.Liq / EBITDA": "Divida Liquida / EBITDA. < 2.5 e considerado saudavel pelo Score CS. Principal indicador de endividamento.",
+    "Liquidez Corrente": "Ativo Circulante / Passivo Circulante. > 1 indica capacidade de pagar dividas de curto prazo.",
     "Passivos / Ativos": "Passivo Total / Ativo Total. < 0.7 indica estrutura de capital conservadora.",
-    "PL / Ativos": "Patrimônio / Ativos. Quanto maior, mais capital próprio a empresa tem vs. capital de terceiros.",
-    "LPA": "Lucro Por Ação. Lucro líquido dividido por número de ações. Base para cálculo do P/L.",
-    "VPA": "Valor Patrimonial Por Ação. Patrimônio líquido dividido por ações. Base para cálculo do P/VP.",
-    "Patrimônio Líq.": "Patrimônio Líquido total da empresa. Ativos - Passivos. Representa o valor contábil.",
-    "Lucro Líquido": "Lucro após todas as despesas, impostos e juros. O resultado final para acionistas.",
-    "EBIT": "Earnings Before Interest and Taxes. Lucro operacional antes de juros e impostos. Mede eficiência do negócio.",
-    "Receita Líq.": "Receita Líquida total. Faturamento bruto menos impostos, devoluções e descontos.",
-    "CAGR Receitas 5a": "Compound Annual Growth Rate de Receitas. Taxa média anual de crescimento nos últimos 5 anos.",
-    "CAGR Lucros 5a": "CAGR de Lucros. Taxa média anual de crescimento do lucro nos últimos 5 anos. > 5% é positivo.",
-    "Qtd. de Ações": "Número total de ações emitidas pela empresa. Usado para calcular LPA, VPA e EPS.",
-    "DY Atual": "Dividend Yield dos últimos 12 meses. Dividendos pagos / Preço atual. > 6% é atrativo para renda.",
-    "DY 12 meses": "Dividend Yield médio dos últimos 12 meses. Média histórica mais estável que o DY atual.",
-    "Div. Médio 12m": "Média dos dividendos pagos nos últimos 12 meses. Indica previsibilidade de renda.",
-    "Div. Total 12m": "Soma total dos dividendos pagos nos últimos 12 meses. Útil para projeção anual.",
-    "Div. Último": "Valor do último dividendo pago. Útil para identificar tendência de aumento ou redução.",
+    "PL / Ativos": "Patrimonio / Ativos. Quanto maior, mais capital proprio a empresa tem vs. capital de terceiros.",
+    "LPA": "Lucro Por Acao. Lucro liquido dividido por numero de acoes. Base para calculo do P/L.",
+    "VPA": "Valor Patrimonial Por Acao. Patrimonio liquido dividido por acoes. Base para calculo do P/VP.",
+    "Patrimonio Liq.": "Patrimonio Liquido total da empresa. Ativos - Passivos. Representa o valor contabil.",
+    "Lucro Liquido": "Lucro apos todas as despesas, impostos e juros. O resultado final para acionistas.",
+    "EBIT": "Earnings Before Interest and Taxes. Lucro operacional antes de juros e impostos. Mede eficiencia do negocio.",
+    "Receita Liq.": "Receita Liquida total. Faturamento bruto menos impostos, devolucoes e descontos.",
+    "CAGR Receitas 5a": "Compound Annual Growth Rate de Receitas. Taxa media anual de crescimento nos ultimos 5 anos.",
+    "CAGR Lucros 5a": "CAGR de Lucros. Taxa media anual de crescimento do lucro nos ultimos 5 anos. > 5% e positivo.",
+    "Qtd. de Acoes": "Numero total de acoes emitidas pela empresa. Usado para calcular LPA, VPA e EPS.",
+    "DY Atual": "Dividend Yield dos ultimos 12 meses. Dividendos pagos / Preco atual. > 6% e atrativo para renda.",
+    "DY 12 meses": "Dividend Yield medio dos ultimos 12 meses. Media historica mais estavel que o DY atual.",
+    "Div. Medio 12m": "Media dos dividendos pagos nos ultimos 12 meses. Indica previsibilidade de renda.",
+    "Div. Total 12m": "Soma total dos dividendos pagos nos ultimos 12 meses. Util para projecao anual.",
+    "Div. Ultimo": "Valor do ultimo dividendo pago. Util para identificar tendencia de aumento ou reducao.",
     "Qtd. Div. 12m": "Quantidade de pagamentos de dividendos no ano. Mensal = 12, trimestral = 4, semestral = 2.",
-    "Div. Médio 6a": "Média dos dividendos dos últimos 6 anos. Indica consistência histórica de pagamentos.",
-    "Graham": "Preço Justo por Graham: √(22.5 × VPA × LPA). Fórmula clássica de Benjamin Graham para valor intrínseco.",
-    "Graham BR": "Preço Justo Graham ajustado para Brasil. Considera peculiaridades do mercado brasileiro.",
-    "Bazin": "Preço Justo por Bazin: Dividendo Médio / 0.06. Baseado em DY de 6% (teto de Bazin para compra).",
-    "Lynch": "Preço Justo por Lynch: PEG Ratio. Relaciona crescimento com valuation. < 1 indica subvalorizada.",
-    "AGF Médio": "Preço Justo Médio das 4 fórmulas (Graham, Graham_BR, Bazin, Lynch). Consenso de valuation.",
+    "Div. Medio 6a": "Media dos dividendos dos ultimos 6 anos. Indica consistencia historica de pagamentos.",
+    "Graham": "Preco Justo por Graham: raiz(22.5 x VPA x LPA). Formula classica de Benjamin Graham para valor intrinseco.",
+    "Graham BR": "Preco Justo Graham ajustado para Brasil. Considera peculiaridades do mercado brasileiro.",
+    "Bazin": "Preco Justo por Bazin: Dividendo Medio / 0.06. Baseado em DY de 6% (teto de Bazin para compra).",
+    "Lynch": "Preco Justo por Lynch: PEG Ratio. Relaciona crescimento com valuation. < 1 indica subvalorizada.",
+    "AGF Medio": "Preco Justo Medio das 4 formulas (Graham, Graham_BR, Bazin, Lynch). Consenso de valuation.",
 }
 
 def tooltip_html(label_text):
@@ -275,26 +275,26 @@ def pagina_analise():
     # ============================================================
     # 1. SELETOR DE ATIVO
     # ============================================================
-    df['Display'] = df['Ticker'] + ' — ' + df['Nome']
+    df['Display'] = df['Ticker'] + ' - ' + df['Nome']
     display_list = sorted([str(x) for x in df['Display'].tolist()])
 
     ticker_from_ranking = st.session_state.get("ticker_from_ranking", None)
     default_index = 0
     if ticker_from_ranking:
         for i, disp in enumerate(display_list):
-            if disp.startswith(ticker_from_ranking + ' —'):
+            if disp.startswith(ticker_from_ranking + ' -'):
                 default_index = i
                 break
         del st.session_state["ticker_from_ranking"]
 
     ativo_selecionado = st.selectbox(
-        "🔍 Selecione o ativo",
+        "Selecione o ativo",
         options=display_list,
         index=default_index,
         key="ativo_selector_v2"
     )
 
-    ticker = ativo_selecionado.split(' — ')[0]
+    ticker = ativo_selecionado.split(' - ')[0]
     ativo = df[df['Ticker'] == ticker].iloc[0] if len(df[df['Ticker'] == ticker]) > 0 else None
 
     if ativo is None:
@@ -310,12 +310,12 @@ def pagina_analise():
             <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Setor</span>
             <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Setor', 'N/A')}</span>
         </div>
-        <div style="color: #475569;">›</div>
+        <div style="color: #475569;">&rsaquo;</div>
         <div>
             <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">SubSetor</span>
             <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('SubSetor', 'N/A')}</span>
         </div>
-        <div style="color: #475569;">›</div>
+        <div style="color: #475569;">&rsaquo;</div>
         <div>
             <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Segmento</span>
             <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Segmento', 'N/A')}</span>
@@ -378,7 +378,7 @@ def pagina_analise():
     # ============================================================
     # 3. VALUATION - 6 colunas x 2 linhas
     # ============================================================
-    st.markdown('<div class="section-title-v2">📈 Valuation</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">Valuation</div>', unsafe_allow_html=True)
 
     valuation_data = [
         ("P/L (PL)", f"{ativo.get('PL', 0):.2f}x"),
@@ -388,7 +388,7 @@ def pagina_analise():
         ("PSR (P/Receita)", f"{ativo.get('PSR', 0):.2f}x"),
         ("P/Ativo", f"{ativo.get('PAtivo', 0):.2f}x"),
         ("P/Cap.Giro", f"{ativo.get('PCapGiro', 0):.2f}x"),
-        ("P/Ativo Circ. Líq.", f"{ativo.get('PAtivoCircLiq', 0):.2f}x"),
+        ("P/Ativo Circ. Liq.", f"{ativo.get('PAtivoCircLiq', 0):.2f}x"),
         ("P/EBIT", f"{ativo.get('PEBIT', 0):.2f}x"),
         ("P/EBITDA", f"{ativo.get('PEBITDA', 0):.2f}x"),
         ("EV/EBIT", f"{ativo.get('EV_EBIT', 0):.2f}x"),
@@ -411,7 +411,7 @@ def pagina_analise():
     # ============================================================
     # 4. RENTABILIDADE - 4 colunas x 2 linhas
     # ============================================================
-    st.markdown('<div class="section-title-v2">💰 Rentabilidade</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">Rentabilidade</div>', unsafe_allow_html=True)
 
     rent_data = [
         ("ROE", f"{ativo.get('ROE', 0):.2f}%"),
@@ -421,7 +421,7 @@ def pagina_analise():
         ("Margem Bruta", f"{ativo.get('MargemBruta', 0):.2f}%"),
         ("Margem EBITDA", f"{ativo.get('MargemEBITDA', 0):.2f}%"),
         ("Margem EBIT", f"{ativo.get('MargemEBIT', 0):.2f}%"),
-        ("Margem Líquida", f"{ativo.get('MargemLiquida', 0):.2f}%"),
+        ("Margem Liquida", f"{ativo.get('MargemLiquida', 0):.2f}%"),
     ]
 
     for row_idx in range(2):
@@ -440,13 +440,13 @@ def pagina_analise():
     # ============================================================
     # 5. ENDIVIDAMENTO - 4 colunas x 2 linhas
     # ============================================================
-    st.markdown('<div class="section-title-v2">⚠️ Endividamento</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">Endividamento</div>', unsafe_allow_html=True)
 
     endiv_data = [
-        ("Dív.Líq / Ativos", f"{ativo.get('DivLiquida_Ativos', 0):.2f}x"),
-        ("Dív.Líq / PL", f"{ativo.get('DivLiquida_PL', 0):.2f}x"),
-        ("Dív.Líq / EBIT", f"{ativo.get('DivLiquida_EBIT', 0):.2f}x"),
-        ("Dív.Líq / EBITDA", f"{ativo.get('DivLiquida_EBITDA', 0):.2f}x"),
+        ("Div.Liq / Ativos", f"{ativo.get('DivLiquida_Ativos', 0):.2f}x"),
+        ("Div.Liq / PL", f"{ativo.get('DivLiquida_PL', 0):.2f}x"),
+        ("Div.Liq / EBIT", f"{ativo.get('DivLiquida_EBIT', 0):.2f}x"),
+        ("Div.Liq / EBITDA", f"{ativo.get('DivLiquida_EBITDA', 0):.2f}x"),
         ("Liquidez Corrente", f"{ativo.get('LiquidezCorrente', 0):.2f}x"),
         ("Passivos / Ativos", f"{ativo.get('Passivos_Ativos', 0):.2f}x"),
         ("PL / Ativos", f"{ativo.get('PL_Ativos', 0):.2f}x"),
@@ -468,15 +468,15 @@ def pagina_analise():
     # ============================================================
     # 6. RESULTADO - 6 colunas x 1 linha
     # ============================================================
-    st.markdown('<div class="section-title-v2">📊 Resultado</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">Resultado</div>', unsafe_allow_html=True)
 
     res_data = [
         ("LPA", f"R$ {ativo.get('LPA', 0):.2f}"),
         ("VPA", f"R$ {ativo.get('VPA', 0):.2f}"),
-        ("Patrimônio Líq.", f"R$ {ativo.get('Patrimonio', 0)/1e9:.2f}B"),
-        ("Lucro Líquido", f"R$ {ativo.get('Lucro_Liquido', 0)/1e9:.2f}B"),
+        ("Patrimonio Liq.", f"R$ {ativo.get('Patrimonio', 0)/1e9:.2f}B"),
+        ("Lucro Liquido", f"R$ {ativo.get('Lucro_Liquido', 0)/1e9:.2f}B"),
         ("EBIT", f"R$ {ativo.get('EBIT', 0)/1e9:.2f}B"),
-        ("Receita Líq.", f"R$ {ativo.get('Receita_Liquida', 0)/1e9:.2f}B"),
+        ("Receita Liq.", f"R$ {ativo.get('Receita_Liquida', 0)/1e9:.2f}B"),
     ]
 
     cols_res = st.columns(6)
@@ -491,12 +491,12 @@ def pagina_analise():
     # ============================================================
     # 7. CRESCIMENTO - 1 linha
     # ============================================================
-    st.markdown('<div class="section-title-v2">🚀 Crescimento</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">Crescimento</div>', unsafe_allow_html=True)
 
     cresc_data = [
         ("CAGR Receitas 5a", f"{ativo.get('CAGR_Receitas_5a', 0):.2f}%"),
         ("CAGR Lucros 5a", f"{ativo.get('CAGR_Lucros_5a', 0):.2f}%"),
-        ("Qtd. de Ações", f"{ativo.get('Qtd_Acoes', 0)/1e9:.2f}B"),
+        ("Qtd. de Acoes", f"{ativo.get('Qtd_Acoes', 0)/1e9:.2f}B"),
     ]
 
     cols_cresc = st.columns(3)
@@ -511,16 +511,16 @@ def pagina_analise():
     # ============================================================
     # 8. DIVIDENDOS - 1 linha
     # ============================================================
-    st.markdown('<div class="section-title-v2">💵 Dividendos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">Dividendos</div>', unsafe_allow_html=True)
 
     div_data = [
         ("DY Atual", f"{ativo.get('DY', 0):.2f}%"),
         ("DY 12 meses", f"{ativo.get('DY_12m', 0):.2f}%"),
-        ("Div. Médio 12m", f"R$ {ativo.get('Dividendo_Medio_12m', 0):.4f}"),
+        ("Div. Medio 12m", f"R$ {ativo.get('Dividendo_Medio_12m', 0):.4f}"),
         ("Div. Total 12m", f"R$ {ativo.get('Dividendo_Total_12m', 0):.4f}"),
-        ("Div. Último", f"R$ {ativo.get('Dividendo_Ultimo', 0):.4f}"),
+        ("Div. Ultimo", f"R$ {ativo.get('Dividendo_Ultimo', 0):.4f}"),
         ("Qtd. Div. 12m", f"{int(ativo.get('Qtd_Dividendos_12m', 0))}"),
-        ("Div. Médio 6a", f"R$ {ativo.get('Dividendo_Medio_6a', 0):.4f}"),
+        ("Div. Medio 6a", f"R$ {ativo.get('Dividendo_Medio_6a', 0):.4f}"),
     ]
 
     cols_div = st.columns(7)
@@ -533,16 +533,16 @@ def pagina_analise():
         """, unsafe_allow_html=True)
 
     # ============================================================
-    # 9. PREÇO JUSTO - lado a lado com upside
+    # 9. PRECO JUSTO - lado a lado com upside
     # ============================================================
-    st.markdown('<div class="section-title-v2">🎯 Preço Justo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">Preco Justo</div>', unsafe_allow_html=True)
 
     pj_data = [
         ("Graham", ativo.get('Graham', 0), ativo.get('Upside_Graham', 0)),
         ("Graham BR", ativo.get('Graham_BR', 0), ativo.get('Upside_Graham_BR', 0)),
         ("Bazin", ativo.get('Bazin', 0), ativo.get('Upside_Bazin', 0)),
         ("Lynch", ativo.get('Lynch', 0), ativo.get('Upside_Lynch', 0)),
-        ("AGF Médio", ativo.get('AGF_Medio', 0), ativo.get('Upside_AGF_Medio', 0)),
+        ("AGF Medio", ativo.get('AGF_Medio', 0), ativo.get('Upside_AGF_Medio', 0)),
     ]
 
     cols_pj = st.columns(5)
@@ -560,7 +560,7 @@ def pagina_analise():
             upside_val = 0
 
         preco_str = f"R$ {preco:.2f}" if preco > 0 else "N/A"
-        upside_str = f"{upside_val:+.1f}%" if preco > 0 else "—"
+        upside_str = f"{upside_val:+.1f}%" if preco > 0 else "-"
 
         cols_pj[i].markdown(f"""
         <div class="pj-card-v2" style="border-color: {up_color}40;">
@@ -573,19 +573,19 @@ def pagina_analise():
     # ============================================================
     # 10. SCORE CS
     # ============================================================
-    st.markdown('<div class="section-title-v2">🎯 SCORE CS</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-v2">SCORE CS</div>', unsafe_allow_html=True)
 
     bh_items = [
-        ("ROE > 10%", ativo.get('ROE_10pct', 0), "Rentabilidade do patrimônio"),
+        ("ROE > 10%", ativo.get('ROE_10pct', 0), "Rentabilidade do patrimonio"),
         ("DY > 6%", ativo.get('DY_6pct', 0), "Dividend Yield atrativo"),
-        ("Dív.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0), "Endividamento controlado"),
-        ("PL < 15", ativo.get('PL_15', 0), "Preço não está caro"),
-        ("PVP < 2", ativo.get('PVP_2', 0), "Próximo do valor patrimonial"),
-        ("Margem > 10%", ativo.get('Margem_10pct', 0), "Lucratividade saudável"),
+        ("Div.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0), "Endividamento controlado"),
+        ("PL < 15", ativo.get('PL_15', 0), "Preco nao esta caro"),
+        ("PVP < 2", ativo.get('PVP_2', 0), "Proximo do valor patrimonial"),
+        ("Margem > 10%", ativo.get('Margem_10pct', 0), "Lucratividade saudavel"),
         ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0), "Capacidade de pagamento"),
         ("CAGR > 5%", ativo.get('CAGR_5pct', 0), "Crescimento consistente"),
         ("ROIC > 10%", ativo.get('ROIC_10pct', 0), "Retorno sobre capital"),
-        ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diária"),
+        ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diaria"),
     ]
 
     score = int(ativo.get('Score_CS', 0))
@@ -615,7 +615,7 @@ def pagina_analise():
     cols_bh = st.columns(5)
     for i, (title, value, desc) in enumerate(bh_items):
         is_true = bool(value) if not pd.isna(value) else False
-        icon = "✓" if is_true else "✗"
+        icon = "V" if is_true else "X"
         border_color = "#10b981" if is_true else "#ef4444"
         bg_icon = "#10b981" if is_true else "#ef4444"
 
