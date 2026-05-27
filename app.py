@@ -340,16 +340,16 @@ def calcular_valuation(row, selic):
     }
 
 # ---------------------------------------------------------------------------
-# SELIC HISTORICA (serie 11 - para grafico + valuation)
+# SELIC HISTORICA (serie 432 - para grafico + valuation)
 # ---------------------------------------------------------------------------
 
 def get_selic_historico():
-    """Busca historico dos ultimos 10 anos da SELIC (serie 11) do BCB."""
+    """Busca historico dos ultimos 10 anos da SELIC (serie 432) do BCB."""
     hoje = datetime.now()
     data_inicial = hoje.replace(year=hoje.year - 10)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
 
-    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial={data_inicial_str}"
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial={data_inicial_str}"
 
     try:
         resp = requests.get(url, timeout=15)
@@ -370,7 +370,7 @@ def get_selic_historico():
 
         return registros
     except Exception as e:
-        logger.warning(f"Erro ao buscar SELIC 11: {e}")
+        logger.warning(f"Erro ao buscar SELIC 432: {e}")
         return []
 
 def salvar_selic_json(historico):
@@ -380,7 +380,7 @@ def salvar_selic_json(historico):
 
     selic_data = {
         "atualizacao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "fonte": "BCB - SGS Serie 11",
+        "fonte": "BCB - SGS Serie 432",
         "periodo_dias": 10,
         "total_registros": len(historico),
         "atual": historico[-1]["valor_anual"] if historico else 0,
