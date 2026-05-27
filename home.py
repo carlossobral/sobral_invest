@@ -4,30 +4,65 @@ import json
 import pandas as pd
 import plotly.graph_objects as go
 from pathlib import Path
+from datetime import datetime, timedelta
+import requests
+
+def get_selic_from_api():
+    """Busca SELIC da API BCB se arquivo local nao existir."""
+    hoje = datetime.now()
+    data_inicial = hoje.replace(year=hoje.year - 10)
+    data_inicial_str = data_inicial.strftime("%d/%m/%Y")
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial={data_inicial_str}"
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        dados = resp.json()
+        registros = []
+        for d in dados:
+            try:
+                valor_dia = float(d.get("valor", 0))
+                if valor_dia > 0:
+                    valor_anual = ((1 + valor_dia / 100) ** 252 - 1) * 100
+                    registros.append({
+                        "data": d.get("data"),
+                        "valor_dia": round(valor_dia, 6),
+                        "valor_anual": round(valor_anual, 2)
+                    })
+            except:
+                continue
+        return registros
+    except Exception as e:
+        st.warning(f"Erro API BCB: {e}")
+        return []
 
 def get_selic_historico():
-    """Lê histórico SELIC de data/selic.json (gerado pelo coletor)."""
+    """Le SELIC de data/selic.json ou busca da API."""
     selic_file = Path("data/selic.json")
     try:
-        with open(selic_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        if selic_file.exists():
+            with open(selic_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            historico = data.get("historico", [])
+            if historico:
+                df = pd.DataFrame(historico)
+                df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+                return df.sort_values('data')
+    except Exception as e:
+        st.warning(f"Erro ao ler selic.json: {e}")
 
-        historico = data.get("historico", [])
-        if not historico:
-            return pd.DataFrame()
-
-        df = pd.DataFrame(historico)
+    # Fallback: busca da API
+    registros = get_selic_from_api()
+    if registros:
+        df = pd.DataFrame(registros)
         df['data'] = pd.to_datetime(df['data'], dayfirst=True)
         return df.sort_values('data')
-    except Exception as e:
-        st.warning(f"Erro ao ler SELIC: {e}")
-        return pd.DataFrame()
+
+    return pd.DataFrame()
 
 def plot_selic(df):
-    """Plota gráfico de área da SELIC histórica."""
+    """Plota grafico de area da SELIC historica."""
     if df.empty:
         return None
-
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df['data'],
@@ -38,29 +73,17 @@ def plot_selic(df):
         fillcolor='rgba(16, 185, 129, 0.15)',
         name='SELIC % a.a.'
     ))
-
     fig.update_layout(
         title=dict(
-            text='📈 Taxa SELIC Histórica (% ao ano)',
+            text='Taxa SELIC Historica (% ao ano)',
             font=dict(size=16, color='#f1f5f9'),
             x=0.5
         ),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#94a3b8', size=11),
-        xaxis=dict(
-            showgrid=True,
-            gridcolor='rgba(51, 65, 85, 0.3)',
-            gridwidth=1,
-            zeroline=False
-        ),
-        yaxis=dict(
-            showgrid=True,
-            gridcolor='rgba(51, 65, 85, 0.3)',
-            gridwidth=1,
-            zeroline=False,
-            ticksuffix='%'
-        ),
+        xaxis=dict(showgrid=True, gridcolor='rgba(51, 65, 85, 0.3)', gridwidth=1, zeroline=False),
+        yaxis=dict(showgrid=True, gridcolor='rgba(51, 65, 85, 0.3)', gridwidth=1, zeroline=False, ticksuffix='%'),
         margin=dict(l=40, r=40, t=50, b=40),
         height=320,
         hovermode='x unified'
@@ -69,20 +92,16 @@ def plot_selic(df):
 
 def pagina_inicial():
     """Dashboard principal: Ibovespa -> Maiores Altas/Baixas -> SELIC."""
-    st.markdown('<h1 class="main-header">📈 SOBRAL Invest</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">SOBRAL Invest</h1>', unsafe_allow_html=True)
 
-    # ============================================================
     # 1. WIDGET TRADINGVIEW - IBOVESPA
-    # ============================================================
-    st.subheader("📊 Ibovespa")
+    st.subheader("Ibovespa")
     tv_ibov = """
     <div class="tradingview-widget-container">
       <div class="tradingview-widget-container__widget"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
       {
-        "symbols": [
-          ["BMFBOVESPA:IBOV|1D"]
-        ],
+        "symbols": [["BMFBOVESPA:IBOV|1D"]],
         "chartOnly": false,
         "width": "960",
         "height": "400",
@@ -107,24 +126,15 @@ def pagina_inicial():
         "maLength": 9,
         "lineWidth": 2,
         "lineType": 0,
-        "dateRanges": [
-          "1d|1",
-          "1m|30",
-          "3m|60",
-          "12m|1D",
-          "60m|1W",
-          "all|1M"
-        ]
+        "dateRanges": ["1d|1", "1m|30", "3m|60", "12m|1D", "60m|1W", "all|1M"]
       }
       </script>
     </div>
     """
     components.html(tv_ibov, height=410)
 
-    # ============================================================
-    # 2. WIDGET TRADINGVIEW - HOTLISTS (MAIORES ALTAS/BAIXAS)
-    # ============================================================
-    st.subheader("🔥 Maiores Altas e Baixas")
+    # 2. WIDGET TRADINGVIEW - HOTLISTS
+    st.subheader("Maiores Altas e Baixas")
     tv_hotlists = """
     <div class="tradingview-widget-container">
       <div class="tradingview-widget-container__widget"></div>
@@ -168,15 +178,11 @@ def pagina_inicial():
           },
           {
             "title": "Maiores Altas",
-            "symbols": [
-              { "s": "BMFBOVESPA:IBOV", "d": "Ibovespa" }
-            ]
+            "symbols": [{ "s": "BMFBOVESPA:IBOV", "d": "Ibovespa" }]
           },
           {
             "title": "Maiores Baixas",
-            "symbols": [
-              { "s": "BMFBOVESPA:IBOV", "d": "Ibovespa" }
-            ]
+            "symbols": [{ "s": "BMFBOVESPA:IBOV", "d": "Ibovespa" }]
           }
         ]
       }
@@ -185,26 +191,22 @@ def pagina_inicial():
     """
     components.html(tv_hotlists, height=560)
 
-    # ============================================================
-    # 3. GRÁFICO SELIC HISTÓRICA (POR ÚLTIMO)
-    # ============================================================
+    # 3. GRAFICO SELIC HISTORICA (POR ULTIMO)
     st.markdown("---")
-    st.subheader("🏛️ Taxa SELIC")
+    st.subheader("Taxa SELIC")
     df_selic = get_selic_historico()
     if not df_selic.empty:
         fig = plot_selic(df_selic)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
-
         selic_atual = df_selic['valor_anual'].iloc[-1]
         selic_min = df_selic['valor_anual'].min()
         selic_max = df_selic['valor_anual'].max()
         selic_media = df_selic['valor_anual'].mean()
-
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Atual", f"{selic_atual:.2f}%")
-        c2.metric("Mínima", f"{selic_min:.2f}%")
-        c3.metric("Máxima", f"{selic_max:.2f}%")
-        c4.metric("Média", f"{selic_media:.2f}%")
+        c2.metric("Minima", f"{selic_min:.2f}%")
+        c3.metric("Maxima", f"{selic_max:.2f}%")
+        c4.metric("Media", f"{selic_media:.2f}%")
     else:
-        st.info("Dados da SELIC não disponíveis no momento.")
+        st.info("Dados da SELIC nao disponiveis no momento.")
