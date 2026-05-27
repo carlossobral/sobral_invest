@@ -476,7 +476,7 @@ def main():
     ordem_final = [c for c in ordem_final if c in df.columns]
     df = df[ordem_final]
 
-    df.to_excel(ATIVOS_FILE, index=False, engine="openpyxl")
+    df.to_excel(ATIVOS_FILE, index=False, engine="openpyxl", sheet_name="Dados")
     df.to_csv(ATIVOS_CSV, index=False)
 
     logger.info(f"\nPlanilha salva:")
