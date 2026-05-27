@@ -452,6 +452,7 @@ def main():
 
     df = pd.DataFrame(merged_filtrado)
 
+    # === ORDEM FINAL DAS COLUNAS (sem Beta, Media_50d, Media_200d, FCO, FCL) ===
     colunas_primeiras = [
         "Ticker", "Nome", "Setor", "SubSetor", "Segmento",
         "Cotacao", "Variacao", "Abertura", "Maxima", "Minima",
