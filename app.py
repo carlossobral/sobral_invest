@@ -1,6 +1,6 @@
 """
 Sobral Invest - Coletor de Dados de Ativos B3
-Atualiza ativos.xlsx com dados de multiplas fontes + Fundamentus (Kanitz)
+Atualiza data/ativos.xlsx com dados de multiplas fontes
 """
 
 import os
@@ -12,8 +12,6 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
-
-# pyfundamentus para dados do balanco
 
 # Configuracao de logging
 logging.basicConfig(
@@ -68,7 +66,7 @@ class MFinanceClient:
         logger.info("Buscando /stocks...")
         data = self._get(f"{MF_BASE}/stocks")
         stocks = data if isinstance(data, list) else data.get("stocks", [])
-        logger.info(f"  -> {len(stocks)} ativos de /stocks")
+        logger.info(f" -> {len(stocks)} ativos de /stocks")
         return stocks
 
     def get_indicators(self):
@@ -76,7 +74,7 @@ class MFinanceClient:
         logger.info("Buscando /stocks/indicators...")
         data = self._get(f"{MF_BASE}/stocks/indicators")
         indicators = data if isinstance(data, list) else data.get("indicators", [])
-        logger.info(f"  -> {len(indicators)} indicadores")
+        logger.info(f" -> {len(indicators)} indicadores")
         return indicators
 
     def get_dividends(self, symbol):
@@ -95,14 +93,13 @@ class MFinanceClient:
         results = {}
         for i, sym in enumerate(symbols):
             if i % 50 == 0 and i > 0:
-                logger.info(f"  -> {i}/{len(symbols)} dividendos...")
+                logger.info(f" -> {i}/{len(symbols)} dividendos...")
             data = self.get_dividends(sym)
             if data:
                 results[sym] = data
             time.sleep(delay)
-        logger.info(f"  -> {len(results)} tickers com dividendos")
+        logger.info(f" -> {len(results)} tickers com dividendos")
         return results
-
 
 # ---------------------------------------------------------------------------
 # PARSERS
@@ -115,7 +112,6 @@ def safe_float(value, default=0.0):
         return float(value)
     except (ValueError, TypeError):
         return default
-
 
 def parse_mfinance_stock(stock):
     """Parse dos dados de /stocks"""
@@ -140,7 +136,6 @@ def parse_mfinance_stock(stock):
         "EPS": safe_float(stock.get("eps")),
         "DY": safe_float(stock.get("dividendYield")),
     }
-
 
 def parse_mfinance_indicators(ind):
     """Parse dos dados de /stocks/indicators"""
@@ -182,7 +177,6 @@ def parse_mfinance_indicators(ind):
         "Qtd_Acoes": safe_float(ind.get("quantidadeAcoes")),
     }
 
-
 def parse_mfinance_dividends(data):
     """
     Parse dos dividendos.
@@ -217,16 +211,13 @@ def parse_mfinance_dividends(data):
         if value <= 0 or not date_str:
             continue
 
-        # Parse da data (pode vir com ou sem timezone)
         try:
             dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            # Remover timezone para comparar com cutoff (que eh naive)
             if dt.tzinfo is not None:
                 dt = dt.replace(tzinfo=None)
         except:
             continue
 
-        # Soma tudo (JCP + Dividendo) — rendimento total
         if dt >= cutoff_12m:
             total_12m += value
             qtd_12m += 1
@@ -235,7 +226,6 @@ def parse_mfinance_dividends(data):
             total_6a += value
             qtd_6a += 1
 
-        # Ultimo dividendo (mais recente)
         if ultima_data is None or dt > ultima_data:
             ultima_data = dt
             ultimo = value
@@ -250,7 +240,6 @@ def parse_mfinance_dividends(data):
         "Qtd_Dividendos_12m": qtd_12m,
         "Dividendo_Medio_6a": round(media_6a, 4),
     }
-
 
 # ---------------------------------------------------------------------------
 # MERGE E CALCULOS
@@ -268,20 +257,13 @@ def merge_mfinance_data(stocks, indicators, dividends_map):
     for ticker in sorted(all_tickers):
         parsed_stock = stock_map.get(ticker, {})
         parsed_ind = ind_map.get(ticker, {})
-
-        # Merge: indicadores primeiro, depois stocks sobrescreve
         row = {**parsed_ind, **parsed_stock}
-
-        # Adiciona dividendos
         div_data = parse_mfinance_dividends(dividends_map.get(ticker))
         row.update(div_data)
-
-        # Garante que Ticker existe
         row["Ticker"] = ticker
         merged.append(row)
 
     return merged
-
 
 def calcular_dy_12m(row):
     """DY_12m = (Dividendo_Medio_12m * 12 / Cotacao) * 100"""
@@ -291,11 +273,8 @@ def calcular_dy_12m(row):
         return (div_medio * 12 / cotacao) * 100
     return 0
 
-
 def calcular_score_cs(row):
-    """
-    Score CS (Carlos Sobral) — 0 a 10
-    """
+    """Score CS (Carlos Sobral) — 0 a 10"""
     score = 0
     checks = {
         "ROE_10pct": row.get("ROE", 0) > 10,
@@ -323,7 +302,6 @@ def calcular_score_cs(row):
         classif = "Pessimo"
 
     return score, classif, checks
-
 
 def calcular_valuation(row, selic):
     """Calculos de valuation"""
@@ -363,7 +341,6 @@ def calcular_valuation(row, selic):
         "Upside_AGF_Medio": round(upside_agf, 2),
     }
 
-
 # ---------------------------------------------------------------------------
 # SELIC
 # ---------------------------------------------------------------------------
@@ -381,7 +358,6 @@ def get_selic():
         logger.warning(f"Erro ao buscar SELIC: {e}")
     return 13.75
 
-
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
@@ -393,54 +369,38 @@ def main():
 
     client = MFinanceClient()
 
-    # 1. Busca SELIC
     selic = get_selic()
     logger.info(f"SELIC: {selic}%")
 
-    # 2. Busca dados MFinance
     stocks = client.get_stocks()
     indicators = client.get_indicators()
 
-    # 3. Lista de tickers
     stock_symbols = {s.get("symbol") for s in stocks if s.get("symbol")}
     ind_symbols = {i.get("symbol") for i in indicators if i.get("symbol")}
     all_symbols = sorted(stock_symbols | ind_symbols)
 
-    # 4. Busca dividendos
     dividends_map = client.get_all_dividends(all_symbols, delay=0.2)
 
-    # 5. Merge MFinance
     merged = merge_mfinance_data(stocks, indicators, dividends_map)
     logger.info(f"Total antes do filtro: {len(merged)} tickers")
 
-    # 7. Calcula metricas adicionais
     for row in merged:
-        # DY_12m
         row["DY_12m"] = round(calcular_dy_12m(row), 2)
-
-        # Score CS
         score, classif, checks = calcular_score_cs(row)
         row["Score_CS"] = score
         row["Score_CS_Classificacao"] = classif
         for k, v in checks.items():
             row[k] = 1 if v else 0
-
-        # Valuation
         val = calcular_valuation(row, selic)
         row.update(val)
 
-
-
-    # 8. FILTRO: Remove tickers com Nome = "#N/A" ou vazio
     merged_filtrado = [r for r in merged if r.get("Nome") and r.get("Nome") != "#N/A"]
     removidos = len(merged) - len(merged_filtrado)
     logger.info(f"Removidos {removidos} tickers com Nome=#N/A")
     logger.info(f"Total apos filtro: {len(merged_filtrado)} tickers")
 
-    # 9. Cria DataFrame
     df = pd.DataFrame(merged_filtrado)
 
-    # Reordena colunas
     colunas_primeiras = [
         "Ticker", "Nome", "Setor", "SubSetor", "Segmento",
         "Cotacao", "Variacao", "Abertura", "Maxima", "Minima",
@@ -473,27 +433,22 @@ def main():
     ordem_final = [c for c in ordem_final if c in df.columns]
     df = df[ordem_final]
 
-    # 10. Salva
     df.to_excel(ATIVOS_FILE, index=False, engine="openpyxl")
     df.to_csv(ATIVOS_CSV, index=False)
 
     logger.info(f"\n✅ Planilha salva:")
-    logger.info(f"   Excel: {ATIVOS_FILE}")
-    logger.info(f"   CSV:   {ATIVOS_CSV}")
-    logger.info(f"   Linhas: {len(df)}")
-    logger.info(f"   Colunas: {len(df.columns)}")
+    logger.info(f" Excel: {ATIVOS_FILE}")
+    logger.info(f" CSV: {ATIVOS_CSV}")
+    logger.info(f" Linhas: {len(df)}")
+    logger.info(f" Colunas: {len(df.columns)}")
 
-    # Estatisticas do Score CS
     score_counts = df["Score_CS_Classificacao"].value_counts().to_dict()
     logger.info(f"\n📊 Distribuicao Score CS:")
     for cls in ["Excelente", "Bom", "Regular", "Fraco", "Pessimo"]:
         if cls in score_counts:
-            logger.info(f"   {cls}: {score_counts[cls]}")
-
-
+            logger.info(f" {cls}: {score_counts[cls]}")
 
     return df
-
 
 if __name__ == "__main__":
     main()
