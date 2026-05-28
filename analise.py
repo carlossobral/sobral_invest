@@ -446,18 +446,24 @@ def pagina_analise():
     # ============================================================
     st.markdown('<div class="section-title-v2">SCORE CS</div>', unsafe_allow_html=True)
 
-    bh_items = [
-        ("ROE > 10%", ativo.get('ROE_10pct', 0), "Rentabilidade do patrimonio"),
-        ("DY > 6%", ativo.get('DY_6pct', 0), "Dividend Yield atrativo"),
-        ("Div.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0), "Endividamento controlado"),
-        ("PL < 15", ativo.get('PL_15', 0), "Preco nao esta caro"),
-        ("PVP < 2", ativo.get('PVP_2', 0), "Proximo do valor patrimonial"),
-        ("Margem > 10%", ativo.get('Margem_10pct', 0), "Lucratividade saudavel"),
-        ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0), "Capacidade de pagamento"),
-        ("CAGR > 5%", ativo.get('CAGR_5pct', 0), "Crescimento consistente"),
-        ("ROIC > 10%", ativo.get('ROIC_10pct', 0), "Retorno sobre capital"),
-        ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diaria"),
-    ]
+bh_items = [
+    ("ROE > 10%", ativo.get('ROE_10pct', 0), "Rentabilidade do patrimonio"),
+    ("DY > 6%", ativo.get('DY_6pct', 0), "Dividend Yield atrativo"),
+    ("Div.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0), "Endividamento controlado"),
+    ("PL < 15", ativo.get('PL_15', 0), "Preco nao esta caro"),
+    ("PVP < 2", ativo.get('PVP_2', 0), "Proximo do valor patrimonial"),
+    ("Margem > 10%", ativo.get('Margem_10pct', 0), "Lucratividade saudavel"),
+    ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0), "Capacidade de pagamento"),
+    ("CAGR > 5%", ativo.get('CAGR_5pct', 0), "Crescimento consistente"),
+    ("ROIC > 10%", ativo.get('ROIC_10pct', 0), "Retorno sobre capital"),
+    ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diaria"),
+    ("CAGR Receita > 0", 1 if (pd.notna(ativo.get('CAGR_Receitas_5a')) and ativo['CAGR_Receitas_5a'] > 0) else 0, "Crescimento real da receita nos ultimos 5 anos"),
+    
+    # ✅ ETAPA 2: Anos de listagem >= 5
+    ("Listada há +5 anos", 
+     1 if (pd.notna(ativo.get('anos_listagem')) and ativo['anos_listagem'] >= 5) else 0, 
+     "Maturidade e histórico no mercado"),
+]
 
     # Calcula o score somando todos os criterios (10 no total)
     score = sum(item[1] for item in bh_items)
