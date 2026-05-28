@@ -179,9 +179,15 @@ def pagina_rankings():
                         st.markdown(f"""
                         <div class="ranking-card">
                             <div class="ticker-link" style="margin-bottom: 4px;">
-                                <button onclick="window.location.href='/?page=Analise&ticker={ticker}'" style="width:100%">
-                                    {ticker} 🔍
-                                </button>
+                        """, unsafe_allow_html=True)
+                        
+                        # Botão Streamlit funcional (navegação correta)
+                        if st.button(f"{ticker} 🔍", key=f"nav_{ticker}_{col_indicador}_{idx}", use_container_width=False):
+                            st.query_params["page"] = "Analise"
+                            st.query_params["ticker"] = ticker
+                            st.rerun()
+                        
+                        st.markdown(f"""
                             </div>
                             <div class="ranking-nome">{nome_curto}</div>
                             <div class="ranking-valor" style="color: {cor_valor};">{valor}</div>
