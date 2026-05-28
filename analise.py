@@ -47,7 +47,6 @@ TOOLTIP_DESC = {
     "Div. Total 12m": "Soma total dos dividendos pagos nos ultimos 12 meses. Util para projecao anual.",
     "Div. Ultimo": "Valor do ultimo dividendo pago. Util para identificar tendencia de aumento ou reducao.",
     "Qtd. Div. 12m": "Quantidade de pagamentos de dividendos no ano. Mensal = 12, trimestral = 4, semestral = 2.",
-    "Div. Medio 6a": "Media dos dividendos dos ultimos 6 anos. Indica consistencia historica de pagamentos.",
     "Graham": "Preco Justo por Graham: raiz(22.5 x VPA x LPA). Formula classica de Benjamin Graham para valor intrinseco.",
     "Graham BR": "Preco Justo Graham ajustado para Brasil. Considera peculiaridades do mercado brasileiro.",
     "Bazin": "Preco Justo por Bazin: Dividendo Medio / 0.06. Baseado em DY de 6% (teto de Bazin para compra).",
@@ -181,7 +180,7 @@ def pagina_analise():
         return
 
     # ============================================================
-    # 1. SELETOR DE ATIVO (CORRIGIDO - session_state)
+    # 1. SELETOR DE ATIVO
     # ============================================================
     df['Display'] = df['Ticker'] + ' - ' + df['Nome']
     display_list = sorted([str(x) for x in df['Display'].tolist()])
@@ -241,7 +240,7 @@ def pagina_analise():
     components.html(tv_chart, height=360)
 
     # ============================================================
-    # 3. VALUATION - 6 colunas x 2 linhas (COM CORES SEMANTICAS)
+    # 3. VALUATION - 6 colunas x 2 linhas
     # ============================================================
     st.markdown('<div class="section-title-v2">Valuation</div>', unsafe_allow_html=True)
 
@@ -275,7 +274,7 @@ def pagina_analise():
                 """, unsafe_allow_html=True)
 
     # ============================================================
-    # 4. RENTABILIDADE - 4 colunas x 2 linhas (COM CORES SEMANTICAS)
+    # 4. RENTABILIDADE - 4 colunas x 2 linhas
     # ============================================================
     st.markdown('<div class="section-title-v2">Rentabilidade</div>', unsafe_allow_html=True)
 
@@ -305,7 +304,7 @@ def pagina_analise():
                 """, unsafe_allow_html=True)
 
     # ============================================================
-    # 5. ENDIVIDAMENTO - 4 colunas x 2 linhas (COM CORES SEMANTICAS)
+    # 5. ENDIVIDAMENTO - 4 colunas x 2 linhas
     # ============================================================
     st.markdown('<div class="section-title-v2">Endividamento</div>', unsafe_allow_html=True)
 
@@ -334,7 +333,7 @@ def pagina_analise():
                 """, unsafe_allow_html=True)
 
     # ============================================================
-    # 6. RESULTADO - 6 colunas x 1 linha (COM CORES SEMANTICAS)
+    # 6. RESULTADO - 6 colunas x 1 linha
     # ============================================================
     st.markdown('<div class="section-title-v2">Resultado</div>', unsafe_allow_html=True)
 
@@ -358,7 +357,7 @@ def pagina_analise():
         """, unsafe_allow_html=True)
 
     # ============================================================
-    # 7. CRESCIMENTO - 1 linha (COM CORES SEMANTICAS)
+    # 7. CRESCIMENTO - 1 linha
     # ============================================================
     st.markdown('<div class="section-title-v2">Crescimento</div>', unsafe_allow_html=True)
 
@@ -379,27 +378,37 @@ def pagina_analise():
         """, unsafe_allow_html=True)
 
     # ============================================================
-    # 8. DIVIDENDOS - 1 linha (COM CORES SEMANTICAS)
+    # 8. DIVIDENDOS - Linha Única (5 cards + badge de consistência)
     # ============================================================
     st.markdown('<div class="section-title-v2">Dividendos</div>', unsafe_allow_html=True)
 
-    div_data = [
-        ("DY Atual", f"{ativo.get('DY', 0):.2f}%"),
-        ("DY 12 meses", f"{ativo.get('DY_12m', 0):.2f}%"),
-        ("Div. Medio 12m", f"R$ {ativo.get('Dividendo_Medio_12m', 0):.4f}"),
-        ("Div. Total 12m", f"R$ {ativo.get('Dividendo_Total_12m', 0):.4f}"),
-        ("Div. Ultimo", f"R$ {ativo.get('Dividendo_Ultimo', 0):.4f}"),
-        ("Qtd. Div. 12m", f"{int(ativo.get('Qtd_Dividendos_12m', 0))}"),
-        ("Div. Medio 6a", f"R$ {ativo.get('Dividendo_Medio_6a', 0):.4f}"),
+    current_year = datetime.now().year
+    div_cards = [
+        ("DIVI 1A", f"R$ {ativo.get('DIV_1A_', 0):.4f}", str(ativo.get('DIV_1A_', 0) > 0), current_year - 1),
+        ("DIVI 2A", f"R$ {ativo.get('DIV_2A_', 0):.4f}", str(ativo.get('DIV_2A_', 0) > 0), current_year - 2),
+        ("DIVI 3A", f"R$ {ativo.get('DIV_3A_', 0):.4f}", str(ativo.get('DIV_3A_', 0) > 0), current_year - 3),
+        ("DIVI 4A", f"R$ {ativo.get('DIV_4A_', 0):.4f}", str(ativo.get('DIV_4A_', 0) > 0), current_year - 4),
+        ("DIVI 5A", f"R$ {ativo.get('DIV_5A_', 0):.4f}", str(ativo.get('DIV_5A_', 0) > 0), current_year - 5),
     ]
 
-    cols_div = st.columns(7)
-    for i, (label, value) in enumerate(div_data):
-        sem_color = get_semantic_color(label, value)
+    # Badge de consistência (6ª coluna)
+    anos_pagos = int(ativo.get('DY_5A_PG', 0))
+    cons_badge = f"✅ {anos_pagos}/5" if anos_pagos >= 3 else f"⚠️ {anos_pagos}/5"
+    cons_color = "#10b981" if anos_pagos >= 3 else "#f59e0b"
+    div_cards.append(("CONSISTÊNCIA", cons_badge, "true", None))
+
+    cols_div = st.columns(6)
+    for i, (label, value, has_payment, year) in enumerate(div_cards):
+        is_consistency = (i == 5)
+        sem_color = cons_color if is_consistency else ("#10b981" if has_payment == "True" else "#475569")
+        
+        year_display = f"<div style='font-size: 0.65rem; color: #64748b; margin-top: 4px;'>Ano: {year}</div>" if year else ""
+        
         cols_div[i].markdown(f"""
         <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
-            <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
+            <div class="metric-label-v2">{label}</div>
             <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
+            {year_display}
         </div>
         """, unsafe_allow_html=True)
 
@@ -442,7 +451,7 @@ def pagina_analise():
         """, unsafe_allow_html=True)
 
     # ============================================================
-    # 10. SCORE CS (11 CRITÉRIOS - CAGR RECEITA ADICIONADO)
+    # 10. SCORE CS (11 CRITÉRIOS - Consistência 5A ADICIONADO)
     # ============================================================
     st.markdown('<div class="section-title-v2">SCORE CS</div>', unsafe_allow_html=True)
 
@@ -458,16 +467,16 @@ def pagina_analise():
         ("ROIC > 10%", ativo.get('ROIC_10pct', 0), "Retorno sobre capital"),
         ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diaria"),
         
-        # ✅ NOVO CRITÉRIO IMPLEMENTADO
-        ("CAGR Receita > 0", 
-         1 if (pd.notna(ativo.get('CAGR_Receitas_5a')) and float(ativo.get('CAGR_Receitas_5a', 0)) > 0) else 0, 
-         "Crescimento real da receita nos ultimos 5 anos"),
+        # ✅ NOVO CRITÉRIO: Consistência de Dividendos 5 Anos
+        ("Consistência 5A", 
+         1 if (pd.notna(ativo.get('DY_5A_PG')) and int(ativo.get('DY_5A_PG', 0)) >= 3) else 0, 
+         "Pagou dividendos em pelo menos 3 dos ultimos 5 anos"),
     ]
 
-    # Calcula o score somando todos os criterios (agora 11 no total)
+    # Calcula o score somando todos os criterios (11 no total)
     score = sum(item[1] for item in bh_items)
 
-    # Classificacao visual do score (mantida original conforme solicitado)
+    # Classificacao visual do score
     if score >= 9:
         score_color, score_bg, score_label = "#10b981", "#065f46", "Excelente"
     elif score >= 7:
@@ -486,7 +495,7 @@ def pagina_analise():
         <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
             <div class="score-number-v2" style="color: {score_color};">{score}</div>
             <div class="score-label-v2" style="color: {score_color};">{score_label}</div>
-            <div class="score-desc-v2">de 10 pontos</div>
+            <div class="score-desc-v2">de 11 pontos</div>
         </div>
         """, unsafe_allow_html=True)
 
