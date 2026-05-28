@@ -1,18 +1,13 @@
 {
-  "atualizacao": "2026-05-27 22:55:34",
+  "atualizacao": "2026-05-28 01:32:09",
   "fonte": "BCB - SGS Serie 432 (Meta SELIC)",
   "periodo_dias": 10,
-  "total_registros": 3674,
+  "total_registros": 3673,
   "atual": 14.5,
   "minima": 2.0,
   "maxima": 15.0,
   "media": 9.61,
   "historico": [
-    {
-      "data": "27/05/2016",
-      "valor_dia": null,
-      "valor_anual": 14.25
-    },
     {
       "data": "28/05/2016",
       "valor_dia": null,
