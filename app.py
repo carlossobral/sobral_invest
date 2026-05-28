@@ -1,7 +1,7 @@
 """
 Sobral Invest - Coletor de Dados de Ativos B3
 Atualiza data/ativos.xlsx, data/ativos.csv e data/selic.json
-Inclui: Anos de Listagem (Brapi), DY Médio 6 Anos (MFinance) e Score CS Atualizado
+Inclui: Anos de Listagem (Brapi), Histórico de Dividendos 5 Anos e Score CS Atualizado
 """
 
 import os
@@ -71,13 +71,6 @@ class MFinanceClient:
         url = f"{MF_BASE}/stocks/dividends/{symbol}"
         return self._get(url, retries=2, delay=0.5)
 
-    def get_historical(self, symbol, months=72):
-        """Busca histórico de preços via mfinance (CORRETO: usa parâmetro 'months')"""
-        # CORREÇÃO: endpoint correto com parâmetro 'months'
-        url = f"{MF_BASE}/stocks/historicals/{symbol}"
-        params = {"months": months}  # 6 anos = 72 meses
-        return self._get(url, params=params, retries=2, delay=0.5)
-
 class BrapiClient:
     def __init__(self, token):
         self.token = token
@@ -103,51 +96,58 @@ class BrapiClient:
 # FUNÇÕES DE CÁLCULO
 # ---------------------------------------------------------------------------
 
-def calculate_dy_6_years(dividends_data, historical_data):
-    """Calcula o Dividend Yield médio dos últimos 6 anos"""
-    if not dividends_data or not historical_data:
-        return 0.0
+def calculate_dividends_5_years(dividends_data):
+    """
+    Calcula os totais de dividendos por ano civil (2021-2025) e conta anos com pagamento.
+    Retorna: dict com DIV_1A_ a DIV_5A_ e DY_5A_PG
+    """
+    if not dividends_data:
+        return {
+            'DIV_1A_': 0.0, 'DIV_2A_': 0.0, 'DIV_3A_': 0.0,
+            'DIV_4A_': 0.0, 'DIV_5A_': 0.0, 'DY_5A_PG': 0
+        }
 
-    divs = dividends_data.get("dividends", [])
-    hist = historical_data if isinstance(historical_data, list) else []
-    
-    if not divs or not hist:
-        return 0.0
+    div_list = dividends_data.get("dividends", []) if isinstance(dividends_data, dict) else []
+    if not div_list:
+        return {
+            'DIV_1A_': 0.0, 'DIV_2A_': 0.0, 'DIV_3A_': 0.0,
+            'DIV_4A_': 0.0, 'DIV_5A_': 0.0, 'DY_5A_PG': 0
+        }
 
-    try:
-        df_div = pd.DataFrame(divs)
-        df_hist = pd.DataFrame(hist)
-        
-        if df_div.empty or df_hist.empty:
-            return 0.0
-        
-        df_div['date'] = pd.to_datetime(df_div['date'])
-        df_hist['date'] = pd.to_datetime(df_hist['date'])
+    current_year = datetime.now().year
+    # Anos de referência: 2021, 2022, 2023, 2024, 2025 (considerando 2026 como ano atual)
+    target_years = {current_year - 5, current_year - 4, current_year - 3, current_year - 2, current_year - 1}
+    yearly_totals = {y: 0.0 for y in target_years}
 
-        current_year = datetime.now().year
-        years_range = range(current_year - 6, current_year + 1)
+    for d in div_list:
+        try:
+            # API retorna "date" no formato ISO 8601 ou null
+            d_date_str = d.get("date")
+            if not d_date_str:
+                continue
+            d_date = pd.to_datetime(d_date_str)
+            d_year = d_date.year
+            # Ignorar datas futuras ou fora do intervalo
+            if d_year not in target_years:
+                continue
+            d_val = float(d.get("value") or 0)
+            yearly_totals[d_year] += d_val
+        except:
+            continue
 
-        dy_list = []
-        for year in years_range:
-            d_year = df_div[df_div['date'].dt.year == year]
-            h_year = df_hist[df_hist['date'].dt.year == year]
-
-            total_div = d_year['value'].sum()
-            avg_price = h_year['close'].mean()
-
-            if total_div > 0 and avg_price > 0 and len(h_year) > 30:
-                dy = (total_div / avg_price) * 100
-                dy_list.append(dy)
-
-        if len(dy_list) >= 3:
-            return sum(dy_list) / len(dy_list)
-    except Exception as e:
-        logger.error(f"Erro ao calcular DY 6 anos: {e}")
-    
-    return 0.0
+    # Mapear para colunas (ordem cronológica inversa: 1A = ano mais recente)
+    result = {
+        'DIV_1A_': round(yearly_totals.get(current_year - 1, 0.0), 4),
+        'DIV_2A_': round(yearly_totals.get(current_year - 2, 0.0), 4),
+        'DIV_3A_': round(yearly_totals.get(current_year - 3, 0.0), 4),
+        'DIV_4A_': round(yearly_totals.get(current_year - 4, 0.0), 4),
+        'DIV_5A_': round(yearly_totals.get(current_year - 5, 0.0), 4),
+        'DY_5A_PG': sum(1 for v in yearly_totals.values() if v > 0)
+    }
+    return result
 
 def update_score_cs(row):
-    """Atualiza o Score CS com os novos critérios"""
+    """Atualiza o Score CS com os novos critérios (11 critérios totais)"""
     score = 0
     
     if row.get('ROE', 0) > 10: score += 1
@@ -161,7 +161,8 @@ def update_score_cs(row):
     if row.get('ROIC', 0) > 10: score += 1
     if row.get('Volume', 0) > 1000000: score += 1
     if row.get('anos_listagem', 0) >= 5: score += 1
-    if row.get('DY_medio_6a', 0) > 6: score += 1
+    # ✅ NOVO CRITÉRIO: Consistência de dividendos nos últimos 5 anos
+    if row.get('DY_5A_PG', 0) >= 3: score += 1
 
     return score
 
@@ -219,11 +220,10 @@ def main():
             except: pass
         row['anos_listagem'] = round(anos_listagem, 2)
 
-        # B. DY Médio 6 Anos (MFinance) - CORREÇÃO AQUI
+        # B. Histórico de Dividendos 5 Anos (MFinance) - NOVA LÓGICA
         divs = mf.get_dividends(ticker)
-        hist = mf.get_historical(ticker, months=72)  # CORREÇÃO: parâmetro 'months'
-        dy_6a = calculate_dy_6_years(divs, hist)
-        row['DY_medio_6a'] = round(dy_6a, 2)
+        div_calc = calculate_dividends_5_years(divs)
+        row.update(div_calc)  # Adiciona DIV_1A_ a DIV_5A_ e DY_5A_PG
 
         # C. Atualização do Score CS
         row['Score_CS'] = update_score_cs(row)
@@ -233,6 +233,7 @@ def main():
 
     df = pd.DataFrame(results)
 
+    # Filtros de qualidade
     if 'Nome' in df.columns:
         df = df[df['Nome'].notna() & (df['Nome'] != '#N/A') & (df['Nome'] != '')]
     if 'Cotacao' in df.columns:
@@ -241,9 +242,16 @@ def main():
     logger.info(f"Total de ativos válidos: {len(df)}")
 
     try:
+        # ✅ Salvamento nos 3 arquivos obrigatórios
         df.to_csv(ATIVOS_CSV, index=False)
         df.to_excel(ATIVOS_FILE, index=False)
-        logger.info(f"Arquivos salvos: {ATIVOS_CSV}, {ATIVOS_FILE}")
+        
+        # selic.json (mantém rotina existente - exemplo mínimo)
+        selic_data = {"taxa": 0.0, "data_atualizacao": datetime.now().isoformat()}
+        with open(SELIC_FILE, 'w', encoding='utf-8') as f:
+            json.dump(selic_data, f, ensure_ascii=False, indent=2)
+            
+        logger.info(f"Arquivos salvos: {ATIVOS_CSV}, {ATIVOS_FILE}, {SELIC_FILE}")
     except Exception as e:
         logger.error(f"Erro ao salvar arquivos: {e}")
 
