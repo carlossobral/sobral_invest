@@ -57,6 +57,7 @@ class MFinanceClient:
                     raise
 
     def get_stocks(self):
+        """GET /stocks -> todos os ativos com cotacao, setor, etc."""
         logger.info("Buscando /stocks...")
         data = self._get(f"{MF_BASE}/stocks")
         stocks = data if isinstance(data, list) else data.get("stocks", [])
@@ -64,6 +65,7 @@ class MFinanceClient:
         return stocks
 
     def get_indicators(self):
+        """GET /stocks/indicators -> todos os indicadores fundamentais"""
         logger.info("Buscando /stocks/indicators...")
         data = self._get(f"{MF_BASE}/stocks/indicators")
         indicators = data if isinstance(data, list) else data.get("indicators", [])
@@ -71,6 +73,7 @@ class MFinanceClient:
         return indicators
 
     def get_dividends(self, symbol):
+        """GET /stocks/dividends/{symbol} -> dividendos de 1 ticker"""
         url = f"{MF_BASE}/stocks/dividends/{symbol}"
         try:
             data = self._get(url, retries=2, delay=1)
@@ -80,6 +83,7 @@ class MFinanceClient:
             return None
 
     def get_all_dividends(self, symbols, delay=0.3):
+        """Busca dividendos para lista de tickers (1 por 1)"""
         logger.info(f"Buscando dividendos para {len(symbols)} tickers...")
         results = {}
         for i, sym in enumerate(symbols):
@@ -105,6 +109,7 @@ def safe_float(value, default=0.0):
         return default
 
 def parse_mfinance_stock(stock):
+    """Parse dos dados de /stocks"""
     return {
         "Ticker": stock.get("symbol", ""),
         "Nome": stock.get("name", "#N/A"),
@@ -128,52 +133,73 @@ def parse_mfinance_stock(stock):
     }
 
 def parse_mfinance_indicators(ind):
-    """Extrai .value de campos aninhados da API MFinance"""
-    def get_val(key, default=0.0):
-        field = ind.get(key)
-        if isinstance(field, dict):
-            return safe_float(field.get("value"), default)
-        return safe_float(field, default)
+    """
+    Parse dos dados de /stocks/indicators.
+    Usa busca flexível para chaves aninhadas.
+    """
+    def get_val(keys, default=0.0):
+        """
+        Tenta extrair .value de campo aninhado.
+        Aceita lista de chaves possíveis.
+        """
+        if isinstance(keys, str):
+            keys = [keys]
+        
+        for key in keys:
+            field = ind.get(key)
+            if isinstance(field, dict):
+                val = field.get("value")
+                if val is not None:
+                    return safe_float(val, default)
+            # Caso venha como valor direto (fallback)
+            elif field is not None:
+                return safe_float(field, default)
+        return default
     
     return {
         "Ticker": ind.get("symbol", ""),
-        "PL": get_val("priceEarningsRatio"),
-        "PVP": get_val("priceToBookValue"),
-        "PSR": get_val("priceToSalesRatio"),
-        "PAtivo": get_val("priceToAssets"),
-        "PCapGiro": get_val("priceToNetCurrentAssets"),
-        "PAtivoCircLiq": get_val("priceToNetNetWorkingCapital"),
-        "PEBIT": get_val("priceToEbit"),
-        "PEBITDA": get_val("priceToEbitda"),
-        "EV_EBIT": get_val("enterpriseValueEbit"),
-        "EV_EBITDA": get_val("enterpriseValueEbitda"),
-        "LPA": get_val("earningsPerShare"),
-        "VPA": get_val("bookValuePerShare"),
-        "Patrimonio": get_val("equity"),
-        "Lucro_Liquido": get_val("netProfit"),
-        "EBIT": get_val("ebit"),
-        "Receita_Liquida": get_val("netRevenue"),
-        "ROE": get_val("returnOnEquity"),
-        "ROA": get_val("returnOnAssets"),
-        "ROIC": get_val("returnOnInvestedCapital"),
-        "GiroAtivos": get_val("assetTurnoverRatio"),
-        "MargemBruta": get_val("grossMargin"),
-        "MargemEBITDA": get_val("ebitdaMargin"),
-        "MargemEBIT": get_val("ebitMargin"),
-        "MargemLiquida": get_val("netMargin"),
-        "DivLiquida_Ativos": get_val("netDebtToAssets"),
-        "DivLiquida_PL": get_val("netDebtToEquity"),
-        "DivLiquida_EBIT": get_val("netDebtToEbit"),
-        "DivLiquida_EBITDA": get_val("netDebtToEbitda"),
-        "LiquidezCorrente": get_val("currentLiquidity"),
-        "Passivos_Ativos": get_val("liabilitiesToAssetsRatio"),
-        "PL_Ativos": get_val("equityToAssetsRatio"),
-        "CAGR_Receitas_5a": get_val("cagrRecipesFiveYears"),
-        "CAGR_Lucros_5a": get_val("cagrProfitsFiveYears"),
-        "Qtd_Acoes": get_val("sharesOutstanding"),
+        "PL": get_val(["priceEarningsRatio", "pl"]),
+        "PVP": get_val(["priceToBookValue", "pvp"]),
+        "PSR": get_val(["priceToSalesRatio", "psr"]),
+        "PAtivo": get_val(["priceToAssets", "pAtivo"]),
+        "PCapGiro": get_val(["priceToNetCurrentAssets", "pCapGiro"]),
+        "PAtivoCircLiq": get_val(["priceToNetNetWorkingCapital", "pAtivoCircLiq"]),
+        "PEBIT": get_val(["priceToEbit", "pEbit"]),
+        "PEBITDA": get_val(["priceToEbitda", "pEbitda"]),
+        "EV_EBIT": get_val(["enterpriseValueEbit", "evEbit"]),
+        "EV_EBITDA": get_val(["enterpriseValueEbitda", "evEbitda"]),
+        "LPA": get_val(["earningsPerShare", "lpa"]),
+        "VPA": get_val(["bookValuePerShare", "vpa"]),
+        "Patrimonio": get_val(["equity", "patrimonio", "patrimonioLiquido"]),
+        "Lucro_Liquido": get_val(["netProfit", "lucroLiquido", "lucro"]),
+        "EBIT": get_val(["ebit"]),
+        "Receita_Liquida": get_val(["netRevenue", "receitaLiquida", "receita"]),
+        "ROE": get_val(["returnOnEquity", "roe"]),
+        "ROA": get_val(["returnOnAssets", "roa"]),
+        "ROIC": get_val(["returnOnInvestedCapital", "roic"]),
+        "GiroAtivos": get_val(["assetTurnoverRatio", "giroAtivos"]),
+        "MargemBruta": get_val(["grossMargin", "margemBruta"]),
+        "MargemEBITDA": get_val(["ebitdaMargin", "margemEbitda"]),
+        "MargemEBIT": get_val(["ebitMargin", "margemEbit"]),
+        "MargemLiquida": get_val(["netMargin", "margemLiquida"]),
+        "DivLiquida_Ativos": get_val(["netDebtToAssets"]),
+        "DivLiquida_PL": get_val(["netDebtToEquity", "divLiquidaPatrimonio"]),
+        "DivLiquida_EBIT": get_val(["netDebtToEbit"]),
+        "DivLiquida_EBITDA": get_val(["netDebtToEbitda"]),
+        "LiquidezCorrente": get_val(["currentLiquidity", "liquidezCorrente"]),
+        "Passivos_Ativos": get_val(["liabilitiesToAssetsRatio", "passivosAtivos"]),
+        "PL_Ativos": get_val(["equityToAssetsRatio", "plAtivos"]),
+        "CAGR_Receitas_5a": get_val(["cagrRecipesFiveYears", "cagrReceitas5a"]),
+        "CAGR_Lucros_5a": get_val(["cagrProfitsFiveYears", "cagrLucros5a"]),
+        "Qtd_Acoes": get_val(["sharesOutstanding", "qtdAcoes"]),
     }
 
 def parse_mfinance_dividends(data):
+    """
+    Parse dos dividendos.
+    Retorna: total_12m, media_12m, ultimo, qtd_12m, media_6a (real)
+    Soma JCP + Dividendo (tudo eh rendimento)
+    """
     if not data:
         return {"Dividendo_Medio_12m": 0, "Dividendo_Total_12m": 0,
                 "Dividendo_Ultimo": 0, "Qtd_Dividendos_12m": 0,
@@ -237,6 +263,7 @@ def parse_mfinance_dividends(data):
 # ---------------------------------------------------------------------------
 
 def merge_mfinance_data(stocks, indicators, dividends_map):
+    """Merge dos 3 endpoints em um unico dict por ticker"""
     stock_map = {s.get("symbol"): parse_mfinance_stock(s) for s in stocks}
     ind_map = {i.get("symbol"): parse_mfinance_indicators(i) for i in indicators}
 
@@ -256,6 +283,7 @@ def merge_mfinance_data(stocks, indicators, dividends_map):
     return merged
 
 def calcular_dy_12m(row):
+    """DY_12m = (Dividendo_Medio_12m * 12 / Cotacao) * 100"""
     cotacao = row.get("Cotacao", 0)
     div_medio = row.get("Dividendo_Medio_12m", 0)
     if cotacao and cotacao > 0:
@@ -263,6 +291,7 @@ def calcular_dy_12m(row):
     return 0
 
 def calcular_score_cs(row):
+    """Score CS (Carlos Sobral) - 0 a 10"""
     score = 0
     checks = {
         "ROE_10pct": row.get("ROE", 0) > 10,
@@ -278,20 +307,27 @@ def calcular_score_cs(row):
     }
     score = sum(1 for v in checks.values() if v)
 
-    if score >= 8: classif = "Excelente"
-    elif score >= 6: classif = "Bom"
-    elif score >= 4: classif = "Regular"
-    elif score >= 2: classif = "Fraco"
-    else: classif = "Pessimo"
+    if score >= 8:
+        classif = "Excelente"
+    elif score >= 6:
+        classif = "Bom"
+    elif score >= 4:
+        classif = "Regular"
+    elif score >= 2:
+        classif = "Fraco"
+    else:
+        classif = "Pessimo"
 
     return score, classif, checks
 
 def calcular_valuation(row, selic):
+    """Calculos de valuation"""
     cotacao = row.get("Cotacao", 0)
     vpa = row.get("VPA", 0)
     lpa = row.get("LPA", 0)
     dy_12m = row.get("DY_12m", 0)
     div_medio_12m = row.get("Dividendo_Medio_12m", 0)
+
     tlr = selic / 100 if selic else 0.06
 
     graham = (22.5 * lpa * vpa) ** 0.5 if lpa > 0 and vpa > 0 else 0
@@ -303,32 +339,47 @@ def calcular_valuation(row, selic):
     valuations = [graham, graham_br, bazin, lynch]
     agf_medio = sum(v for v in valuations if v > 0) / len([v for v in valuations if v > 0]) if any(v > 0 for v in valuations) else 0
 
+    upside_graham = ((graham / cotacao) - 1) * 100 if cotacao > 0 and graham > 0 else 0
+    upside_graham_br = ((graham_br / cotacao) - 1) * 100 if cotacao > 0 and graham_br > 0 else 0
+    upside_bazin = ((bazin / cotacao) - 1) * 100 if cotacao > 0 and bazin > 0 else 0
+    upside_lynch = ((lynch / cotacao) - 1) * 100 if cotacao > 0 and lynch > 0 else 0
+    upside_agf = ((agf_medio / cotacao) - 1) * 100 if cotacao > 0 and agf_medio > 0 else 0
+
     return {
-        "Graham": round(graham, 2), "Graham_BR": round(graham_br, 2),
-        "Bazin": round(bazin, 2), "Lynch": round(lynch, 2), "AGF_Medio": round(agf_medio, 2),
-        "Upside_Graham": round(((graham / cotacao) - 1) * 100, 2) if cotacao > 0 and graham > 0 else 0,
-        "Upside_Graham_BR": round(((graham_br / cotacao) - 1) * 100, 2) if cotacao > 0 and graham_br > 0 else 0,
-        "Upside_Bazin": round(((bazin / cotacao) - 1) * 100, 2) if cotacao > 0 and bazin > 0 else 0,
-        "Upside_Lynch": round(((lynch / cotacao) - 1) * 100, 2) if cotacao > 0 and lynch > 0 else 0,
-        "Upside_AGF_Medio": round(((agf_medio / cotacao) - 1) * 100, 2) if cotacao > 0 and agf_medio > 0 else 0,
+        "Graham": round(graham, 2),
+        "Graham_BR": round(graham_br, 2),
+        "Bazin": round(bazin, 2),
+        "Lynch": round(lynch, 2),
+        "AGF_Medio": round(agf_medio, 2),
+        "Upside_Graham": round(upside_graham, 2),
+        "Upside_Graham_BR": round(upside_graham_br, 2),
+        "Upside_Bazin": round(upside_bazin, 2),
+        "Upside_Lynch": round(upside_lynch, 2),
+        "Upside_AGF_Medio": round(upside_agf, 2),
     }
 
 # ---------------------------------------------------------------------------
-# SELIC HISTORICA (serie 432 - META SELIC % ao ano)
+# SELIC HISTORICA (serie 432 - META SELIC % ao ano, nao precisa converter)
 # ---------------------------------------------------------------------------
 
 def get_selic_historico():
+    """Busca historico dos ultimos 10 anos da SELIC META (serie 432) do BCB.
+    Serie 432 ja vem em % ao ano - NAO converte de % ao dia."""
     hoje = datetime.now()
     data_inicial = hoje.replace(year=hoje.year - 10)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
+
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial={data_inicial_str}"
 
+    # Retry com timeout maior
     for attempt in range(3):
         try:
             logger.info(f"Tentativa {attempt+1}/3 - BCB SELIC 432...")
             resp = requests.get(url, timeout=60)
             resp.raise_for_status()
             dados = resp.json()
+
+            # Serie 432 ja vem em % ao ano - usar valor direto
             registros = []
             for d in dados:
                 valor_ano = safe_float(d.get("valor"), 0.0)
@@ -338,16 +389,22 @@ def get_selic_historico():
                         "valor_dia": None,
                         "valor_anual": round(valor_ano, 2)
                     })
+
             logger.info(f"SELIC 432 OK: {len(registros)} registros")
             return registros
         except Exception as e:
             logger.warning(f"Tentativa {attempt+1} falhou: {e}")
-            if attempt < 2: time.sleep(5)
-            else: logger.error("Todas as tentativas falharam para SELIC 432")
-            return []
+            if attempt < 2:
+                time.sleep(5)
+            else:
+                logger.error(f"Todas as tentativas falharam para SELIC 432")
+                return []
 
 def salvar_selic_json(historico):
-    if not historico: return
+    """Salva historico SELIC em data/selic.json"""
+    if not historico:
+        return
+
     selic_data = {
         "atualizacao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "fonte": "BCB - SGS Serie 432 (Meta SELIC)",
@@ -359,8 +416,10 @@ def salvar_selic_json(historico):
         "media": round(sum(r["valor_anual"] for r in historico) / len(historico), 2) if historico else 0,
         "historico": historico
     }
+
     with open(SELIC_FILE, "w", encoding="utf-8") as f:
         json.dump(selic_data, f, ensure_ascii=False, indent=2)
+
     logger.info(f"SELIC salva: {SELIC_FILE} ({len(historico)} registros)")
 
 # ---------------------------------------------------------------------------
@@ -372,12 +431,16 @@ def main():
     logger.info("SOBRAL INVEST - Atualizacao de Ativos")
     logger.info("=" * 60)
 
+    # 1. Busca SELIC historica (serie 432 - Meta SELIC) e salva JSON
     logger.info("Buscando SELIC historica (serie 432 - Meta SELIC)...")
     selic_historico = get_selic_historico()
     salvar_selic_json(selic_historico)
+
+    # 2. Pega SELIC atual do historico para valuation
     selic = selic_historico[-1]["valor_anual"] if selic_historico else 13.75
     logger.info(f"SELIC atual (serie 432 - Meta): {selic}%")
 
+    # 3. Busca dados MFinance
     client = MFinanceClient()
     stocks = client.get_stocks()
     indicators = client.get_indicators()
@@ -385,11 +448,43 @@ def main():
     stock_symbols = {s.get("symbol") for s in stocks if s.get("symbol")}
     ind_symbols = {i.get("symbol") for i in indicators if i.get("symbol")}
     all_symbols = sorted(stock_symbols | ind_symbols)
+
     dividends_map = client.get_all_dividends(all_symbols, delay=0.2)
 
     merged = merge_mfinance_data(stocks, indicators, dividends_map)
     logger.info(f"Total antes do filtro: {len(merged)} tickers")
 
+    # 4. APLICACAO DAS FORMULAS DE ENGENHARIA REVERSA
+    # Calcula colunas ausentes (Qtd_Acoes, Lucro, Patrimonio, Receita, EBIT)
+    for row in merged:
+        mc = row.get("Market_Cap", 0)
+        cot = row.get("Cotacao", 0)
+        
+        # Qtd_Acoes = Market_Cap / Cotação
+        if mc > 0 and cot > 0:
+            row["Qtd_Acoes"] = round(mc / cot, 0)
+            
+        # Lucro_Liquido = Market_Cap / PL
+        pl = row.get("PL", 0)
+        if mc > 0 and pl > 0:
+            row["Lucro_Liquido"] = mc / pl
+            
+        # Patrimonio = Market_Cap / PVP
+        pvp = row.get("PVP", 0)
+        if mc > 0 and pvp > 0:
+            row["Patrimonio"] = mc / pvp
+            
+        # Receita_Liquida = Market_Cap / PSR
+        psr = row.get("PSR", 0)
+        if mc > 0 and psr > 0:
+            row["Receita_Liquida"] = mc / psr
+            
+        # EBIT = Market_Cap / PEBIT
+        pebit = row.get("PEBIT", 0)
+        if mc > 0 and pebit > 0:
+            row["EBIT"] = mc / pebit
+
+    # 5. Calculos Padrão (DY, Score, Valuation)
     for row in merged:
         row["DY_12m"] = round(calcular_dy_12m(row), 2)
         score, classif, checks = calcular_score_cs(row)
@@ -397,10 +492,12 @@ def main():
         row["Score_CS_Classificacao"] = classif
         for k, v in checks.items():
             row[k] = 1 if v else 0
-        row.update(calcular_valuation(row, selic))
+        val = calcular_valuation(row, selic)
+        row.update(val)
 
     merged_filtrado = [r for r in merged if r.get("Nome") and r.get("Nome") != "#N/A"]
-    logger.info(f"Removidos {len(merged) - len(merged_filtrado)} tickers com Nome=#N/A")
+    removidos = len(merged) - len(merged_filtrado)
+    logger.info(f"Removidos {removidos} tickers com Nome=#N/A")
     logger.info(f"Total apos filtro: {len(merged_filtrado)} tickers")
 
     df = pd.DataFrame(merged_filtrado)
@@ -443,7 +540,8 @@ def main():
     logger.info(f"\nPlanilha salva:")
     logger.info(f" Excel: {ATIVOS_FILE}")
     logger.info(f" CSV: {ATIVOS_CSV}")
-    logger.info(f" Linhas: {len(df)} | Colunas: {len(df.columns)}")
+    logger.info(f" Linhas: {len(df)}")
+    logger.info(f" Colunas: {len(df.columns)}")
 
     score_counts = df["Score_CS_Classificacao"].value_counts().to_dict()
     logger.info(f"\nDistribuicao Score CS:")
