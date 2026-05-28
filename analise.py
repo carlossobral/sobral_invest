@@ -273,12 +273,12 @@ def pagina_analise():
         return
 
     # ============================================================
-    # 1. SELETOR DE ATIVO (CORRIGIDO - STREAMLIT OFICIAL)
+    # 1. SELETOR DE ATIVO (CORRIGIDO - FUNCIONA COM st.session_state)
     # ============================================================
     df['Display'] = df['Ticker'] + ' - ' + df['Nome']
     display_list = sorted([str(x) for x in df['Display'].tolist()])
 
-    # ✅ Captura via session_state (enviado pelo st.switch_page)
+    # ✅ Lê o ticker enviado pelo ranking
     ticker_from_ranking = st.session_state.get("ticker_destino")
 
     default_index = 0
@@ -287,7 +287,7 @@ def pagina_analise():
             if disp.startswith(ticker_from_ranking + ' -'):
                 default_index = i
                 break
-        # ✅ Limpa imediatamente após o primeiro carregamento
+        # ✅ Limpa imediatamente para não travar em navegações manuais futuras
         if "ticker_destino" in st.session_state:
             del st.session_state["ticker_destino"]
 
