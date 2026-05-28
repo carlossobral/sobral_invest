@@ -35,19 +35,16 @@ def pagina_rankings():
         box-shadow: 0 8px 16px rgba(0,0,0,0.3);
         border-color: #3b82f6;
     }
-    .ticker-link button {
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
+    .ticker-link {
+        display: inline-block;
         color: #38bdf8 !important;
         text-decoration: underline !important;
         font-size: 1.1rem !important;
         font-weight: 800 !important;
         cursor: pointer !important;
-        width: auto !important;
-        box-shadow: none !important;
+        margin-bottom: 4px;
     }
-    .ticker-link button:hover {
+    .ticker-link:hover {
         color: #60a5fa !important;
         text-decoration: none !important;
     }
@@ -175,31 +172,29 @@ def pagina_rankings():
                     ticker, nome, valor, score, sc_color, setor, badge_bg, badge_text, badge_label = items[idx]
                     nome_curto = nome[:22] + "..." if len(nome) > 22 else nome
                     setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
-                    with cols[col_idx]:
-                        st.markdown(f"""
-                        <div class="ranking-card">
-                            <div class="ticker-link" style="margin-bottom: 4px;">
-                        """, unsafe_allow_html=True)
-                        
-                        # Botão Streamlit funcional (navegação correta)
-                        if st.button(f"{ticker} 🔍", key=f"nav_{ticker}_{col_indicador}_{idx}", use_container_width=False):
-                            st.query_params["page"] = "Analise"
-                            st.query_params["ticker"] = ticker
-                            st.rerun()
-                        
-                        st.markdown(f"""
-                            </div>
-                            <div class="ranking-nome">{nome_curto}</div>
-                            <div class="ranking-valor" style="color: {cor_valor};">{valor}</div>
-                            <div style="margin-top:6px;">
-                                <span class="ranking-badge" style="background:{badge_bg}40; color:{badge_text};">{badge_label}</span>
-                            </div>
-                            <div class="ranking-footer">
-                                <span class="ranking-score" style="color:{sc_color};">● CS {score}</span>
-                                <span class="ranking-setor">{setor_curto}</span>
-                            </div>
+                    
+                    # Criar botão invisível para navegação
+                    btn_key = f"nav_{ticker}_{col_indicador}_{idx}"
+                    if st.button(f"{ticker} 🔍", key=btn_key, use_container_width=False):
+                        st.query_params["page"] = "Analise"
+                        st.query_params["ticker"] = ticker
+                        st.rerun()
+                    
+                    # Card com HTML puro (sem botão Streamlit dentro)
+                    st.markdown(f"""
+                    <div class="ranking-card">
+                        <div class="ticker-link">{ticker} 🔍</div>
+                        <div class="ranking-nome">{nome_curto}</div>
+                        <div class="ranking-valor" style="color: {cor_valor};">{valor}</div>
+                        <div style="margin-top:6px;">
+                            <span class="ranking-badge" style="background:{badge_bg}40; color:{badge_text};">{badge_label}</span>
                         </div>
-                        """, unsafe_allow_html=True)
+                        <div class="ranking-footer">
+                            <span class="ranking-score" style="color:{sc_color};">● CS {score}</span>
+                            <span class="ranking-setor">{setor_curto}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
     if ranking_sel == "Maior Valor de Mercado":
         render_ranking(df_filt, 'Market_Cap', '🏢 Maior Valor de Mercado', lambda x: f"R$ {x/1e9:.2f}B" if x >= 1e9 else f"R$ {x/1e6:.2f}M", cor_valor="#fbbf24")
