@@ -35,7 +35,7 @@ def render_header(pagina):
         titulo_pagina = "🏆 Rankings"
         subtitulo = "Top 50 Ativos & Valuation"
     elif pagina == "comparativo":
-        titulo_pagina = " Comparativo"
+        titulo_pagina = "📊 Comparativo"
         subtitulo = "Análise Relativa"
     elif pagina == "configuracoes":
         titulo_pagina = "️ Configurações"
@@ -143,7 +143,7 @@ def main():
             ("home", "🏠 Home"),
             ("analise", "🔍 Análise"),
             ("rankings", "🏆 Rankings"),
-            ("comparativo", " Comparativo"),
+            ("comparativo", "📊 Comparativo"),
             ("configuracoes", "⚙️ Configurações")
         ]
 
