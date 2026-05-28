@@ -19,7 +19,6 @@ def pagina_rankings():
         st.warning("Nenhum ativo valido encontrado apos filtro de Nome.")
         return
     
-    # CSS dos cards + botão estilizado como link
     st.markdown("""
     <style>
     .ranking-card {
@@ -129,9 +128,32 @@ def pagina_rankings():
             valor = fmt_func(row.get(col_indicador, 0))
             score = int(row.get('Score_CS', 0))
             setor = str(row.get('Setor', 'N/A'))
-            sc_color = "#10b981" if score >= 9 else "#84cc16" if score >= 7 else "#f59e0b" if score >= 5 else "#f97316" if score >= 3 else "#dc2626"
-            badge = ("#065f46","#10b981","Excelente") if score >= 9 else ("#3f6212","#84cc16","Bom") if score >= 7 else ("#92400e","#f59e0b","Regular") if score >= 5 else ("#7c2d12","#f97316","Fraco") else ("#7f1d1d","#dc2626","Pessimo")
-            items.append((ticker, nome, valor, score, sc_color, setor, *badge))
+            
+            # Badge do score - if-elif-else limpo
+            if score >= 9:
+                badge_bg, badge_text, badge_label = "#065f46", "#10b981", "Excelente"
+            elif score >= 7:
+                badge_bg, badge_text, badge_label = "#3f6212", "#84cc16", "Bom"
+            elif score >= 5:
+                badge_bg, badge_text, badge_label = "#92400e", "#f59e0b", "Regular"
+            elif score >= 3:
+                badge_bg, badge_text, badge_label = "#7c2d12", "#f97316", "Fraco"
+            else:
+                badge_bg, badge_text, badge_label = "#7f1d1d", "#dc2626", "Pessimo"
+            
+            # Cor do score
+            if score >= 9:
+                sc_color = "#10b981"
+            elif score >= 7:
+                sc_color = "#84cc16"
+            elif score >= 5:
+                sc_color = "#f59e0b"
+            elif score >= 3:
+                sc_color = "#f97316"
+            else:
+                sc_color = "#dc2626"
+            
+            items.append((ticker, nome, valor, score, sc_color, setor, badge_bg, badge_text, badge_label))
 
         for row_idx in range(10):
             cols = st.columns(5)
@@ -142,7 +164,6 @@ def pagina_rankings():
                     nome_curto = nome[:22] + "..." if len(nome) > 22 else nome
                     setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
                     with cols[col_idx]:
-                        # Ticker estilizado como link + ação nativa Streamlit
                         st.markdown('<div class="ticker-link">', unsafe_allow_html=True)
                         if st.button(f"{ticker} 🔍", key=f"nav_{ticker}_{col_indicador}", use_container_width=False):
                             st.query_params["page"] = "Analise"
@@ -164,7 +185,7 @@ def pagina_rankings():
                         </div>
                         """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([" Destaque", "💰 Valuation", "📈 Crescimento", "🏛️ Tamanho", "🎖️ Score CS"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Destaque", "💰 Valuation", "📈 Crescimento", "🏛️ Tamanho", "🎖️ Score CS"])
 
     with tab1:
         render_ranking(df_filt, 'DY', '💰 Maiores Dividend Yield', lambda x: f"{x:.2f}%", cor_valor="#f59e0b")
@@ -201,9 +222,19 @@ def pagina_rankings():
                 nome = str(row.get('Nome', ticker))
                 score = int(row.get('Score_CS', 0))
                 setor = str(row.get('Setor', 'N/A'))
-                card_border = "#10b981" if score >= 9 else "#84cc16" if score >= 7 else "#f59e0b" if score >= 5 else "#f97316" if score >= 3 else "#dc2626"
-                score_color = card_border
-                score_label = "Excelente" if score >= 9 else "Bom" if score >= 7 else "Regular" if score >= 5 else "Fraco" if score >= 3 else "Pessimo"
+                
+                # Score CS - if-elif-else limpo
+                if score >= 9:
+                    card_border, score_color, score_label = "#10b981", "#10b981", "Excelente"
+                elif score >= 7:
+                    card_border, score_color, score_label = "#84cc16", "#84cc16", "Bom"
+                elif score >= 5:
+                    card_border, score_color, score_label = "#f59e0b", "#f59e0b", "Regular"
+                elif score >= 3:
+                    card_border, score_color, score_label = "#f97316", "#f97316", "Fraco"
+                else:
+                    card_border, score_color, score_label = "#dc2626", "#dc2626", "Pessimo"
+                
                 nome_curto = nome[:22] + "..." if len(nome) > 22 else nome
                 setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
                 items.append((ticker, nome_curto, score, score_color, score_label, setor_curto, card_border))
