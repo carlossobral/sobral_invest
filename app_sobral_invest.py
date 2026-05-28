@@ -14,9 +14,98 @@ if "pagina_atual" not in st.session_state:
 if "ticker_destino" not in st.session_state:
     st.session_state["ticker_destino"] = None
 
+def render_header(pagina):
+    """Renderiza o Header Unificado (Marca + Breadcrumb Contextual)."""
+    
+    # Lógica de Breadcrumb Dinâmico
+    titulo_pagina = ""
+    subtitulo = ""
+    
+    if pagina == "home":
+        titulo_pagina = "🏠 Home"
+        subtitulo = "Dashboard & Mercado"
+    elif pagina == "analise":
+        titulo_pagina = "🔍 Análise"
+        ticker = st.session_state.get("ticker_destino")
+        if ticker:
+            subtitulo = f"Ativo: {ticker}"
+        else:
+            subtitulo = "Selecione um ativo"
+    elif pagina == "rankings":
+        titulo_pagina = "🏆 Rankings"
+        subtitulo = "Top 50 Ativos & Valuation"
+    elif pagina == "comparativo":
+        titulo_pagina = " Comparativo"
+        subtitulo = "Análise Relativa"
+    elif pagina == "configuracoes":
+        titulo_pagina = "️ Configurações"
+        subtitulo = "Estatísticas & Info"
+
+    st.markdown(f"""
+    <style>
+    .header-container {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #334155;
+        padding-bottom: 16px;
+        margin-bottom: 24px;
+        margin-top: -10px; /* Compensa margem padrão do streamlit */
+    }}
+    .header-brand {{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }}
+    .header-brand-icon {{ font-size: 1.8rem; }}
+    .header-brand-name {{
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: #f1f5f9;
+        letter-spacing: -0.03em;
+        line-height: 1.2;
+    }}
+    .header-brand-tag {{
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 500;
+    }}
+    .header-context {{
+        text-align: right;
+    }}
+    .header-page-title {{
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #38bdf8; /* Azul destaque */
+        margin-bottom: 2px;
+    }}
+    .header-subtitle {{
+        font-size: 0.8rem;
+        color: #94a3b8;
+    }}
+    </style>
+    
+    <div class="header-container">
+        <div class="header-brand">
+            <div class="header-brand-icon"></div>
+            <div>
+                <div class="header-brand-name">SOBRAL Invest</div>
+                <div class="header-brand-tag">Análise Fundamentalista & Valuation</div>
+            </div>
+        </div>
+        <div class="header-context">
+            <div class="header-page-title">{titulo_pagina}</div>
+            <div class="header-subtitle">{subtitulo}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 def main():
+    # 1. Renderiza o Header Unificado no topo
+    render_header(st.session_state["pagina_atual"])
+
+    # 2. Sidebar com navegação estilo Card (Foto 2)
     with st.sidebar:
-        # ✅ CSS para replicar EXATAMENTE o estilo da FOTO 2 (cards na sidebar)
         st.markdown("""
         <style>
         div[data-testid="stSidebar"] div.stButton > button {
@@ -38,7 +127,6 @@ def main():
             border-color: #60a5fa !important;
             transform: translateX(4px) !important;
         }
-        /* Destaque do botão ativo (igual FOTO 2) */
         div[data-testid="stSidebar"] div.stButton > button[kind="primary"] {
             background: linear-gradient(145deg, #1e3a8a 0%, #1e40af 100%) !important;
             border-color: #3b82f6 !important;
@@ -48,14 +136,14 @@ def main():
         </style>
         """, unsafe_allow_html=True)
 
-        st.title("Navegação")
+        st.markdown("<div style='font-size: 1.1rem; font-weight: 700; color: #f1f5f9; margin-bottom: 12px;'>Navegação</div>", unsafe_allow_html=True)
 
         # Ordem correta conforme solicitado
         pages = [
             ("home", "🏠 Home"),
             ("analise", "🔍 Análise"),
-            ("rankings", "🏆 Rankings"),
-            ("comparativo", "📊 Comparativo"),
+            ("rankings", " Rankings"),
+            ("comparativo", " Comparativo"),
             ("configuracoes", "⚙️ Configurações")
         ]
 
@@ -69,7 +157,7 @@ def main():
         st.markdown("---")
         st.caption("Sobral Invest v1.0")
 
-    # Roteador centralizado
+    # 3. Roteador centralizado
     pagina = st.session_state.get("pagina_atual", "home")
     
     if pagina == "home":
