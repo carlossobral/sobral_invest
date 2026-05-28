@@ -6,7 +6,9 @@ def pagina_comparativo():
     """Pagina de comparativo de ativos."""
     st.markdown('<h1 class="main-header">📊 Comparativo</h1>', unsafe_allow_html=True)
 
-    df = load_data()
+    with st.spinner("Preparando comparação de ativos..."):
+        df = load_data()
+        
     if df.empty:
         st.warning("Dados nao disponiveis.")
         return
