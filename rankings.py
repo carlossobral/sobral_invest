@@ -18,13 +18,33 @@ def pagina_rankings():
         st.warning("Nenhum ativo valido encontrado apos filtro de Nome.")
         return
 
+    # CSS para o botão-link e o card
     st.markdown("""
     <style>
+    /* Estilo para transformar o botão Streamlit em um Link */
+    div[data-testid="stButton"] button[kind="secondary"] {
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        color: #38bdf8 !important;
+        text-decoration: underline !important;
+        font-size: 1.1rem !important;
+        font-weight: 800 !important;
+        cursor: pointer !important;
+        width: auto !important;
+        box-shadow: none !important;
+        margin-bottom: 4px; /* Espaço entre o link e o nome da empresa */
+    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover {
+        color: #60a5fa !important;
+        text-decoration: none !important;
+    }
+    
     .ranking-card {
         background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
         border: 1px solid #334155;
         border-radius: 12px;
-        padding: 14px 10px;
+        padding: 4px 10px 14px 10px; /* Padding menor no topo pois o botão é externo */
         margin-bottom: 0.75rem;
         transition: all 0.3s ease;
         text-align: center;
@@ -35,24 +55,10 @@ def pagina_rankings():
         box-shadow: 0 8px 16px rgba(0,0,0,0.3);
         border-color: #3b82f6;
     }
-    .ticker-link {
-        display: inline-block;
-        color: #38bdf8 !important;
-        text-decoration: underline !important;
-        font-size: 1.1rem !important;
-        font-weight: 800 !important;
-        cursor: pointer !important;
-        margin-bottom: 4px;
-        transition: color 0.2s ease;
-    }
-    .ticker-link:hover {
-        color: #60a5fa !important;
-        text-decoration: none !important;
-    }
     .ranking-nome {
         font-size: 0.72rem;
         color: #94a3b8;
-        margin: 4px 0 8px 0;
+        margin: 0 0 8px 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -112,7 +118,7 @@ def pagina_rankings():
 
     col_f1, col_f2, col_f3, col_f4 = st.columns([1.5, 1.5, 1.5, 2])
     with col_f1: setor_sel = st.selectbox("📂 Setor", setores, key="rank_setor")
-    with col_f2: subsetor_sel = st.selectbox("📁 SubSetor", subsetores, key="rank_subsetor")
+    with col_f2: subsetor_sel = st.selectbox(" SubSetor", subsetores, key="rank_subsetor")
     with col_f3: ranking_sel = st.selectbox("🏆 Ranking", rankings, key="rank_select")
     with col_f4:
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -165,7 +171,6 @@ def pagina_rankings():
             
             items.append((ticker, nome, valor, score, sc_color, setor, badge_bg, badge_text, badge_label))
 
-        # Layout: 5 cards por linha, 10 linhas = 50 ativos
         for row_idx in range(10):
             cols = st.columns(5)
             for col_idx in range(5):
@@ -175,13 +180,16 @@ def pagina_rankings():
                     nome_curto = nome[:22] + "..." if len(nome) > 22 else nome
                     setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
                     
-                    # CARD COMPLETO EM HTML (Zero st.button, Zero elementos externos)
                     with cols[col_idx]:
+                        # 1. O Botão Streamlit que funciona como Link
+                        if st.button(f"{ticker} 🔍", key=f"nav_{ticker}_{col_indicador}_{idx}", use_container_width=True):
+                            st.query_params["page"] = "Analise"
+                            st.query_params["ticker"] = ticker
+                            st.rerun()
+                        
+                        # 2. O resto do Card (agora sem o ticker no HTML para evitar duplicação)
                         st.markdown(f"""
                         <div class="ranking-card">
-                            <div class="ticker-link" onclick="window.location.href='/?page=Analise&ticker={ticker}'">
-                                {ticker} 🔍
-                            </div>
                             <div class="ranking-nome">{nome_curto}</div>
                             <div class="ranking-valor" style="color: {cor_valor};">{valor}</div>
                             <div style="margin-top:6px;">
@@ -195,7 +203,7 @@ def pagina_rankings():
                         """, unsafe_allow_html=True)
 
     if ranking_sel == "Maior Valor de Mercado":
-        render_ranking(df_filt, 'Market_Cap', ' Maior Valor de Mercado', lambda x: f"R$ {x/1e9:.2f}B" if x >= 1e9 else f"R$ {x/1e6:.2f}M", cor_valor="#fbbf24")
+        render_ranking(df_filt, 'Market_Cap', '🏢 Maior Valor de Mercado', lambda x: f"R$ {x/1e9:.2f}B" if x >= 1e9 else f"R$ {x/1e6:.2f}M", cor_valor="#fbbf24")
     elif ranking_sel == "Maiores Lucros":
         render_ranking(df_filt, 'Lucro_Liquido', '💰 Maiores Lucros', lambda x: f"R$ {x/1e9:.2f}B" if abs(x) >= 1e9 else f"R$ {x/1e6:.2f}M", cor_valor="#10b981")
     elif ranking_sel == "Maiores Receitas":
@@ -213,14 +221,14 @@ def pagina_rankings():
     elif ranking_sel == "Mais Baratas — Bazin":
         render_ranking(df_filt, 'Upside_Bazin', '💵 Mais Baratas — Bazin', lambda x: f"{x:+.1f}%", cor_valor="#fbbf24")
     elif ranking_sel == "Menores P/VP":
-        render_ranking(df_filt, 'PVP', '📉 Menores P/VP', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#38bdf8")
+        render_ranking(df_filt, 'PVP', ' Menores P/VP', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#38bdf8")
     elif ranking_sel == "Menor EV/EBITDA":
-        render_ranking(df_filt, 'EV_EBITDA', ' Menor EV/EBITDA', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#60a5fa")
+        render_ranking(df_filt, 'EV_EBITDA', '⚡ Menor EV/EBITDA', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#60a5fa")
     elif ranking_sel == "Maior CAGR Lucros 5a":
-        render_ranking(df_filt, 'CAGR_Lucros_5a', ' Maior CAGR Lucros 5a', lambda x: f"{x:.2f}%", cor_valor="#10b981")
+        render_ranking(df_filt, 'CAGR_Lucros_5a', '🚀 Maior CAGR Lucros 5a', lambda x: f"{x:.2f}%", cor_valor="#10b981")
     elif ranking_sel == "Maior CAGR Receitas 5a":
-        render_ranking(df_filt, 'CAGR_Receitas_5a', ' Maior CAGR Receitas 5a', lambda x: f"{x:.2f}%", cor_valor="#34d399")
+        render_ranking(df_filt, 'CAGR_Receitas_5a', '📊 Maior CAGR Receitas 5a', lambda x: f"{x:.2f}%", cor_valor="#34d399")
     elif ranking_sel == "Maior Margem Liquida":
-        render_ranking(df_filt, 'MargemLiquida', ' Maior Margem Liquida', lambda x: f"{x:.2f}%", cor_valor="#a78bfa")
+        render_ranking(df_filt, 'MargemLiquida', '💎 Maior Margem Liquida', lambda x: f"{x:.2f}%", cor_valor="#a78bfa")
     elif ranking_sel == "Menor Divida Liq/EBITDA":
         render_ranking(df_filt, 'DivLiquida_EBITDA', '🛡️ Menor Divida Liq/EBITDA', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#f87171")
