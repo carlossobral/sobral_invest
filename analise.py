@@ -273,7 +273,7 @@ def pagina_analise():
         return
 
     # ============================================================
-    # 1. SELETOR DE ATIVO (CORRIGIDO COM value=)
+    # 1. SELETOR DE ATIVO (CORRIGIDO COM index= PARA COMPATIBILIDADE)
     # ============================================================
     df['Display'] = df['Ticker'] + ' - ' + df['Nome']
     display_list = sorted([str(x) for x in df['Display'].tolist()])
@@ -281,12 +281,13 @@ def pagina_analise():
     # Verifica se veio ticker do ranking
     ticker_from_ranking = st.session_state.get("ticker_from_ranking", None)
 
-    # Define o valor padrão do selectbox usando value= (mais limpo que index=)
-    default_value = df['Display'].iloc[0]  # Padrão: primeiro ativo
+    # Define o índice padrão do selectbox (compatível com todas versões)
+    default_index = 0
     if ticker_from_ranking:
-        match = df[df['Ticker'] == ticker_from_ranking]
-        if not match.empty:
-            default_value = match['Display'].iloc[0]
+        for i, disp in enumerate(display_list):
+            if disp.startswith(ticker_from_ranking + ' -'):
+                default_index = i
+                break
         # Limpa o session_state após usar para não persistir na navegação
         if "ticker_from_ranking" in st.session_state:
             del st.session_state["ticker_from_ranking"]
@@ -294,8 +295,7 @@ def pagina_analise():
     ativo_selecionado = st.selectbox(
         "Selecione o ativo",
         options=display_list,
-        index=0,  # Ignorado quando value é fornecido
-        value=default_value,
+        index=default_index,  # Usa index= em vez de value= para compatibilidade
         key="ativo_selector_v2"
     )
 
