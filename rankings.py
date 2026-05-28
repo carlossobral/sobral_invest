@@ -20,100 +20,23 @@ def pagina_rankings():
 
     st.markdown("""
     <style>
-    div[data-testid="stButton"] > button[kind="secondary"] {
-        background: transparent !important;
-        border: none !important;
-        padding: 0 !important;
-        color: #38bdf8 !important;
-        text-decoration: underline !important;
-        font-size: 1.1rem !important;
-        font-weight: 800 !important;
-        cursor: pointer !important;
-        width: auto !important;
-        min-width: 0 !important;
-        box-shadow: none !important;
-        margin: 0 auto 4px auto !important;
-        display: block !important;
-    }
-    div[data-testid="stButton"] > button[kind="secondary"]:hover {
-        color: #60a5fa !important;
-        text-decoration: none !important;
-    }
-    .ranking-card {
-        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 4px 10px 14px 10px;
-        margin-bottom: 0.75rem;
-        transition: all 0.3s ease;
-        text-align: center;
-        height: 100%;
-    }
-    .ranking-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.3);
-        border-color: #3b82f6;
-    }
-    .ranking-nome {
-        font-size: 0.72rem;
-        color: #94a3b8;
-        margin: 0 0 8px 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        line-height: 1.2;
-    }
-    .ranking-valor {
-        font-size: 1.35rem;
-        font-weight: 800;
-        color: #38bdf8;
-        margin: 6px 0;
-        line-height: 1.1;
-    }
-    .ranking-footer {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.68rem;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid #334155;
-    }
+    div[data-testid="stButton"] > button[kind="secondary"] { background: transparent !important; border: none !important; padding: 0 !important; color: #38bdf8 !important; text-decoration: underline !important; font-size: 1.1rem !important; font-weight: 800 !important; cursor: pointer !important; width: auto !important; min-width: 0 !important; box-shadow: none !important; margin: 0 auto 4px auto !important; display: block !important; }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover { color: #60a5fa !important; text-decoration: none !important; }
+    .ranking-card { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 4px 10px 14px 10px; margin-bottom: 0.75rem; transition: all 0.3s ease; text-align: center; height: 100%; }
+    .ranking-card:hover { transform: translateY(-3px); box-shadow: 0 8px 16px rgba(0,0,0,0.3); border-color: #3b82f6; }
+    .ranking-nome { font-size: 0.72rem; color: #94a3b8; margin: 0 0 8px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+    .ranking-valor { font-size: 1.35rem; font-weight: 800; color: #38bdf8; margin: 6px 0; line-height: 1.1; }
+    .ranking-footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; margin-top: 8px; padding-top: 8px; border-top: 1px solid #334155; }
     .ranking-score { font-weight: 700; }
     .ranking-setor { color: #64748b; font-weight: 500; }
-    .ranking-badge {
-        display: inline-block;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 0.65rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-    }
+    .ranking-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
     </style>
     """, unsafe_allow_html=True)
 
     setores = ["Todos"] + sorted([str(x) for x in df['Setor'].dropna().unique().tolist() if str(x) not in ['nan', 'N/A', '#N/A', '']])
     subsetores = ["Todos"] + sorted([str(x) for x in df['SubSetor'].dropna().unique().tolist() if str(x) not in ['nan', 'N/A', '#N/A', '']])
 
-    rankings = [
-        "Selecione um Ranking...",
-        "Maior Valor de Mercado",
-        "Maiores Lucros",
-        "Maiores Receitas",
-        "Maiores Dividend Yield",
-        "Menores P/L",
-        "Maiores ROE",
-        "Maior Upside AGF Medio",
-        "Mais Baratas - Graham",
-        "Mais Baratas - Bazin",
-        "Menores P/VP",
-        "Menor EV/EBITDA",
-        "Maior CAGR Lucros 5a",
-        "Maior CAGR Receitas 5a",
-        "Maior Margem Liquida",
-        "Menor Divida Liq/EBITDA"
-    ]
+    rankings = ["Selecione um Ranking...", "Maior Valor de Mercado", "Maiores Lucros", "Maiores Receitas", "Maiores Dividend Yield", "Menores P/L", "Maiores ROE", "Maior Upside AGF Medio", "Mais Baratas - Graham", "Mais Baratas - Bazin", "Menores P/VP", "Menor EV/EBITDA", "Maior CAGR Lucros 5a", "Maior CAGR Receitas 5a", "Maior Margem Liquida", "Menor Divida Liq/EBITDA"]
 
     col_f1, col_f2, col_f3, col_f4 = st.columns([1.5, 1.5, 1.5, 2])
     with col_f1: setor_sel = st.selectbox("Setor", setores, key="rank_setor")
@@ -155,19 +78,16 @@ def pagina_rankings():
             valor = fmt_func(row.get(col_indicador, 0))
             score = int(row.get('Score_CS', 0))
             setor = str(row.get('Setor', 'N/A'))
-            
             if score >= 9: badge_bg, badge_text, badge_label = "#065f46", "#10b981", "Excelente"
             elif score >= 7: badge_bg, badge_text, badge_label = "#3f6212", "#84cc16", "Bom"
             elif score >= 5: badge_bg, badge_text, badge_label = "#92400e", "#f59e0b", "Regular"
             elif score >= 3: badge_bg, badge_text, badge_label = "#7c2d12", "#f97316", "Fraco"
             else: badge_bg, badge_text, badge_label = "#7f1d1d", "#dc2626", "Pessimo"
-            
             if score >= 9: sc_color = "#10b981"
             elif score >= 7: sc_color = "#84cc16"
             elif score >= 5: sc_color = "#f59e0b"
             elif score >= 3: sc_color = "#f97316"
             else: sc_color = "#dc2626"
-            
             items.append((ticker, nome, valor, score, sc_color, setor, badge_bg, badge_text, badge_label))
 
         for row_idx in range(10):
@@ -178,25 +98,18 @@ def pagina_rankings():
                     ticker, nome, valor, score, sc_color, setor, badge_bg, badge_text, badge_label = items[idx]
                     nome_curto = nome[:22] + "..." if len(nome) > 22 else nome
                     setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
-                    
                     with cols[col_idx]:
-                        # ✅ NAVEGAÇÃO CORRETA PARA ARQUITETURA DE FUNÇÕES
+                        # ✅ NAVEGAÇÃO CORRETA: salva ticker e muda pagina via session_state
                         if st.button(f"{ticker}", key=f"nav_{ticker}_{col_indicador}_{idx}", use_container_width=False):
                             st.session_state["ticker_destino"] = ticker
                             st.session_state["pagina_atual"] = "analise"
                             st.rerun()
-                        
                         st.markdown(f"""
                         <div class="ranking-card">
                             <div class="ranking-nome">{nome_curto}</div>
                             <div class="ranking-valor" style="color: {cor_valor};">{valor}</div>
-                            <div style="margin-top:6px;">
-                                <span class="ranking-badge" style="background:{badge_bg}40; color:{badge_text};">{badge_label}</span>
-                            </div>
-                            <div class="ranking-footer">
-                                <span class="ranking-score" style="color:{sc_color};">CS {score}</span>
-                                <span class="ranking-setor">{setor_curto}</span>
-                            </div>
+                            <div style="margin-top:6px;"><span class="ranking-badge" style="background:{badge_bg}40; color:{badge_text};">{badge_label}</span></div>
+                            <div class="ranking-footer"><span class="ranking-score" style="color:{sc_color};">CS {score}</span><span class="ranking-setor">{setor_curto}</span></div>
                         </div>
                         """, unsafe_allow_html=True)
 
