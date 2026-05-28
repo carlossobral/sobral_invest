@@ -57,10 +57,27 @@ div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
 
 def main():
     """Funcao principal."""
-    st.sidebar.markdown("##  SOBRAL Invest")
+    st.sidebar.markdown("## 📈 SOBRAL Invest")
     st.sidebar.markdown("---")
 
-    # 1. Definição do Menu Lateral (Lemos a seleção ANTES da lógica de URL)
+    # 1. Ler parâmetros da URL (Deep Linking vindo do Ranking ou link externo)
+    query_params = st.query_params
+    target_page = query_params.get("page")
+    target_ticker = query_params.get("ticker")
+
+    # 2. Lógica de Redirecionamento ANTES de desenhar o widget
+    # Se a URL pede uma página específica e temos um ticker, preparamos o estado
+    if target_page == "Analise" and target_ticker:
+        # Salva o ticker no session_state para a página de análise usar
+        st.session_state["ticker_from_ranking"] = target_ticker
+        
+        # Limpa os parâmetros da URL para evitar loops ou estados presos
+        st.query_params.clear()
+        
+        # Força o reload para que a página de análise carregue com o ticker correto
+        st.rerun()
+
+    # 3. Menu Lateral (Agora seguro, pois o redirecionamento já ocorreu se necessário)
     menu_options = ["🏠 Home", "🔍 Analise", "🏆 Rankings", "📊 Comparativo", "⚙️ Configuracoes"]
     
     pagina = st.sidebar.radio(
@@ -69,33 +86,12 @@ def main():
         key="nav_radio_main"
     )
 
-    # 2. Verificar Parâmetros de URL (Vindos do Ranking ou Link externo)
-    query_params = st.query_params
-    ticker_url = query_params.get("ticker")
-    page_url = query_params.get("page")
+    # 4. Limpeza de estado se o usuário mudou de página manualmente
+    # Se estamos em outra página que não é Análise, limpamos o ticker salvo
+    if pagina != "🔍 Analise" and "ticker_from_ranking" in st.session_state:
+        del st.session_state["ticker_from_ranking"]
 
-    # --- LÓGICA DE CORREÇÃO DE NAVEGAÇÃO ---
-    
-    # A. Se a URL manda para Análise e tem Ticker (Vindo do Ranking)
-    if page_url == "Analise" and ticker_url:
-        # Se o menu atual não está em Análise, forçamos a mudança para Análise
-        if pagina != "🔍 Analise":
-            st.session_state["nav_radio_main"] = "🔍 Analise"
-            st.session_state["ticker_from_ranking"] = ticker_url
-            st.rerun()
-        
-        # Garante que o ticker esteja no estado para a página de análise usar
-        st.session_state["ticker_from_ranking"] = ticker_url
-
-    # B. Limpeza de URL ao sair da página de Análise
-    # Se o usuário está em Home/Rankings/etc, mas a URL ainda tem ?page=Analise...
-    # limpamos a URL para que ela não "bugue" a navegação futura (o problema que você reportou).
-    if pagina != "🔍 Analise" and ("ticker" in query_params or page_url == "Analise"):
-        st.query_params.clear()
-        st.rerun()
-    # ---------------------------------------
-
-    # 3. Renderização das Páginas
+    # 5. Renderização das Páginas
     if pagina == "🏠 Home":
         pagina_inicial()
     elif pagina == " Analise":
