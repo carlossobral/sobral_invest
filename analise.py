@@ -1,360 +1,196 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import ast
 from datetime import datetime
 from data import load_data
 
-# ============================================================
-# HELPER: Extração segura de valores (float, dict ou string-dict)
-# ============================================================
-def safe_val(val, default=0.0):
-    """Extrai valor numérico de forma segura, lidando com floats, dicts ou strings de dict."""
-    if pd.isna(val): return default
-    if isinstance(val, (int, float)): return float(val)
-    if isinstance(val, str):
-        val = val.strip()
-        if not val: return default
-        try:
-            d = ast.literal_eval(val)
-            return float(d.get('value', default))
-        except: pass
-    if isinstance(val, dict):
-        return float(val.get('value', default))
-    try: return float(val)
-    except: return default
-
-# ============================================================
-# TOOLTIPS
-# ============================================================
-TOOLTIP_DESC = {
-    "P/L (PL)": "Preco / Lucro. Quanto menor, mais barata.",
-    "P/VP (PVP)": "Preco / Valor Patrimonial. < 1 = abaixo do patrimonio.",
-    "P/E (PE)": "Price / Earnings. Versao americana do P/L.",
-    "EPS": "Earnings Per Share. Lucro por acao.",
-    "PSR (P/Receita)": "Preco / Receita. < 1 e atrativo.",
-    "P/Ativo": "Preco / Ativo Total. Quanto menor, melhor.",
-    "P/Cap.Giro": "Preco / Capital de Giro.",
-    "P/Ativo Circ. Liq.": "Preco / Ativo Circulante Liquido.",
-    "P/EBIT": "Preco / EBIT. Valuation operacional.",
-    "P/EBITDA": "Preco / EBITDA. Elimina depreciacao.",
-    "EV/EBIT": "Enterprise Value / EBIT. Considera divida.",
-    "EV/EBITDA": "EV / EBITDA. Valuation completo.",
+TOOLTIPS = {
+    "P_L": "Preço / Lucro. Quanto menor, mais barata.",
+    "P_VP": "Preço / Valor Patrimonial. < 1 = abaixo do patrimônio.",
+    "P_E": "Price / Earnings. Versão americana do P/L.",
+    "LPA": "Lucro Por Ação.",
+    "P_Receita": "Preço / Receita. < 1 atrativo.",
+    "P_Ativo": "Preço / Ativo Total.",
+    "P_Cap_Giro": "Preço / Capital de Giro.",
+    "P_Ativo_Circ_Liq": "Preço / Ativo Circulante Líquido.",
+    "P_EBIT": "Preço / EBIT.",
+    "P_EBITDA": "Preço / EBITDA.",
+    "EV_EBIT": "Enterprise Value / EBIT.",
+    "EV_EBITDA": "EV / EBITDA.",
     "ROE": "Return on Equity. > 15% excelente.",
-    "ROA": "Return on Assets. Eficiencia total.",
+    "ROA": "Return on Assets.",
     "ROIC": "Return on Invested Capital. > 10% bom.",
-    "Giro Ativos": "Receita / Ativos. Eficiencia operacional.",
-    "Margem Bruta": "Lucro antes de despesas operacionais.",
-    "Margem EBITDA": "EBITDA / Receita. Eficiencia pura.",
-    "Margem EBIT": "EBIT / Receita. Controle de custos.",
-    "Margem Liquida": "Lucro Liquido / Receita. > 5% saudavel.",
-    "Div.Liq / Ativos": "Divida Liquida / Ativos. < 0.5 bom.",
-    "Div.Liq / PL": "Divida Liquida / Patrimonio. < 1 ideal.",
-    "Div.Liq / EBIT": "Divida Liquida / EBIT. < 3 bom.",
-    "Div.Liq / EBITDA": "Divida Liquida / EBITDA. < 2.5 saudavel.",
-    "Liquidez Corrente": "Ativo Circ / Passivo Circ. > 1 capacidade de pagamento.",
-    "Passivos / Ativos": "Passivo / Ativo. < 0.7 conservador.",
-    "PL / Ativos": "Patrimonio / Ativos. Capital proprio.",
-    "LPA": "Lucro Por Acao. Base do P/L.",
-    "VPA": "Valor Patrimonial Por Acao. Base do P/VP.",
-    "Patrimonio Liq.": "Valor contabil da empresa.",
-    "Lucro Liquido": "Resultado final para acionistas.",
-    "EBIT": "Lucro operacional antes de juros/impostos.",
-    "Receita Liq.": "Faturamento bruto menos impostos.",
-    "CAGR Receitas 5a": "Crescimento medio anual de receitas.",
-    "CAGR Lucros 5a": "Crescimento medio anual de lucros.",
-    "Qtd. de Acoes": "Total de acoes emitidas.",
-    "DY Atual": "Dividend Yield 12 meses. > 6% atrativo.",
-    "DY 12 meses": "Media historica de DY.",
-    "Div. Medio 12m": "Media de dividendos 12m.",
-    "Div. Total 12m": "Soma total 12m.",
-    "Div. Ultimo": "Ultimo pagamento.",
-    "Qtd. Div. 12m": "Frequencia de pagamentos.",
-    "Graham": "Raiz(22.5 x VPA x LPA).",
-    "Bazin": "Dividendo Medio / 0.06.",
-    "Lynch": "PEG Ratio. < 1 subvalorizada.",
-    "AGF Medio": "Media dos 4 valuation.",
+    "Giro_Ativos": "Receita / Ativos.",
+    "Margem_Bruta": "Lucro antes de despesas operacionais.",
+    "Margem_EBITDA": "EBITDA / Receita.",
+    "Margem_EBIT": "EBIT / Receita.",
+    "Margem_Liquida": "Lucro Líquido / Receita. > 5% saudável.",
+    "Div_Liq_Ativos": "Dívida Líq / Ativos. < 0.5 bom.",
+    "Div_Liq_PL": "Dívida Líq / PL. < 1 ideal.",
+    "Div_Liq_EBIT": "Dívida Líq / EBIT. < 3 bom.",
+    "Div_Liq_EBITDA": "Dívida Líq / EBITDA. < 2.5 saudável.",
+    "Liquidez_Corrente": "Ativo Circ / Passivo Circ. > 1 capacidade.",
+    "Passivos_Ativos": "Passivo / Ativo. < 0.7 conservador.",
+    "PL_Ativos": "Patrimônio / Ativos.",
+    "CAGR_Receitas_5a": "Crescimento médio anual de receitas.",
+    "CAGR_Lucros_5a": "Crescimento médio anual de lucros.",
+    "Qtd_Acoes": "Total de ações emitidas.",
+    "DY_Atual": "Dividend Yield 12 meses. > 6% atrativo.",
+    "Div_1A": "Dividendos pagos no ano civil de 1 ano atrás.",
+    "Div_2A": "Dividendos pagos no ano civil de 2 anos atrás.",
+    "Div_3A": "Dividendos pagos no ano civil de 3 anos atrás.",
+    "Div_4A": "Dividendos pagos no ano civil de 4 anos atrás.",
+    "Div_5A": "Dividendos pagos no ano civil de 5 anos atrás.",
+    "Consistencia_5A": "Quantos anos (0-5) o ativo pagou dividendos.",
 }
 
-def tooltip_html(label_text):
-    desc = TOOLTIP_DESC.get(label_text, "")
-    return f'<span class="tooltip-container"><span class="tooltip-icon">?</span><span class="tooltip-text">{desc}</span></span>' if desc else ""
+def safe(v, d=0.0):
+    try: return float(v) if pd.notna(v) else d
+    except: return d
 
-def get_semantic_color(metric_label, value_str):
-    try:
-        clean = value_str.replace('R$', '').replace('x', '').replace('%', '').replace('+', '').replace('-', '').strip()
-        val = float(clean)
-    except:
-        return "#94a3b8"
-    label = metric_label.lower()
-    if any(k in label for k in ["p/l", "p/vp", "ev/ebit", "div.liq", "passivos", "psr"]):
-        if val < 10: return "#10b981"
-        if val < 20: return "#f59e0b"
-        return "#ef4444"
-    if any(k in label for k in ["roe", "roic", "margem", "dy ", "cagr", "upside", "score", "roa"]):
-        if val > 15: return "#10b981"
-        if val > 5:  return "#f59e0b"
-        return "#ef4444"
+def sem_color(label, val_str):
+    try: val = float(val_str.replace('R$','').replace('x','').replace('%','').strip())
+    except: return "#94a3b8"
+    l = label.lower()
+    if any(k in l for k in ["p_l", "p_vp", "ev_", "div_liq", "passivos", "psr"]):
+        return "#10b981" if val < 10 else ("#f59e0b" if val < 20 else "#ef4444")
+    if any(k in l for k in ["roe", "roic", "margem", "dy ", "cagr", "upside", "score", "roa"]):
+        return "#10b981" if val > 15 else ("#f59e0b" if val > 5 else "#ef4444")
     return "#38bdf8"
 
-def pagina_analise():
-    """Pagina de analise de ativo - Layout v2.0 Cards (Ajustado para ativos.csv/xlsx)"""
+def tooltip(t):
+    d = TOOLTIPS.get(t, "")
+    return f'<span class="tt"><span class="tt-i">?</span><span class="tt-t">{d}</span></span>' if d else ""
 
+def pagina_analise():
     st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    .analise-container * { font-family: 'Inter', sans-serif; }
-    .analise-container { padding: 0 8px 40px 8px; }
-    .section-title-v2 { font-size: 1.05rem; font-weight: 700; color: #f1f5f9; text-transform: uppercase; letter-spacing: 0.1em; margin: 40px 0 22px 0; padding-bottom: 10px; border-bottom: 2px solid #334155; display: flex; align-items: center; gap: 10px; }
-    .metric-card-v2 { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 18px 16px; transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: 100%; display: flex; flex-direction: column; justify-content: space-between; min-height: 95px; }
-    .metric-card-v2:hover { transform: translateY(-2px); box-shadow: 0 8px 12px rgba(0,0,0,0.25); border-color: #3b82f6; }
-    .metric-label-v2 { font-size: 0.72rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; line-height: 1.3; }
-    .metric-value-v2 { font-size: 1.45rem; font-weight: 700; color: #f1f5f9; line-height: 1.1; letter-spacing: -0.02em; }
-    .score-card-v2 { border-radius: 16px; padding: 24px; text-align: center; box-shadow: 0 10px 15px rgba(0,0,0,0.2); }
-    .score-number-v2 { font-size: 3.5rem; font-weight: 800; line-height: 1; margin-bottom: 8px; }
-    .score-label-v2 { font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
-    .score-desc-v2 { font-size: 0.8rem; color: #94a3b8; margin-top: 6px; }
-    .bh-card-v2 { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 2px solid; border-radius: 12px; padding: 14px; text-align: center; transition: all 0.3s ease; }
-    .bh-card-v2:hover { transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0,0,0,0.2); }
-    .bh-icon-v2 { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px auto; font-size: 16px; font-weight: 700; color: white; }
-    .bh-title-v2 { font-size: 0.75rem; font-weight: 600; color: #f1f5f9; margin-bottom: 2px; line-height: 1.2; }
-    .bh-desc-v2 { font-size: 0.65rem; color: #94a3b8; line-height: 1.2; }
-    .pj-card-v2 { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 16px; text-align: center; transition: all 0.3s ease; }
-    .pj-card-v2:hover { transform: translateY(-2px); box-shadow: 0 8px 12px rgba(0,0,0,0.2); }
-    .pj-title-v2 { font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
-    .pj-valor-v2 { font-size: 1.2rem; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
-    .pj-upside-v2 { font-size: 0.9rem; font-weight: 600; padding: 3px 10px; border-radius: 12px; display: inline-block; }
-    .tooltip-container { position: relative; display: inline-block; }
-    .tooltip-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #475569; color: #f1f5f9; font-size: 11px; font-weight: 700; cursor: help; margin-left: 6px; transition: all 0.2s ease; }
-    .tooltip-icon:hover { background: #3b82f6; }
-    .tooltip-text { visibility: hidden; width: 280px; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #475569; color: #e2e8f0; text-align: left; border-radius: 10px; padding: 12px 14px; position: absolute; z-index: 1000; bottom: 125%; left: 50%; margin-left: -140px; opacity: 0; transition: opacity 0.3s; font-size: 0.8rem; line-height: 1.4; box-shadow: 0 10px 15px rgba(0,0,0,0.3); }
-    .tooltip-text::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #475569 transparent transparent transparent; }
-    .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
+    .c * { font-family: 'Inter', sans-serif; } .c { padding: 0 8px 40px 8px; }
+    .st { font-size: 1.05rem; font-weight: 700; color: #f1f5f9; text-transform: uppercase; letter-spacing: 0.1em; margin: 40px 0 22px 0; padding-bottom: 10px; border-bottom: 2px solid #334155; display: flex; align-items: center; gap: 10px; }
+    .mc { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 18px 16px; transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: 100%; display: flex; flex-direction: column; justify-content: space-between; min-height: 95px; }
+    .mc:hover { transform: translateY(-2px); box-shadow: 0 8px 12px rgba(0,0,0,0.25); border-color: #3b82f6; }
+    .ml { font-size: 0.72rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; line-height: 1.3; }
+    .mv { font-size: 1.45rem; font-weight: 700; color: #f1f5f9; line-height: 1.1; letter-spacing: -0.02em; }
+    .sc { border-radius: 16px; padding: 24px; text-align: center; box-shadow: 0 10px 15px rgba(0,0,0,0.2); }
+    .sn { font-size: 3.5rem; font-weight: 800; line-height: 1; margin-bottom: 8px; }
+    .sl { font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+    .sd { font-size: 0.8rem; color: #94a3b8; margin-top: 6px; }
+    .bc { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 2px solid; border-radius: 12px; padding: 14px; text-align: center; transition: all 0.3s ease; }
+    .bc:hover { transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0,0,0,0.2); }
+    .bi { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px auto; font-size: 16px; font-weight: 700; color: white; }
+    .bt { font-size: 0.75rem; font-weight: 600; color: #f1f5f9; margin-bottom: 2px; line-height: 1.2; }
+    .bd { font-size: 0.65rem; color: #94a3b8; line-height: 1.2; }
+    .pc { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 16px; text-align: center; transition: all 0.3s ease; }
+    .pc:hover { transform: translateY(-2px); box-shadow: 0 8px 12px rgba(0,0,0,0.2); }
+    .pt { font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    .pv { font-size: 1.2rem; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+    .pu { font-size: 0.9rem; font-weight: 600; padding: 3px 10px; border-radius: 12px; display: inline-block; }
+    .tt { position: relative; display: inline-block; }
+    .tt-i { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #475569; color: #f1f5f9; font-size: 11px; font-weight: 700; cursor: help; margin-left: 6px; }
+    .tt-i:hover { background: #3b82f6; }
+    .tt-t { visibility: hidden; width: 280px; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #475569; color: #e2e8f0; text-align: left; border-radius: 10px; padding: 12px 14px; position: absolute; z-index: 1000; bottom: 125%; left: 50%; margin-left: -140px; opacity: 0; transition: opacity 0.3s; font-size: 0.8rem; line-height: 1.4; box-shadow: 0 10px 15px rgba(0,0,0,0.3); }
+    .tt-t::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #475569 transparent transparent transparent; }
+    .tt:hover .tt-t { visibility: visible; opacity: 1; }
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="analise-container">', unsafe_allow_html=True)
-
+    st.markdown('<div class="c">', unsafe_allow_html=True)
     df = load_data()
     if df.empty:
-        st.warning("Dados nao disponiveis.")
-        return
+        st.warning("Dados não disponíveis."); return
 
-    # SELETOR DE ATIVO
-    df['Display'] = df['symbol'].astype(str) + ' - ' + df['name'].astype(str)
-    display_list = sorted([str(x) for x in df['Display'].tolist()])
+    df['Disp'] = df['Ticker'] + ' - ' + df['Nome']
+    opts = sorted(df['Disp'].tolist())
+    idx = 0
+    if "ticker_destino" in st.session_state:
+        for i, o in enumerate(opts):
+            if o.startswith(st.session_state["ticker_destino"] + ' -'): idx = i; break
+        del st.session_state["ticker_destino"]
 
-    ticker_from_ranking = st.session_state.get("ticker_destino")
-    default_index = 0
-    if ticker_from_ranking:
-        for i, disp in enumerate(display_list):
-            if disp.startswith(ticker_from_ranking + ' -'):
-                default_index = i
-                break
-        st.session_state.pop("ticker_destino", None)
+    sel = st.selectbox("Selecione o ativo", options=opts, index=idx, key="sel_v2")
+    ticker = sel.split(' - ')[0]
+    ativo = df[df['Ticker'] == ticker].iloc[0] if not df[df['Ticker'] == ticker].empty else None
+    if ativo is None: st.error("Ativo não encontrado."); return
 
-    ativo_selecionado = st.selectbox("Selecione o ativo", options=display_list, index=default_index, key="ativo_selector_v2")
-    ticker = ativo_selecionado.split(' - ')[0]
-    match = df[df['symbol'] == ticker]
-    if match.empty:
-        st.error("Ativo nao encontrado.")
-        return
-    ativo = match.iloc[0]
-
-    # INFO SETOR/SUBSETOR/SEGMENTO
     st.markdown(f"""
-    <div style="display: flex; gap: 24px; margin: 8px 0 16px 0; padding: 0;">
-        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Setor</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('sector', 'N/A')}</span></div>
+    <div style="display: flex; gap: 24px; margin: 8px 0 16px 0;">
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Setor</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Setor', 'N/A')}</span></div>
         <div style="color: #475569;">&rsaquo;</div>
-        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">SubSetor</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('subSector', 'N/A')}</span></div>
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">SubSetor</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('SubSetor', 'N/A')}</span></div>
         <div style="color: #475569;">&rsaquo;</div>
-        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Segmento</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('segment', 'N/A')}</span></div>
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Segmento</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Segmento', 'N/A')}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("<div style='margin: 16px 0;'></div>", unsafe_allow_html=True)
+    components.html(f"""<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>{{"symbols": [["BMFBOVESPA:{ticker}|1D"]], "chartOnly": false, "width": "100%", "height": "350", "locale": "br", "colorTheme": "dark", "autosize": false, "showVolume": true, "showMA": false, "hideDateRanges": false, "hideMarketStatus": false, "hideSymbolLogo": false, "scalePosition": "right", "scaleMode": "Normal", "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif", "fontSize": "10", "noTimeScale": false, "valuesTracking": "1", "changeMode": "price-and-percent", "chartType": "area", "maLineColor": "#2962FF", "maLineWidth": 1, "maLength": 9, "lineWidth": 2, "lineType": 0, "dateRanges": ["1d|1", "1m|30", "3m|60", "12m|1D", "60m|1W", "all|1M"]}}</script></div>""", height=360)
 
-    # TRADINGVIEW
-    tv_chart = f"""
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
-      {{"symbols": [["BMFBOVESPA:{ticker}|1D"]], "chartOnly": false, "width": "100%", "height": "350", "locale": "br", "colorTheme": "dark", "autosize": false, "showVolume": true, "showMA": false, "hideDateRanges": false, "hideMarketStatus": false, "hideSymbolLogo": false, "scalePosition": "right", "scaleMode": "Normal", "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif", "fontSize": "10", "noTimeScale": false, "valuesTracking": "1", "changeMode": "price-and-percent", "chartType": "area", "maLineColor": "#2962FF", "maLineWidth": 1, "maLength": 9, "lineWidth": 2, "lineType": 0, "dateRanges": ["1d|1", "1m|30", "3m|60", "12m|1D", "60m|1W", "all|1M"]}}
-      </script>
-    </div>
-    """
-    components.html(tv_chart, height=360)
+    def sec(title, data, cols):
+        st.markdown(f'<div class="st">{title}</div>', unsafe_allow_html=True)
+        for r in range(2 if len(data) > cols else 1):
+            cs = st.columns(cols)
+            for c in range(cols):
+                i = r * cols + c
+                if i < len(data):
+                    lbl, val = data[i]
+                    cl = sem_color(lbl, val)
+                    cs[c].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{lbl}{tooltip(lbl)}</div><div class="mv" style="color: {cl};">{val}</div></div>""", unsafe_allow_html=True)
 
-    # VALUATION
-    st.markdown('<div class="section-title-v2">Valuation</div>', unsafe_allow_html=True)
-    valuation_data = [
-        ("P/L (PL)", f"{safe_val(ativo.get('pe')):.2f}x"),
-        ("P/VP (PVP)", f"{safe_val(ativo.get('priceToBookValue')):.2f}x"),
-        ("P/E (PE)", f"{safe_val(ativo.get('priceEarningsRatio', ativo.get('pe'))):.2f}x"),
-        ("EPS", f"R$ {safe_val(ativo.get('eps')):.2f}"),
-        ("PSR (P/Receita)", f"{safe_val(ativo.get('priceToSales')):.2f}x"),
-        ("P/Ativo", f"{safe_val(ativo.get('priceToAssets')):.2f}x"),
-        ("P/Cap.Giro", f"{safe_val(ativo.get('priceToNetNetWorkingCapital')):.2f}x"),
-        ("P/Ativo Circ. Liq.", f"{safe_val(ativo.get('priceToNetCurrentAssets')):.2f}x"),
-        ("P/EBIT", f"{safe_val(ativo.get('priceToEbit')):.2f}x"),
-        ("P/EBITDA", f"{safe_val(ativo.get('priceToEbitda')):.2f}x"),
-        ("EV/EBIT", f"{safe_val(ativo.get('enterpriseValueEbit')):.2f}x"),
-        ("EV/EBITDA", f"{safe_val(ativo.get('enterpriseValueEbitda')):.2f}x"),
-    ]
-    for r in range(2):
-        cols = st.columns(6)
-        for c in range(6):
-            idx = r * 6 + c
-            if idx < len(valuation_data):
-                lbl, val = valuation_data[idx]
-                col = get_semantic_color(lbl, val)
-                cols[c].markdown(f"""<div class="metric-card-v2" style="border-left: 4px solid {col};"><div class="metric-label-v2">{lbl}{tooltip_html(lbl)}</div><div class="metric-value-v2" style="color: {col};">{val}</div></div>""", unsafe_allow_html=True)
+    sec("Valuation", [("P_L", f"{safe(ativo.get('P_L')):.2f}x"), ("P_VP", f"{safe(ativo.get('P_VP')):.2f}x"), ("P_E", f"{safe(ativo.get('P_L')):.2f}x"), ("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), ("P_Receita", f"{safe(ativo.get('P_Receita')):.2f}x"), ("P_Ativo", f"{safe(ativo.get('P_Ativo')):.2f}x"), ("P_Cap_Giro", f"{safe(ativo.get('P_Cap_Giro')):.2f}x"), ("P_Ativo_Circ_Liq", f"{safe(ativo.get('P_Ativo_Circ_Liq')):.2f}x"), ("P_EBIT", f"{safe(ativo.get('P_EBIT')):.2f}x"), ("P_EBITDA", f"{safe(ativo.get('P_EBITDA')):.2f}x"), ("EV_EBIT", f"{safe(ativo.get('EV_EBIT')):.2f}x"), ("EV_EBITDA", f"{safe(ativo.get('EV_EBITDA')):.2f}x")], 6)
+    sec("Rentabilidade", [("ROE", f"{safe(ativo.get('ROE')):.2f}%"), ("ROA", f"{safe(ativo.get('ROA')):.2f}%"), ("ROIC", f"{safe(ativo.get('ROIC')):.2f}%"), ("Giro_Ativos", f"{safe(ativo.get('Giro_Ativos')):.2f}x"), ("Margem_Bruta", f"{safe(ativo.get('Margem_Bruta')):.2f}%"), ("Margem_EBITDA", f"{safe(ativo.get('Margem_EBITDA')):.2f}%"), ("Margem_EBIT", f"{safe(ativo.get('Margem_EBIT')):.2f}%"), ("Margem_Liquida", f"{safe(ativo.get('Margem_Liquida')):.2f}%")], 4)
+    sec("Endividamento", [("Div_Liq_Ativos", f"{safe(ativo.get('Div_Liq_Ativos')):.2f}x"), ("Div_Liq_PL", f"{safe(ativo.get('Div_Liq_PL')):.2f}x"), ("Div_Liq_EBIT", f"{safe(ativo.get('Div_Liq_EBIT')):.2f}x"), ("Div_Liq_EBITDA", f"{safe(ativo.get('Div_Liq_EBITDA')):.2f}x"), ("Liquidez_Corrente", f"{safe(ativo.get('Liquidez_Corrente')):.2f}x"), ("Passivos_Ativos", f"{safe(ativo.get('Passivos_Ativos')):.2f}x"), ("PL_Ativos", f"{safe(ativo.get('PL_Ativos')):.2f}x")], 4)
+    sec("Resultado", [("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), ("VPA", f"R$ {safe(ativo.get('VPA')):.2f}"), ("Patrimonio Liq.", f"R$ {safe(ativo.get('Valor_Mercado'))/1e9:.2f}B"), ("Lucro Liquido", f"R$ {safe(ativo.get('Lucro_Liquido'))/1e9:.2f}B"), ("EBIT", f"R$ {safe(ativo.get('EBIT'))/1e9:.2f}B"), ("Receita Liq.", f"R$ {safe(ativo.get('Receita_Liquida'))/1e9:.2f}B")], 6)
+    sec("Crescimento", [("CAGR_Receitas_5a", f"{safe(ativo.get('CAGR_Receitas_5a')):.2f}%"), ("CAGR_Lucros_5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%"), ("Qtd_Acoes", f"{safe(ativo.get('Qtd_Acoes'))/1e9:.2f}B")], 3)
 
-    # RENTABILIDADE
-    st.markdown('<div class="section-title-v2">Rentabilidade</div>', unsafe_allow_html=True)
-    rent_data = [
-        ("ROE", f"{safe_val(ativo.get('ROE', ativo.get('returnOnEquity'))):.2f}%"),
-        ("ROA", f"{safe_val(ativo.get('ROA', ativo.get('returnOnAssets'))):.2f}%"),
-        ("ROIC", f"{safe_val(ativo.get('ROIC', ativo.get('returnOnInvestedCapital'))):.2f}%"),
-        ("Giro Ativos", f"{safe_val(ativo.get('Giro ativos', ativo.get('assetTurnoverRatio'))):.2f}x"),
-        ("Margem Bruta", f"{safe_val(ativo.get('M. Bruta', ativo.get('grossMargin'))):.2f}%"),
-        ("Margem EBITDA", f"{safe_val(ativo.get('M. EBITDA', ativo.get('ebitdaMargin'))):.2f}%"),
-        ("Margem EBIT", f"{safe_val(ativo.get('M. EBIT', ativo.get('ebitMargin'))):.2f}%"),
-        ("Margem Liquida", f"{safe_val(ativo.get('M. Líquida', ativo.get('netMargin'))):.2f}%"),
-    ]
-    for r in range(2):
-        cols = st.columns(4)
-        for c in range(4):
-            idx = r * 4 + c
-            if idx < len(rent_data):
-                lbl, val = rent_data[idx]
-                col = get_semantic_color(lbl, val)
-                cols[c].markdown(f"""<div class="metric-card-v2" style="border-left: 4px solid {col};"><div class="metric-label-v2">{lbl}{tooltip_html(lbl)}</div><div class="metric-value-v2" style="color: {col};">{val}</div></div>""", unsafe_allow_html=True)
+    st.markdown('<div class="st">Dividendos</div>', unsafe_allow_html=True)
+    cy = datetime.now().year
+    cards = [(f"Div {i}A", f"R$ {safe(ativo.get(f'Div_{i}A')):.4f}", str(safe(ativo.get(f'Div_{i}A')) > 0), cy-i) for i in range(1,6)]
+    cons = int(safe(ativo.get('Consistencia_5A'), 0))
+    cb, cc = (f"✅ {cons}/5", "#10b981") if cons >= 3 else (f"️ {cons}/5", "#f59e0b")
+    cards.append(("Consistência", cb, "True", None))
+    cs = st.columns(6)
+    for i, (l, v, p, y) in enumerate(cards):
+        cl = cc if i==5 else ("#10b981" if p=="True" else "#475569")
+        yt = f"<div style='font-size: 0.65rem; color: #64748b; margin-top: 4px;'>Ano: {y}</div>" if y else ""
+        cs[i].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{l}</div><div class="mv" style="color: {cl};">{v}</div>{yt}</div>""", unsafe_allow_html=True)
 
-    # ENDIVIDAMENTO
-    st.markdown('<div class="section-title-v2">Endividamento</div>', unsafe_allow_html=True)
-    endiv_data = [
-        ("Div.Liq / Ativos", f"{safe_val(ativo.get('Div. líquida/Ativos', ativo.get('netDebtToAssets'))):.2f}x"),
-        ("Div.Liq / PL", f"{safe_val(ativo.get('Dív. líquida/PL', ativo.get('netDebtToEquity'))):.2f}x"),
-        ("Div.Liq / EBIT", f"{safe_val(ativo.get('Dív. líquida/EBIT', ativo.get('netDebtToEbit'))):.2f}x"),
-        ("Div.Liq / EBITDA", f"{safe_val(ativo.get('Dív. líquida/EBITDA', ativo.get('netDebtToEbitda'))):.2f}x"),
-        ("Liquidez Corrente", f"{safe_val(ativo.get('Liq. corrente', ativo.get('currentLiquidity'))):.2f}x"),
-        ("Passivos / Ativos", f"{safe_val(ativo.get('Passivos/Ativos', ativo.get('liabilitiesToAssetsRatio'))):.2f}x"),
-        ("PL / Ativos", f"{safe_val(ativo.get('PL/Ativos', ativo.get('equityToAssetsRatio'))):.2f}x"),
-    ]
-    for r in range(2):
-        cols = st.columns(4)
-        for c in range(4):
-            idx = r * 4 + c
-            if idx < len(endiv_data):
-                lbl, val = endiv_data[idx]
-                col = get_semantic_color(lbl, val)
-                cols[c].markdown(f"""<div class="metric-card-v2" style="border-left: 4px solid {col};"><div class="metric-label-v2">{lbl}{tooltip_html(lbl)}</div><div class="metric-value-v2" style="color: {col};">{val}</div></div>""", unsafe_allow_html=True)
-
-    # RESULTADO
-    st.markdown('<div class="section-title-v2">Resultado</div>', unsafe_allow_html=True)
-    res_data = [
-        ("LPA", f"R$ {safe_val(ativo.get('earningsPerShare')):.2f}"),
-        ("VPA", f"R$ {safe_val(ativo.get('bookValuePerShare')):.2f}"),
-        ("Patrimonio Liq.", f"R$ {safe_val(ativo.get('Patrimonio_Liquido', ativo.get('marketCap')))/1e9:.2f}B"),
-        ("Lucro Liquido", f"R$ {safe_val(ativo.get('Lucro_Liquido'))/1e9:.2f}B"),
-        ("EBIT", f"R$ {safe_val(ativo.get('EBIT'))/1e9:.2f}B"),
-        ("Receita Liq.", f"R$ {safe_val(ativo.get('Receita_Liquida'))/1e9:.2f}B"),
-    ]
-    cols_res = st.columns(6)
-    for i, (lbl, val) in enumerate(res_data):
-        col = get_semantic_color(lbl, val)
-        cols_res[i].markdown(f"""<div class="metric-card-v2" style="border-left: 4px solid {col};"><div class="metric-label-v2">{lbl}{tooltip_html(lbl)}</div><div class="metric-value-v2" style="color: {col};">{val}</div></div>""", unsafe_allow_html=True)
-
-    # CRESCIMENTO
-    st.markdown('<div class="section-title-v2">Crescimento</div>', unsafe_allow_html=True)
-    cresc_data = [
-        ("CAGR Receitas 5a", f"{safe_val(ativo.get('CAGR Receitas 5 anos', ativo.get('cagrRecipesFiveYears'))):.2f}%"),
-        ("CAGR Lucros 5a", f"{safe_val(ativo.get('CAGR Lucros 5 anos', ativo.get('cagrProfitsFiveYears'))):.2f}%"),
-        ("Qtd. de Acoes", f"{safe_val(ativo.get('shares'))/1e9:.2f}B"),
-    ]
-    cols_cresc = st.columns(3)
-    for i, (lbl, val) in enumerate(cresc_data):
-        col = get_semantic_color(lbl, val)
-        cols_cresc[i].markdown(f"""<div class="metric-card-v2" style="border-left: 4px solid {col};"><div class="metric-label-v2">{lbl}{tooltip_html(lbl)}</div><div class="metric-value-v2" style="color: {col};">{val}</div></div>""", unsafe_allow_html=True)
-
-    # DIVIDENDOS (5 CARDS + BADGE NA MESMA LINHA)
-    st.markdown('<div class="section-title-v2">Dividendos</div>', unsafe_allow_html=True)
-    current_year = datetime.now().year
-    div_cards = [
-        ("DIVI 1A", f"R$ {safe_val(ativo.get('DIV_1A_')):.4f}", str(safe_val(ativo.get('DIV_1A_')) > 0), current_year - 1),
-        ("DIVI 2A", f"R$ {safe_val(ativo.get('DIV_2A_')):.4f}", str(safe_val(ativo.get('DIV_2A_')) > 0), current_year - 2),
-        ("DIVI 3A", f"R$ {safe_val(ativo.get('DIV_3A_')):.4f}", str(safe_val(ativo.get('DIV_3A_')) > 0), current_year - 3),
-        ("DIVI 4A", f"R$ {safe_val(ativo.get('DIV_4A_')):.4f}", str(safe_val(ativo.get('DIV_4A_')) > 0), current_year - 4),
-        ("DIVI 5A", f"R$ {safe_val(ativo.get('DIV_5A_')):.4f}", str(safe_val(ativo.get('DIV_5A_')) > 0), current_year - 5),
-    ]
-    anos_pagos = int(safe_val(ativo.get('DY_5A_PG')))
-    cons_badge = f"✅ {anos_pagos}/5" if anos_pagos >= 3 else f"⚠️ {anos_pagos}/5"
-    cons_color = "#10b981" if anos_pagos >= 3 else "#f59e0b"
-    div_cards.append(("CONSISTÊNCIA", cons_badge, "true", None))
-
-    cols_div = st.columns(6)
-    for i, (lbl, val, paid, year) in enumerate(div_cards):
-        is_cons = (i == 5)
-        color = cons_color if is_cons else ("#10b981" if paid == "True" else "#475569")
-        year_txt = f"<div style='font-size: 0.65rem; color: #64748b; margin-top: 4px;'>Ano: {year}</div>" if year else ""
-        cols_div[i].markdown(f"""<div class="metric-card-v2" style="border-left: 4px solid {color};"><div class="metric-label-v2">{lbl}</div><div class="metric-value-v2" style="color: {color};">{val}</div>{year_txt}</div>""", unsafe_allow_html=True)
-
-    # PRECO JUSTO
-    st.markdown('<div class="section-title-v2">Preco Justo</div>', unsafe_allow_html=True)
-    vpa = safe_val(ativo.get('bookValuePerShare'))
-    lpa = safe_val(ativo.get('earningsPerShare'))
-    dy = safe_val(ativo.get('dividendYield')) / 100
-    preco_atual = safe_val(ativo.get('lastPrice'))
-
-    def calc_upside(justo): return ((justo / preco_atual) - 1) * 100 if preco_atual > 0 else 0
-    def upside_str(v): return f"{v:+.1f}%" if preco_atual > 0 else "-"
-
+    st.markdown('<div class="st">Preco Justo</div>', unsafe_allow_html=True)
+    vpa, lpa, dy, pr = safe(ativo.get('VPA')), safe(ativo.get('LPA')), safe(ativo.get('DY_Atual'))/100, safe(ativo.get('Preco_Atual'))
     graham = (22.5 * vpa * lpa)**0.5 if vpa > 0 and lpa > 0 else 0
-    bazin = (dy / 0.06) * preco_atual if dy > 0 else 0 # Aproximacao baseada no DY atual
-    lynch = lpa * (1 + safe_val(ativo.get('CAGR Lucros 5 anos', ativo.get('cagrProfitsFiveYears')))/100) if lpa > 0 else 0
-    agf = (graham + bazin + lynch + preco_atual*0.8) / 4 # Media ponderada segura
+    bazin = (dy / 0.06) * pr if dy > 0 else 0
+    lynch = lpa * (1 + safe(ativo.get('CAGR_Lucros_5a'))/100) if lpa > 0 else 0
+    agf = (graham + bazin + lynch + pr*0.8) / 4
+    ups = lambda j: ((j/pr)-1)*100 if pr > 0 else 0
+    pj = [("Graham", graham, ups(graham)), ("Bazin", bazin, ups(bazin)), ("Lynch", lynch, ups(lynch)), ("AGF Medio", agf, ups(agf))]
+    cps = st.columns(4)
+    for i, (t, p, u) in enumerate(pj):
+        c, b = ("#10b981", "#065f46") if u > 0 else (("#ef4444", "#991b1b") if u < 0 else ("#94a3b8", "#475569"))
+        cps[i].markdown(f"""<div class="pc" style="border-left: 4px solid {c};"><div class="pt">{t}</div><div class="pv">R$ {p:.2f} if pr > 0 else N/A</div><div class="pu" style="background: {b}40; color: {c};">{u:+.1f}%</div></div>""", unsafe_allow_html=True)
 
-    pj_data = [
-        ("Graham", graham, calc_upside(graham)),
-        ("Bazin", bazin, calc_upside(bazin)),
-        ("Lynch", lynch, calc_upside(lynch)),
-        ("AGF Medio", agf, calc_upside(agf)),
+    st.markdown('<div class="st">SCORE CS</div>', unsafe_allow_html=True)
+    items = [
+        ("ROE > 10%", 1 if safe(ativo.get('ROE')) > 10 else 0, "Rentabilidade do patrimonio"),
+        ("DY > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),
+        ("Div.Liq/EBITDA < 2.5", 1 if 0 < safe(ativo.get('Div_Liq_EBITDA')) < 2.5 else 0, "Endividamento controlado"),
+        ("P_L < 15", 1 if 0 < safe(ativo.get('P_L')) < 15 else 0, "Preco nao esta caro"),
+        ("P_VP < 2", 1 if 0 < safe(ativo.get('P_VP')) < 2 else 0, "Proximo do valor patrimonial"),
+        ("Margem > 10%", 1 if safe(ativo.get('Margem_Liquida')) > 10 else 0, "Lucratividade saudavel"),
+        ("Liq.Corrente > 1", 1 if safe(ativo.get('Liquidez_Corrente')) > 1 else 0, "Capacidade de pagamento"),
+        ("CAGR > 5%", 1 if safe(ativo.get('CAGR_Lucros_5a')) > 5 else 0, "Crescimento consistente"),
+        ("ROIC > 10%", 1 if safe(ativo.get('ROIC')) > 10 else 0, "Retorno sobre capital"),
+        ("Volume > 1M", 1 if safe(ativo.get('Volume')) > 1000000 else 0, "Liquidez diaria"),
+        ("Consistência 5A", 1 if cons >= 3 else 0, "Pagou em pelo menos 3 dos ultimos 5 anos"),
     ]
-    cols_pj = st.columns(4)
-    for i, (title, preco, up) in enumerate(pj_data):
-        col, bg = ("#10b981", "#065f46") if up > 0 else (("#ef4444", "#991b1b") if up < 0 else ("#94a3b8", "#475569"))
-        cols_pj[i].markdown(f"""<div class="pj-card-v2" style="border-left: 4px solid {col};"><div class="pj-title-v2">{title}</div><div class="pj-valor-v2">R$ {preco:.2f} if preco > 0 else N/A</div><div class="pj-upside-v2" style="background: {bg}40; color: {col};">{upside_str(up)}</div></div>""", unsafe_allow_html=True)
-
-    # SCORE CS (11 CRITÉRIOS)
-    st.markdown('<div class="section-title-v2">SCORE CS</div>', unsafe_allow_html=True)
-    bh_items = [
-        ("ROE > 10%", 1 if safe_val(ativo.get('ROE', ativo.get('returnOnEquity'))) > 10 else 0, "Rentabilidade do patrimonio"),
-        ("DY > 6%", 1 if safe_val(ativo.get('dividendYield')) > 6 else 0, "Dividend Yield atrativo"),
-        ("Div.Liq/EBITDA < 2.5", 1 if 0 < safe_val(ativo.get('Dív. líquida/EBITDA', ativo.get('netDebtToEbitda'))) < 2.5 else 0, "Endividamento controlado"),
-        ("PL < 15", 1 if 0 < safe_val(ativo.get('pe')) < 15 else 0, "Preco nao esta caro"),
-        ("PVP < 2", 1 if 0 < safe_val(ativo.get('priceToBookValue')) < 2 else 0, "Proximo do valor patrimonial"),
-        ("Margem > 10%", 1 if safe_val(ativo.get('M. Líquida', ativo.get('netMargin'))) > 10 else 0, "Lucratividade saudavel"),
-        ("Liq.Corrente > 1", 1 if safe_val(ativo.get('Liq. corrente', ativo.get('currentLiquidity'))) > 1 else 0, "Capacidade de pagamento"),
-        ("CAGR > 5%", 1 if safe_val(ativo.get('CAGR Lucros 5 anos', ativo.get('cagrProfitsFiveYears'))) > 5 else 0, "Crescimento consistente"),
-        ("ROIC > 10%", 1 if safe_val(ativo.get('ROIC', ativo.get('returnOnInvestedCapital'))) > 10 else 0, "Retorno sobre capital"),
-        ("Volume > 1M", 1 if safe_val(ativo.get('volume')) > 1000000 else 0, "Liquidez diaria"),
-        ("Consistência 5A", 1 if anos_pagos >= 3 else 0, "Pagou dividendos em pelo menos 3 dos ultimos 5 anos"),
-    ]
-
-    score = sum(item[1] for item in bh_items)
-    if score >= 9: col, bg, lbl = "#10b981", "#065f46", "Excelente"
-    elif score >= 7: col, bg, lbl = "#84cc16", "#3f6212", "Bom"
-    elif score >= 5: col, bg, lbl = "#f59e0b", "#92400e", "Regular"
-    elif score >= 3: col, bg, lbl = "#f97316", "#7c2d12", "Fraco"
-    else: col, bg, lbl = "#dc2626", "#7f1d1d", "Pessimo"
-
-    st.markdown(f"""<div class="score-card-v2" style="background: linear-gradient(135deg, {bg} 0%, {col}20 100%); border: 2px solid {col}; max-width: 300px; margin: 0 auto 24px auto;"><div class="score-number-v2" style="color: {col};">{score}</div><div class="score-label-v2" style="color: {col};">{lbl}</div><div class="score-desc-v2">de 11 pontos</div></div>""", unsafe_allow_html=True)
-
-    cols_bh = st.columns(5)
-    for i, (title, val, desc) in enumerate(bh_items):
-        is_ok = bool(val)
-        icon, border, bg_i = ("V", "#10b981", "#10b981") if is_ok else ("X", "#ef4444", "#ef4444")
-        cols_bh[i % 5].markdown(f"""<div class="bh-card-v2" style="border-color: {border}60;"><div class="bh-icon-v2" style="background: {bg_i};">{icon}</div><div class="bh-title-v2">{title}</div><div class="bh-desc-v2">{desc}</div></div>""", unsafe_allow_html=True)
+    score = sum(x[1] for x in items)
+    col, bg, lbl = ("#10b981", "#065f46", "Excelente") if score >= 9 else (("#84cc16", "#3f6212", "Bom") if score >= 7 else (("#f59e0b", "#92400e", "Regular") if score >= 5 else (("#f97316", "#7c2d12", "Fraco") if score >= 3 else ("#dc2626", "#7f1d1d", "Pessimo"))))
+    
+    st.markdown(f"""<div class="sc" style="background: linear-gradient(135deg, {bg} 0%, {col}20 100%); border: 2px solid {col}; max-width: 300px; margin: 0 auto 24px auto;"><div class="sn" style="color: {col};">{score}</div><div class="sl" style="color: {col};">{lbl}</div><div class="sd">de 11 pontos</div></div>""", unsafe_allow_html=True)
+    
+    cbs = st.columns(5)
+    for i, (t, v, d) in enumerate(items):
+        ok = bool(v)
+        ic, bc, bgc = ("V", "#10b981", "#10b981") if ok else ("X", "#ef4444", "#ef4444")
+        cbs[i%5].markdown(f"""<div class="bc" style="border-color: {bc}60;"><div class="bi" style="background: {bgc};">{ic}</div><div class="bt">{t}</div><div class="bd">{d}</div></div>""", unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
