@@ -1,215 +1,93 @@
 import streamlit as st
-import streamlit.components.v1 as components
-import json
-import pandas as pd
-import plotly.graph_objects as go
-from pathlib import Path
-from datetime import datetime, timedelta
-import requests
 
-def get_selic_from_api():
-    """Busca SELIC da API BCB (Serie 432 - Meta SELIC % a.a.)."""
-    hoje = datetime.now()
-    data_inicial = hoje.replace(year=hoje.year - 10)
-    data_inicial_str = data_inicial.strftime("%d/%m/%Y")
+def pagina_home():
+    st.markdown("""
+    <style>
+    .hero-title {
+        font-size: 3rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 1rem;
+    }
+    .hero-subtitle {
+        font-size: 1.2rem;
+        color: #94a3b8;
+        margin-bottom: 2rem;
+    }
+    .feature-card {
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 12px 0;
+        transition: all 0.3s ease;
+    }
+    .feature-card:hover {
+        border-color: #3b82f6;
+        transform: translateY(-4px);
+    }
+    .feature-icon {
+        font-size: 2.5rem;
+        margin-bottom: 12px;
+    }
+    .feature-title {
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        margin-bottom: 8px;
+    }
+    .feature-desc {
+        color: #94a3b8;
+        line-height: 1.6;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
-    # URL da Série 432 (Taxa Meta SELIC - já em % ao ano)
-    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial={data_inicial_str}"
+    st.markdown('<div class="hero-title">Bem-vindo ao Sobral Invest</div>', unsafe_allow_html=True)
+    st.markdown('<div class="hero-subtitle">Sua plataforma completa de análise de investimentos</div>', unsafe_allow_html=True)
     
-    try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        dados = resp.json()
-        registros = []
-        for d in dados:
-            try:
-                # A série 432 já retorna o valor anualizado direto
-                valor_anual = float(d.get("valor", 0))
-                if valor_anual > 0:
-                    registros.append({
-                        "data": d.get("data"),
-                        "valor_dia": None, # Não se aplica a serie meta
-                        "valor_anual": round(valor_anual, 2)
-                    })
-            except:
-                continue
-        return registros
-    except Exception as e:
-        st.warning(f"Erro API BCB: {e}")
-        return []
-
-def get_selic_historico():
-    """Le SELIC de data/selic.json ou busca da API."""
-    selic_file = Path("data/selic.json")
-    try:
-        if selic_file.exists():
-            with open(selic_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            historico = data.get("historico", [])
-            if historico:
-                df = pd.DataFrame(historico)
-                df['data'] = pd.to_datetime(df['data'], dayfirst=True)
-                return df.sort_values('data')
-    except Exception as e:
-        st.warning(f"Erro ao ler selic.json: {e}")
-
-    # Fallback: busca da API (agora usando serie 432)
-    registros = get_selic_from_api()
-    if registros:
-        df = pd.DataFrame(registros)
-        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
-        return df.sort_values('data')
-
-    return pd.DataFrame()
-
-def plot_selic(df):
-    """Plota grafico de area da SELIC historica."""
-    if df.empty:
-        return None
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df['data'],
-        y=df['valor_anual'],
-        fill='tozeroy',
-        mode='lines',
-        line=dict(color='#10b981', width=2),
-        fillcolor='rgba(16, 185, 129, 0.15)',
-        name='SELIC % a.a.'
-    ))
-    fig.update_layout(
-        title=dict(
-            text='Taxa SELIC Historica (% ao ano)',
-            font=dict(size=16, color='#f1f5f9'),
-            x=0.5
-        ),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#94a3b8', size=11),
-        xaxis=dict(showgrid=True, gridcolor='rgba(51, 65, 85, 0.3)', gridwidth=1, zeroline=False),
-        yaxis=dict(showgrid=True, gridcolor='rgba(51, 65, 85, 0.3)', gridwidth=1, zeroline=False, ticksuffix='%'),
-        margin=dict(l=40, r=40, t=50, b=40),
-        height=320,
-        hovermode='x unified'
-    )
-    return fig
-
-def pagina_inicial():
-    """Dashboard principal: Ibovespa -> Maiores Altas/Baixas -> SELIC."""
-    st.markdown('<h1 class="main-header">SOBRAL Invest</h1>', unsafe_allow_html=True)
-
-    # 1. WIDGET TRADINGVIEW - IBOVESPA
-    st.subheader("Ibovespa")
-    tv_ibov = """
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
-      {
-        "symbols": [["BMFBOVESPA:IBOV|1D"]],
-        "chartOnly": false,
-        "width": "960",
-        "height": "400",
-        "locale": "br",
-        "colorTheme": "dark",
-        "autosize": false,
-        "showVolume": true,
-        "showMA": false,
-        "hideDateRanges": false,
-        "hideMarketStatus": false,
-        "hideSymbolLogo": false,
-        "scalePosition": "right",
-        "scaleMode": "Normal",
-        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
-        "fontSize": "10",
-        "noTimeScale": false,
-        "valuesTracking": "1",
-        "changeMode": "price-and-percent",
-        "chartType": "area",
-        "maLineColor": "#2962FF",
-        "maLineWidth": 1,
-        "maLength": 9,
-        "lineWidth": 2,
-        "lineType": 0,
-        "dateRanges": ["1d|1", "1m|30", "3m|60", "12m|1D", "60m|1W", "all|1M"]
-      }
-      </script>
-    </div>
-    """
-    components.html(tv_ibov, height=410)
-
-    # 2. WIDGET TRADINGVIEW - HOTLISTS
-    st.subheader("Maiores Altas e Baixas")
-    tv_hotlists = """
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-hotlists.js" async>
-      {
-        "colorTheme": "dark",
-        "dateRange": "1D",
-        "exchange": "BMFBOVESPA",
-        "showChart": true,
-        "locale": "br",
-        "largeChartUrl": "",
-        "isTransparent": false,
-        "showSymbolLogo": true,
-        "showFloatingTooltip": true,
-        "width": "960",
-        "height": "550",
-        "plotLineColorGrowing": "rgba(41, 98, 255, 1)",
-        "plotLineColorFalling": "rgba(41, 98, 255, 1)",
-        "plotLineColorGrowingBottom": "rgba(41, 98, 255, 0)",
-        "plotLineColorFallingBottom": "rgba(41, 98, 255, 0)",
-        "gridLineColor": "rgba(42, 46, 57, 0)",
-        "scaleFontColor": "rgba(120, 123, 134, 1)",
-        "belowLineFillColorGrowing": "rgba(41, 98, 255, 0.12)",
-        "belowLineFillColorFalling": "rgba(41, 98, 255, 0.12)",
-        "belowLineFillColorGrowingBottom": "rgba(41, 98, 255, 0)",
-        "belowLineFillColorFallingBottom": "rgba(41, 98, 255, 0)",
-        "symbolActiveColor": "rgba(41, 98, 255, 0.12)",
-        "tabs": [
-          {
-            "title": "Mais Negociadas",
-            "symbols": [
-              { "s": "BMFBOVESPA:PETR4", "d": "Petrobras" },
-              { "s": "BMFBOVESPA:VALE3", "d": "Vale" },
-              { "s": "BMFBOVESPA:ITUB4", "d": "Itau Unibanco" },
-              { "s": "BMFBOVESPA:BBDC4", "d": "Bradesco" },
-              { "s": "BMFBOVESPA:ABEV3", "d": "Ambev" },
-              { "s": "BMFBOVESPA:WEGE3", "d": "Weg" },
-              { "s": "BMFBOVESPA:BBAS3", "d": "Banco do Brasil" }
-            ],
-            "originalTitle": "Equities"
-          },
-          {
-            "title": "Maiores Altas",
-            "symbols": [{ "s": "BMFBOVESPA:IBOV", "d": "Ibovespa" }]
-          },
-          {
-            "title": "Maiores Baixas",
-            "symbols": [{ "s": "BMFBOVESPA:IBOV", "d": "Ibovespa" }]
-          }
-        ]
-      }
-      </script>
-    </div>
-    """
-    components.html(tv_hotlists, height=560)
-
-    # 3. GRAFICO SELIC HISTORICA (POR ULTIMO)
     st.markdown("---")
-    st.subheader("Taxa SELIC")
-    df_selic = get_selic_historico()
-    if not df_selic.empty:
-        fig = plot_selic(df_selic)
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
-        selic_atual = df_selic['valor_anual'].iloc[-1]
-        selic_min = df_selic['valor_anual'].min()
-        selic_max = df_selic['valor_anual'].max()
-        selic_media = df_selic['valor_anual'].mean()
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Atual", f"{selic_atual:.2f}%")
-        c2.metric("Minima", f"{selic_min:.2f}%")
-        c3.metric("Maxima", f"{selic_max:.2f}%")
-        c4.metric("Media", f"{selic_media:.2f}%")
-    else:
-        st.info("Dados da SELIC nao disponiveis no momento.")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="feature-card">
+            <div class="feature-icon">🏆</div>
+            <div class="feature-title">Rankings</div>
+            <div class="feature-desc">
+                Descubra as melhores ações através de rankings personalizados por valuation, 
+                dividendos, crescimento e muito mais.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="feature-card">
+            <div class="feature-icon">🔍</div>
+            <div class="feature-title">Análise Detalhada</div>
+            <div class="feature-desc">
+                Análise completa de cada ativo com indicadores fundamentais, 
+                valuation, Score CS e gráficos interativos.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <div class="feature-title">Comparativo</div>
+            <div class="feature-desc">
+                Compare múltiplos ativos lado a lado para tomar 
+                decisões de investimento mais assertivas.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("### 🚀 Comece agora")
+    st.info("Selecione uma opção no menu lateral para explorar todas as funcionalidades!")
