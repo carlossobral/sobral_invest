@@ -8,11 +8,14 @@ from datetime import datetime, timedelta
 import requests
 
 def get_selic_from_api():
-    """Busca SELIC da API BCB se arquivo local nao existir."""
+    """Busca SELIC da API BCB (Serie 432 - Meta SELIC % a.a.)."""
     hoje = datetime.now()
     data_inicial = hoje.replace(year=hoje.year - 10)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
-    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial={data_inicial_str}"
+    
+    # URL da Série 432 (Taxa Meta SELIC - já em % ao ano)
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial={data_inicial_str}"
+    
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
@@ -20,12 +23,12 @@ def get_selic_from_api():
         registros = []
         for d in dados:
             try:
-                valor_dia = float(d.get("valor", 0))
-                if valor_dia > 0:
-                    valor_anual = ((1 + valor_dia / 100) ** 252 - 1) * 100
+                # A série 432 já retorna o valor anualizado direto
+                valor_anual = float(d.get("valor", 0))
+                if valor_anual > 0:
                     registros.append({
                         "data": d.get("data"),
-                        "valor_dia": round(valor_dia, 6),
+                        "valor_dia": None, # Não se aplica a serie meta
                         "valor_anual": round(valor_anual, 2)
                     })
             except:
@@ -50,7 +53,7 @@ def get_selic_historico():
     except Exception as e:
         st.warning(f"Erro ao ler selic.json: {e}")
 
-    # Fallback: busca da API
+    # Fallback: busca da API (agora usando serie 432)
     registros = get_selic_from_api()
     if registros:
         df = pd.DataFrame(registros)
