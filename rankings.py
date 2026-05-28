@@ -4,7 +4,9 @@ from data import load_data
 def pagina_rankings():
     st.markdown('<h1 class="main-header">🏆 Rankings</h1>', unsafe_allow_html=True)
 
-    df = load_data()
+    with st.spinner("Carregando rankings e indicadores..."):
+        df = load_data()
+        
     if df.empty:
         st.warning("Dados nao disponiveis.")
         return
