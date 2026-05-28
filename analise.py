@@ -273,29 +273,28 @@ def pagina_analise():
         return
 
     # ============================================================
-    # 1. SELETOR DE ATIVO (CORRIGIDO COM query_params)
+    # 1. SELETOR DE ATIVO (CORRIGIDO - STREAMLIT OFICIAL)
     # ============================================================
     df['Display'] = df['Ticker'] + ' - ' + df['Nome']
     display_list = sorted([str(x) for x in df['Display'].tolist()])
 
-    # ✅ Lê do query_params (onde rankings.py salva)
-    ticker_from_ranking = st.query_params.get("ticker")
+    # ✅ Captura via session_state (enviado pelo st.switch_page)
+    ticker_from_ranking = st.session_state.get("ticker_destino")
 
-    # Define o índice padrão do selectbox (compatível com todas versões)
     default_index = 0
     if ticker_from_ranking:
         for i, disp in enumerate(display_list):
             if disp.startswith(ticker_from_ranking + ' -'):
                 default_index = i
                 break
-        # Limpa o parâmetro da URL após usar para não persistir na navegação
-        if "ticker" in st.query_params:
-            del st.query_params["ticker"]
+        # ✅ Limpa imediatamente após o primeiro carregamento
+        if "ticker_destino" in st.session_state:
+            del st.session_state["ticker_destino"]
 
     ativo_selecionado = st.selectbox(
         "Selecione o ativo",
         options=display_list,
-        index=default_index,  # Usa index= em vez de value= para compatibilidade
+        index=default_index,
         key="ativo_selector_v2"
     )
 
