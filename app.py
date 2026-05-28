@@ -170,10 +170,8 @@ def parse_mfinance_indicators(ind):
         "EV_EBITDA": get_val(["enterpriseValueEbitda", "evEbitda"]),
         "LPA": get_val(["earningsPerShare", "lpa"]),
         "VPA": get_val(["bookValuePerShare", "vpa"]),
-        "Patrimonio": get_val(["equity", "patrimonio", "patrimonioLiquido"]),
-        "Lucro_Liquido": get_val(["netProfit", "lucroLiquido", "lucro"]),
-        "EBIT": get_val(["ebit"]),
-        "Receita_Liquida": get_val(["netRevenue", "receitaLiquida", "receita"]),
+        # DivLiquida_PL vem da API, mas terá fallback no main() se vier 0
+        "DivLiquida_PL": get_val(["netDebtToEquity", "divLiquidaPatrimonio"]),
         "ROE": get_val(["returnOnEquity", "roe"]),
         "ROA": get_val(["returnOnAssets", "roa"]),
         "ROIC": get_val(["returnOnInvestedCapital", "roic"]),
@@ -183,7 +181,6 @@ def parse_mfinance_indicators(ind):
         "MargemEBIT": get_val(["ebitMargin", "margemEbit"]),
         "MargemLiquida": get_val(["netMargin", "margemLiquida"]),
         "DivLiquida_Ativos": get_val(["netDebtToAssets"]),
-        "DivLiquida_PL": get_val(["netDebtToEquity", "divLiquidaPatrimonio"]),
         "DivLiquida_EBIT": get_val(["netDebtToEbit"]),
         "DivLiquida_EBITDA": get_val(["netDebtToEbitda"]),
         "LiquidezCorrente": get_val(["currentLiquidity", "liquidezCorrente"]),
@@ -191,7 +188,6 @@ def parse_mfinance_indicators(ind):
         "PL_Ativos": get_val(["equityToAssetsRatio", "plAtivos"]),
         "CAGR_Receitas_5a": get_val(["cagrRecipesFiveYears", "cagrReceitas5a"]),
         "CAGR_Lucros_5a": get_val(["cagrProfitsFiveYears", "cagrLucros5a"]),
-        "Qtd_Acoes": get_val(["sharesOutstanding", "qtdAcoes"]),
     }
 
 def parse_mfinance_dividends(data):
@@ -454,37 +450,53 @@ def main():
     merged = merge_mfinance_data(stocks, indicators, dividends_map)
     logger.info(f"Total antes do filtro: {len(merged)} tickers")
 
-    # 4. APLICACAO DAS FORMULAS DE ENGENHARIA REVERSA
-    # Calcula colunas ausentes (Qtd_Acoes, Lucro, Patrimonio, Receita, EBIT)
+    # -----------------------------------------------------------------------
+    # ENGENHARIA REVERSA & CORRECOES DE DADOS
+    # -----------------------------------------------------------------------
     for row in merged:
         mc = row.get("Market_Cap", 0)
         cot = row.get("Cotacao", 0)
         
-        # Qtd_Acoes = Market_Cap / Cotação
+        # 1. Qtd_Acoes = Market_Cap / Cotação
         if mc > 0 and cot > 0:
             row["Qtd_Acoes"] = round(mc / cot, 0)
             
-        # Lucro_Liquido = Market_Cap / PL
+        # 2. Lucro_Liquido = Market_Cap / PL
         pl = row.get("PL", 0)
         if mc > 0 and pl > 0:
             row["Lucro_Liquido"] = mc / pl
             
-        # Patrimonio = Market_Cap / PVP
+        # 3. Patrimonio = Market_Cap / PVP
         pvp = row.get("PVP", 0)
         if mc > 0 and pvp > 0:
             row["Patrimonio"] = mc / pvp
             
-        # Receita_Liquida = Market_Cap / PSR
+        # 4. Receita_Liquida = Market_Cap / PSR
         psr = row.get("PSR", 0)
         if mc > 0 and psr > 0:
             row["Receita_Liquida"] = mc / psr
             
-        # EBIT = Market_Cap / PEBIT
+        # 5. EBIT = Market_Cap / PEBIT
         pebit = row.get("PEBIT", 0)
         if mc > 0 and pebit > 0:
             row["EBIT"] = mc / pebit
 
-    # 5. Calculos Padrão (DY, Score, Valuation)
+        # 6. CORREÇÃO DIVLIQ/PL (Fallback Inteligente)
+        # Se a API retornou 0, calculamos via: (DivLiq/EBIT * EBIT) / Patrimonio
+        div_liq_pl_api = row.get("DivLiquida_PL", 0)
+        if div_liq_pl_api == 0:
+            div_liq_ebit_ratio = row.get("DivLiquida_EBIT", 0)
+            ebit_calc = row.get("EBIT", 0)
+            patrimonio_calc = row.get("Patrimonio", 0)
+            
+            # Só calcula se tivermos os componentes necessários
+            if div_liq_ebit_ratio > 0 and ebit_calc > 0 and patrimonio_calc > 0:
+                # DivLiquida_PL = (DivLiquida/EBIT * EBIT) / PL
+                # Nota: DivLiquida/EBIT é uma razão, EBIT é absoluto, PL é absoluto.
+                # Resultado é uma razão (adimensional).
+                row["DivLiquida_PL"] = (div_liq_ebit_ratio * ebit_calc) / patrimonio_calc
+
+    # 7. Calculos Padrão (DY, Score, Valuation)
     for row in merged:
         row["DY_12m"] = round(calcular_dy_12m(row), 2)
         score, classif, checks = calcular_score_cs(row)
