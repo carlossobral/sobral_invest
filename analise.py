@@ -273,13 +273,13 @@ def pagina_analise():
         return
 
     # ============================================================
-    # 1. SELETOR DE ATIVO (CORRIGIDO COM index= PARA COMPATIBILIDADE)
+    # 1. SELETOR DE ATIVO (CORRIGIDO COM query_params)
     # ============================================================
     df['Display'] = df['Ticker'] + ' - ' + df['Nome']
     display_list = sorted([str(x) for x in df['Display'].tolist()])
 
-    # Verifica se veio ticker do ranking
-    ticker_from_ranking = st.session_state.get("ticker_from_ranking", None)
+    # ✅ Lê do query_params (onde rankings.py salva)
+    ticker_from_ranking = st.query_params.get("ticker")
 
     # Define o índice padrão do selectbox (compatível com todas versões)
     default_index = 0
@@ -288,9 +288,9 @@ def pagina_analise():
             if disp.startswith(ticker_from_ranking + ' -'):
                 default_index = i
                 break
-        # Limpa o session_state após usar para não persistir na navegação
-        if "ticker_from_ranking" in st.session_state:
-            del st.session_state["ticker_from_ranking"]
+        # Limpa o parâmetro da URL após usar para não persistir na navegação
+        if "ticker" in st.query_params:
+            del st.query_params["ticker"]
 
     ativo_selecionado = st.selectbox(
         "Selecione o ativo",
