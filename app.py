@@ -1,567 +1,511 @@
-"""
-Sobral Invest - Coletor de Dados de Ativos B3
-Atualiza data/ativos.xlsx e data/selic.json
-"""
-
-import os
-import sys
-import json
-import time
-import logging
-import requests
+import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
-from datetime import datetime, timedelta
-from pathlib import Path
+from data import load_data
 
-# Configuracao de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Dicionario de descricoes para tooltips
+TOOLTIP_DESC = {
+    "P/L (PL)": "Preco / Lucro. Indica quantos anos de lucro seriam necessarios para pagar o preco da acao. Quanto menor, mais barata.",
+    "P/VP (PVP)": "Preco / Valor Patrimonial. Mostra se a acao esta negociando acima ou abaixo do valor contabil. < 1 = abaixo do patrimonio.",
+    "P/E (PE)": "Price / Earnings Ratio. Versao americana do P/L. Mesma interpretacao: quanto menor, mais barata.",
+    "EPS": "Earnings Per Share. Lucro liquido dividido pelo numero de acoes. Quanto maior, mais lucrativa a empresa por acao.",
+    "PSR (P/Receita)": "Preco / Receita. Util para empresas que ainda nao tem lucro. < 1 e considerado atraente.",
+    "P/Ativo": "Preco / Ativo Total. Indica quanto o mercado paga pelos ativos da empresa. Util para holdings.",
+    "P/Cap.Giro": "Preco / Capital de Giro. Mede a relacao entre preco e o capital de giro da empresa.",
+    "P/Ativo Circ. Liq.": "Preco / Ativo Circulante Liquido. Negativo pode indicar empresa com mais caixa que dividas de curto prazo.",
+    "P/EBIT": "Preco / EBIT. Valuation baseado no lucro operacional antes de juros e impostos.",
+    "P/EBITDA": "Preco / EBITDA. Elimina efeitos de depreciacao. Util para comparar empresas de setores diferentes.",
+    "EV/EBIT": "Enterprise Value / EBIT. Considera divida liquida. Melhor que P/EBIT para comparar empresas alavancadas.",
+    "EV/EBITDA": "EV / EBITDA. O valuation mais completo: considera divida, depreciacao e lucro operacional.",
+    "ROE": "Return on Equity. Retorno sobre o Patrimonio Liquido. > 15% e excelente. Mede eficiencia na geracao de lucro.",
+    "ROA": "Return on Assets. Retorno sobre Ativos. Mede eficiencia total da empresa em gerar lucro com todos os recursos.",
+    "ROIC": "Return on Invested Capital. Retorno sobre Capital Investido. > 10% e bom. Considera divida + patrimonio.",
+    "Giro Ativos": "Receita / Ativos Totais. Mede quantas vezes a empresa 'gira' seus ativos em receita no ano.",
+    "Margem Bruta": "(Receita - CMV) / Receita. Lucro antes de despesas operacionais. > 30% e bom para maioria dos setores.",
+    "Margem EBITDA": "EBITDA / Receita. Lucro operacional antes de depreciacao. Mostra eficiencia operacional pura.",
+    "Margem EBIT": "EBIT / Receita. Lucro operacional. > 10% indica empresa com bom controle de custos.",
+    "Margem Liquida": "Lucro Liquido / Receita. Lucro final apos todas as despesas e impostos. > 5% e saudavel.",
+    "Div.Liq / Ativos": "Divida Liquida / Ativos. < 0.5 indica empresa com pouca alavancagem financeira.",
+    "Div.Liq / PL": "Divida Liquida / Patrimonio. < 1 e ideal: patrimonio maior que divida.",
+    "Div.Liq / EBIT": "Divida Liquida / EBIT. Indica quantos anos de lucro operacional levaria para quitar dividas. < 3 e bom.",
+    "Div.Liq / EBITDA": "Divida Liquida / EBITDA. < 2.5 e considerado saudavel pelo Score CS. Principal indicador de endividamento.",
+    "Liquidez Corrente": "Ativo Circulante / Passivo Circulante. > 1 indica capacidade de pagar dividas de curto prazo.",
+    "Passivos / Ativos": "Passivo Total / Ativo Total. < 0.7 indica estrutura de capital conservadora.",
+    "PL / Ativos": "Patrimonio / Ativos. Quanto maior, mais capital proprio a empresa tem vs. capital de terceiros.",
+    "LPA": "Lucro Por Acao. Lucro liquido dividido por numero de acoes. Base para calculo do P/L.",
+    "VPA": "Valor Patrimonial Por Acao. Patrimonio liquido dividido por acoes. Base para calculo do P/VP.",
+    "Patrimonio Liq.": "Patrimonio Liquido total da empresa. Ativos - Passivos. Representa o valor contabil.",
+    "Lucro Liquido": "Lucro apos todas as despesas, impostos e juros. O resultado final para acionistas.",
+    "EBIT": "Earnings Before Interest and Taxes. Lucro operacional antes de juros e impostos. Mede eficiencia do negocio.",
+    "Receita Liq.": "Receita Liquida total. Faturamento bruto menos impostos, devolucoes e descontos.",
+    "CAGR Receitas 5a": "Compound Annual Growth Rate de Receitas. Taxa media anual de crescimento nos ultimos 5 anos.",
+    "CAGR Lucros 5a": "CAGR de Lucros. Taxa media anual de crescimento do lucro nos ultimos 5 anos. > 5% e positivo.",
+    "Qtd. de Acoes": "Numero total de acoes emitidas pela empresa. Usado para calcular LPA, VPA e EPS.",
+    "DY Atual": "Dividend Yield dos ultimos 12 meses. Dividendos pagos / Preco atual. > 6% e atrativo para renda.",
+    "DY 12 meses": "Dividend Yield medio dos ultimos 12 meses. Media historica mais estavel que o DY atual.",
+    "Div. Medio 12m": "Media dos dividendos pagos nos ultimos 12 meses. Indica previsibilidade de renda.",
+    "Div. Total 12m": "Soma total dos dividendos pagos nos ultimos 12 meses. Util para projecao anual.",
+    "Div. Ultimo": "Valor do ultimo dividendo pago. Util para identificar tendencia de aumento ou reducao.",
+    "Qtd. Div. 12m": "Quantidade de pagamentos de dividendos no ano. Mensal = 12, trimestral = 4, semestral = 2.",
+    "Div. Medio 6a": "Media dos dividendos dos ultimos 6 anos. Indica consistencia historica de pagamentos.",
+    "Graham": "Preco Justo por Graham: raiz(22.5 x VPA x LPA). Formula classica de Benjamin Graham para valor intrinseco.",
+    "Graham BR": "Preco Justo Graham ajustado para Brasil. Considera peculiaridades do mercado brasileiro.",
+    "Bazin": "Preco Justo por Bazin: Dividendo Medio / 0.06. Baseado em DY de 6% (teto de Bazin para compra).",
+    "Lynch": "Preco Justo por Lynch: PEG Ratio. Relaciona crescimento com valuation. < 1 indica subvalorizada.",
+    "AGF Medio": "Preco Justo Medio das 4 formulas (Graham, Graham_BR, Bazin, Lynch). Consenso de valuation.",
+}
 
-# ---------------------------------------------------------------------------
-# CONFIGURACOES
-# ---------------------------------------------------------------------------
-OUTPUT_DIR = Path("data")
-OUTPUT_DIR.mkdir(exist_ok=True)
-
-ATIVOS_FILE = OUTPUT_DIR / "ativos.xlsx"
-ATIVOS_CSV = OUTPUT_DIR / "ativos.csv"
-SELIC_FILE = OUTPUT_DIR / "selic.json"
-
-# MFinance API
-MF_BASE = "https://mfinance.com.br/api/v1"
-
-# ---------------------------------------------------------------------------
-# CLIENTE MFINANCE (3 endpoints)
-# ---------------------------------------------------------------------------
-class MFinanceClient:
-    def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        })
-
-    def _get(self, url, retries=3, delay=2):
-        for attempt in range(retries):
-            try:
-                resp = self.session.get(url, timeout=30)
-                resp.raise_for_status()
-                return resp.json()
-            except Exception as e:
-                logger.warning(f"Tentativa {attempt+1}/{retries} falhou para {url}: {e}")
-                if attempt < retries - 1:
-                    time.sleep(delay * (attempt + 1))
-                else:
-                    raise
-
-    def get_stocks(self):
-        """GET /stocks -> todos os ativos com cotacao, setor, etc."""
-        logger.info("Buscando /stocks...")
-        data = self._get(f"{MF_BASE}/stocks")
-        stocks = data if isinstance(data, list) else data.get("stocks", [])
-        logger.info(f" -> {len(stocks)} ativos de /stocks")
-        return stocks
-
-    def get_indicators(self):
-        """GET /stocks/indicators -> todos os indicadores fundamentais"""
-        logger.info("Buscando /stocks/indicators...")
-        data = self._get(f"{MF_BASE}/stocks/indicators")
-        indicators = data if isinstance(data, list) else data.get("indicators", [])
-        logger.info(f" -> {len(indicators)} indicadores")
-        return indicators
-
-    def get_dividends(self, symbol):
-        """GET /stocks/dividends/{symbol} -> dividendos de 1 ticker"""
-        url = f"{MF_BASE}/stocks/dividends/{symbol}"
-        try:
-            data = self._get(url, retries=2, delay=1)
-            return data
-        except Exception as e:
-            logger.debug(f"Erro dividendos {symbol}: {e}")
-            return None
-
-    def get_all_dividends(self, symbols, delay=0.3):
-        """Busca dividendos para lista de tickers (1 por 1)"""
-        logger.info(f"Buscando dividendos para {len(symbols)} tickers...")
-        results = {}
-        for i, sym in enumerate(symbols):
-            if i % 50 == 0 and i > 0:
-                logger.info(f" -> {i}/{len(symbols)} dividendos...")
-            data = self.get_dividends(sym)
-            if data:
-                results[sym] = data
-            time.sleep(delay)
-        logger.info(f" -> {len(results)} tickers com dividendos")
-        return results
-
-# ---------------------------------------------------------------------------
-# PARSERS
-# ---------------------------------------------------------------------------
-
-def safe_float(value, default=0.0):
-    if value is None:
-        return default
+def get_semantic_color(metric_label, value_str):
+    """Retorna cor semantica financeira baseada no tipo do indicador."""
     try:
-        return float(value)
-    except (ValueError, TypeError):
-        return default
+        clean = value_str.replace('R$', '').replace('x', '').replace('%', '').replace('+', '').replace('-', '').strip()
+        val = float(clean)
+    except:
+        return "#94a3b8"  # Cinza neutro para erros ou N/A
 
-def parse_mfinance_stock(stock):
-    """Parse dos dados de /stocks"""
-    return {
-        "Ticker": stock.get("symbol", ""),
-        "Nome": stock.get("name", "#N/A"),
-        "Setor": stock.get("sector", ""),
-        "SubSetor": stock.get("subSector", ""),
-        "Segmento": stock.get("segment", ""),
-        "Cotacao": safe_float(stock.get("lastPrice")),
-        "Variacao": safe_float(stock.get("change")),
-        "Abertura": safe_float(stock.get("priceOpen")),
-        "Maxima": safe_float(stock.get("high")),
-        "Minima": safe_float(stock.get("low")),
-        "Fechamento_Anterior": safe_float(stock.get("closingPrice")),
-        "Volume": safe_float(stock.get("volume")),
-        "Volume_Medio": safe_float(stock.get("volumeAvg")),
-        "Maxima_52s": safe_float(stock.get("lastYearHigh")),
-        "Minima_52s": safe_float(stock.get("lastYearLow")),
-        "Market_Cap": safe_float(stock.get("marketCap")),
-        "PE": safe_float(stock.get("pe")),
-        "EPS": safe_float(stock.get("eps")),
-        "DY": safe_float(stock.get("dividendYield")),
-    }
-
-def parse_mfinance_indicators(ind):
-    """
-    Parse dos dados de /stocks/indicators.
-    Usa busca flexível para chaves aninhadas.
-    """
-    def get_val(keys, default=0.0):
-        """
-        Tenta extrair .value de campo aninhado.
-        Aceita lista de chaves possíveis.
-        """
-        if isinstance(keys, str):
-            keys = [keys]
-        
-        for key in keys:
-            field = ind.get(key)
-            if isinstance(field, dict):
-                val = field.get("value")
-                if val is not None:
-                    return safe_float(val, default)
-            # Caso venha como valor direto (fallback)
-            elif field is not None:
-                return safe_float(field, default)
-        return default
+    label = metric_label.lower()
     
-    return {
-        "Ticker": ind.get("symbol", ""),
-        "PL": get_val(["priceEarningsRatio", "pl"]),
-        "PVP": get_val(["priceToBookValue", "pvp"]),
-        "PSR": get_val(["priceToSalesRatio", "psr"]),
-        "PAtivo": get_val(["priceToAssets", "pAtivo"]),
-        "PCapGiro": get_val(["priceToNetCurrentAssets", "pCapGiro"]),
-        "PAtivoCircLiq": get_val(["priceToNetNetWorkingCapital", "pAtivoCircLiq"]),
-        "PEBIT": get_val(["priceToEbit", "pEbit"]),
-        "PEBITDA": get_val(["priceToEbitda", "pEbitda"]),
-        "EV_EBIT": get_val(["enterpriseValueEbit", "evEbit"]),
-        "EV_EBITDA": get_val(["enterpriseValueEbitda", "evEbitda"]),
-        "LPA": get_val(["earningsPerShare", "lpa"]),
-        "VPA": get_val(["bookValuePerShare", "vpa"]),
-        # DivLiquida_PL vem da API, mas terá fallback no main() se vier 0
-        "DivLiquida_PL": get_val(["netDebtToEquity", "divLiquidaPatrimonio"]),
-        "ROE": get_val(["returnOnEquity", "roe"]),
-        "ROA": get_val(["returnOnAssets", "roa"]),
-        "ROIC": get_val(["returnOnInvestedCapital", "roic"]),
-        "GiroAtivos": get_val(["assetTurnoverRatio", "giroAtivos"]),
-        "MargemBruta": get_val(["grossMargin", "margemBruta"]),
-        "MargemEBITDA": get_val(["ebitdaMargin", "margemEbitda"]),
-        "MargemEBIT": get_val(["ebitMargin", "margemEbit"]),
-        "MargemLiquida": get_val(["netMargin", "margemLiquida"]),
-        "DivLiquida_Ativos": get_val(["netDebtToAssets"]),
-        "DivLiquida_EBIT": get_val(["netDebtToEbit"]),
-        "DivLiquida_EBITDA": get_val(["netDebtToEbitda"]),
-        "LiquidezCorrente": get_val(["currentLiquidity", "liquidezCorrente"]),
-        "Passivos_Ativos": get_val(["liabilitiesToAssetsRatio", "passivosAtivos"]),
-        "PL_Ativos": get_val(["equityToAssetsRatio", "plAtivos"]),
-        "CAGR_Receitas_5a": get_val(["cagrRecipesFiveYears", "cagrReceitas5a"]),
-        "CAGR_Lucros_5a": get_val(["cagrProfitsFiveYears", "cagrLucros5a"]),
+    # Indicadores onde MENOR é melhor (Dívida, Multiplos de Preço)
+    if any(k in label for k in ["p/l", "p/vp", "ev/ebit", "div.liq", "passivos", "psr"]):
+        if val < 10: return "#10b981"  # Verde (Bom)
+        if val < 20: return "#f59e0b"  # Amarelo (Atencao)
+        return "#ef4444"               # Vermelho (Alto/Ruim)
+    
+    # Indicadores onde MAIOR é melhor (Rentabilidade, Margens, Crescimento, DY)
+    if any(k in label for k in ["roe", "roic", "margem", "dy ", "cagr", "upside", "score", "roa"]):
+        if val > 15: return "#10b981"  # Verde (Bom)
+        if val > 5:  return "#f59e0b"  # Amarelo (Medio)
+        return "#ef4444"               # Vermelho (Baixo/Ruim)
+        
+    # Neutros (Preços, Volumes, Nomes, LPA, VPA, Quantidades)
+    return "#38bdf8"
+
+def tooltip_html(label_text):
+    desc = TOOLTIP_DESC.get(label_text, "")
+    if desc:
+        return f'<span class="tooltip-container"><span class="tooltip-icon">?</span><span class="tooltip-text">{desc}</span></span>'
+    return ""
+
+def pagina_analise():
+    """Pagina de analise de ativo estilo Investidor10 - Layout v2.0 Cards."""
+
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    .analise-container * { font-family: 'Inter', sans-serif; }
+    .analise-container { padding: 0 8px 40px 8px; }
+
+    .section-title-v2 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin: 40px 0 22px 0;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #334155;
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
 
-def parse_mfinance_dividends(data):
-    """
-    Parse dos dividendos.
-    Retorna: total_12m, media_12m, ultimo, qtd_12m, media_6a (real)
-    Soma JCP + Dividendo (tudo eh rendimento)
-    """
-    if not data:
-        return {"Dividendo_Medio_12m": 0, "Dividendo_Total_12m": 0,
-                "Dividendo_Ultimo": 0, "Qtd_Dividendos_12m": 0,
-                "Dividendo_Medio_6a": 0}
-
-    dividends = data.get("dividends", []) if isinstance(data, dict) else []
-    if not dividends:
-        return {"Dividendo_Medio_12m": 0, "Dividendo_Total_12m": 0,
-                "Dividendo_Ultimo": 0, "Qtd_Dividendos_12m": 0,
-                "Dividendo_Medio_6a": 0}
-
-    now = datetime.now()
-    cutoff_12m = now - timedelta(days=365)
-    cutoff_6a = now - timedelta(days=365 * 6)
-
-    total_12m = 0.0
-    qtd_12m = 0
-    total_6a = 0.0
-    qtd_6a = 0
-    ultimo = 0.0
-    ultima_data = None
-
-    for d in dividends:
-        date_str = d.get("date")
-        value = safe_float(d.get("value"), 0.0)
-        if value <= 0 or not date_str:
-            continue
-
-        try:
-            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-            if dt.tzinfo is not None:
-                dt = dt.replace(tzinfo=None)
-        except:
-            continue
-
-        if dt >= cutoff_12m:
-            total_12m += value
-            qtd_12m += 1
-
-        if dt >= cutoff_6a:
-            total_6a += value
-            qtd_6a += 1
-
-        if ultima_data is None or dt > ultima_data:
-            ultima_data = dt
-            ultimo = value
-
-    media_12m = total_12m / qtd_12m if qtd_12m > 0 else 0
-    media_6a = total_6a / qtd_6a if qtd_6a > 0 else 0
-
-    return {
-        "Dividendo_Medio_12m": round(media_12m, 4),
-        "Dividendo_Total_12m": round(total_12m, 4),
-        "Dividendo_Ultimo": round(ultimo, 4),
-        "Qtd_Dividendos_12m": qtd_12m,
-        "Dividendo_Medio_6a": round(media_6a, 4),
+    .metric-card-v2 {
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 18px 16px;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 95px;
+    }
+    .metric-card-v2:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 12px rgba(0,0,0,0.25);
+        border-color: #3b82f6;
     }
 
-# ---------------------------------------------------------------------------
-# MERGE E CALCULOS
-# ---------------------------------------------------------------------------
-
-def merge_mfinance_data(stocks, indicators, dividends_map):
-    """Merge dos 3 endpoints em um unico dict por ticker"""
-    stock_map = {s.get("symbol"): parse_mfinance_stock(s) for s in stocks}
-    ind_map = {i.get("symbol"): parse_mfinance_indicators(i) for i in indicators}
-
-    all_tickers = set(stock_map.keys()) | set(ind_map.keys())
-    logger.info(f"Total de tickers unicos: {len(all_tickers)}")
-
-    merged = []
-    for ticker in sorted(all_tickers):
-        parsed_stock = stock_map.get(ticker, {})
-        parsed_ind = ind_map.get(ticker, {})
-        row = {**parsed_ind, **parsed_stock}
-        div_data = parse_mfinance_dividends(dividends_map.get(ticker))
-        row.update(div_data)
-        row["Ticker"] = ticker
-        merged.append(row)
-
-    return merged
-
-def calcular_dy_12m(row):
-    """DY_12m = (Dividendo_Medio_12m * 12 / Cotacao) * 100"""
-    cotacao = row.get("Cotacao", 0)
-    div_medio = row.get("Dividendo_Medio_12m", 0)
-    if cotacao and cotacao > 0:
-        return (div_medio * 12 / cotacao) * 100
-    return 0
-
-def calcular_score_cs(row):
-    """Score CS (Carlos Sobral) - 0 a 10"""
-    score = 0
-    checks = {
-        "ROE_10pct": row.get("ROE", 0) > 10,
-        "DY_6pct": row.get("DY_12m", 0) > 6,
-        "DivLiq_EBITDA_2_5": row.get("DivLiquida_EBITDA", 999) < 2.5,
-        "PL_15": 0 < row.get("PL", 999) < 15,
-        "PVP_2": 0 < row.get("PVP", 999) < 2,
-        "Margem_10pct": row.get("MargemLiquida", 0) > 10,
-        "LiqCorrente_1": row.get("LiquidezCorrente", 0) > 1,
-        "CAGR_5pct": row.get("CAGR_Receitas_5a", 0) > 5,
-        "ROIC_10pct": row.get("ROIC", 0) > 10,
-        "Volume_1M": row.get("Volume", 0) > 1000000,
-    }
-    score = sum(1 for v in checks.values() if v)
-
-    if score >= 8:
-        classif = "Excelente"
-    elif score >= 6:
-        classif = "Bom"
-    elif score >= 4:
-        classif = "Regular"
-    elif score >= 2:
-        classif = "Fraco"
-    else:
-        classif = "Pessimo"
-
-    return score, classif, checks
-
-def calcular_valuation(row, selic):
-    """Calculos de valuation"""
-    cotacao = row.get("Cotacao", 0)
-    vpa = row.get("VPA", 0)
-    lpa = row.get("LPA", 0)
-    dy_12m = row.get("DY_12m", 0)
-    div_medio_12m = row.get("Dividendo_Medio_12m", 0)
-
-    tlr = selic / 100 if selic else 0.06
-
-    graham = (22.5 * lpa * vpa) ** 0.5 if lpa > 0 and vpa > 0 else 0
-    graham_br = (15 * lpa * vpa) ** 0.5 if lpa > 0 and vpa > 0 else 0
-    bazin = (div_medio_12m * 12) / tlr if tlr > 0 else 0
-    cagr_lucros = row.get("CAGR_Lucros_5a", 0)
-    lynch = lpa * (cagr_lucros + dy_12m) if lpa > 0 else 0
-
-    valuations = [graham, graham_br, bazin, lynch]
-    agf_medio = sum(v for v in valuations if v > 0) / len([v for v in valuations if v > 0]) if any(v > 0 for v in valuations) else 0
-
-    upside_graham = ((graham / cotacao) - 1) * 100 if cotacao > 0 and graham > 0 else 0
-    upside_graham_br = ((graham_br / cotacao) - 1) * 100 if cotacao > 0 and graham_br > 0 else 0
-    upside_bazin = ((bazin / cotacao) - 1) * 100 if cotacao > 0 and bazin > 0 else 0
-    upside_lynch = ((lynch / cotacao) - 1) * 100 if cotacao > 0 and lynch > 0 else 0
-    upside_agf = ((agf_medio / cotacao) - 1) * 100 if cotacao > 0 and agf_medio > 0 else 0
-
-    return {
-        "Graham": round(graham, 2),
-        "Graham_BR": round(graham_br, 2),
-        "Bazin": round(bazin, 2),
-        "Lynch": round(lynch, 2),
-        "AGF_Medio": round(agf_medio, 2),
-        "Upside_Graham": round(upside_graham, 2),
-        "Upside_Graham_BR": round(upside_graham_br, 2),
-        "Upside_Bazin": round(upside_bazin, 2),
-        "Upside_Lynch": round(upside_lynch, 2),
-        "Upside_AGF_Medio": round(upside_agf, 2),
+    .metric-label-v2 {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 10px;
+        line-height: 1.3;
     }
 
-# ---------------------------------------------------------------------------
-# SELIC HISTORICA (serie 432 - META SELIC % ao ano, nao precisa converter)
-# ---------------------------------------------------------------------------
+    .metric-value-v2 {
+        font-size: 1.45rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+    }
 
-def get_selic_historico():
-    """Busca historico dos ultimos 10 anos da SELIC META (serie 432) do BCB.
-    Serie 432 ja vem em % ao ano - NAO converte de % ao dia."""
-    hoje = datetime.now()
-    data_inicial = hoje.replace(year=hoje.year - 10)
-    data_inicial_str = data_inicial.strftime("%d/%m/%Y")
+    .score-card-v2 { border-radius: 16px; padding: 24px; text-align: center; box-shadow: 0 10px 15px rgba(0,0,0,0.2); }
+    .score-number-v2 { font-size: 3.5rem; font-weight: 800; line-height: 1; margin-bottom: 8px; }
+    .score-label-v2 { font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+    .score-desc-v2 { font-size: 0.8rem; color: #94a3b8; margin-top: 6px; }
+    
+    .bh-card-v2 { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 2px solid; border-radius: 12px; padding: 14px; text-align: center; transition: all 0.3s ease; }
+    .bh-card-v2:hover { transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0,0,0,0.2); }
+    .bh-icon-v2 { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px auto; font-size: 16px; font-weight: 700; color: white; }
+    .bh-title-v2 { font-size: 0.75rem; font-weight: 600; color: #f1f5f9; margin-bottom: 2px; line-height: 1.2; }
+    .bh-desc-v2 { font-size: 0.65rem; color: #94a3b8; line-height: 1.2; }
+    
+    .pj-card-v2 { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 16px; text-align: center; transition: all 0.3s ease; }
+    .pj-card-v2:hover { transform: translateY(-2px); box-shadow: 0 8px 12px rgba(0,0,0,0.2); }
+    .pj-title-v2 { font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    .pj-valor-v2 { font-size: 1.2rem; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+    .pj-upside-v2 { font-size: 0.9rem; font-weight: 600; padding: 3px 10px; border-radius: 12px; display: inline-block; }
+    
+    .tooltip-container { position: relative; display: inline-block; }
+    .tooltip-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #475569; color: #f1f5f9; font-size: 11px; font-weight: 700; cursor: help; margin-left: 6px; transition: all 0.2s ease; }
+    .tooltip-icon:hover { background: #3b82f6; }
+    .tooltip-text { visibility: hidden; width: 280px; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #475569; color: #e2e8f0; text-align: left; border-radius: 10px; padding: 12px 14px; position: absolute; z-index: 1000; bottom: 125%; left: 50%; margin-left: -140px; opacity: 0; transition: opacity 0.3s; font-size: 0.8rem; line-height: 1.4; box-shadow: 0 10px 15px rgba(0,0,0,0.3); }
+    .tooltip-text::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #475569 transparent transparent transparent; }
+    .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial={data_inicial_str}"
+    st.markdown('<div class="analise-container">', unsafe_allow_html=True)
 
-    # Retry com timeout maior
-    for attempt in range(3):
-        try:
-            logger.info(f"Tentativa {attempt+1}/3 - BCB SELIC 432...")
-            resp = requests.get(url, timeout=60)
-            resp.raise_for_status()
-            dados = resp.json()
-
-            # Serie 432 ja vem em % ao ano - usar valor direto
-            registros = []
-            for d in dados:
-                valor_ano = safe_float(d.get("valor"), 0.0)
-                if valor_ano > 0:
-                    registros.append({
-                        "data": d.get("data"),
-                        "valor_dia": None,
-                        "valor_anual": round(valor_ano, 2)
-                    })
-
-            logger.info(f"SELIC 432 OK: {len(registros)} registros")
-            return registros
-        except Exception as e:
-            logger.warning(f"Tentativa {attempt+1} falhou: {e}")
-            if attempt < 2:
-                time.sleep(5)
-            else:
-                logger.error(f"Todas as tentativas falharam para SELIC 432")
-                return []
-
-def salvar_selic_json(historico):
-    """Salva historico SELIC em data/selic.json"""
-    if not historico:
+    df = load_data()
+    if df.empty:
+        st.warning("Dados nao disponiveis.")
         return
 
-    selic_data = {
-        "atualizacao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "fonte": "BCB - SGS Serie 432 (Meta SELIC)",
-        "periodo_dias": 10,
-        "total_registros": len(historico),
-        "atual": historico[-1]["valor_anual"] if historico else 0,
-        "minima": min(r["valor_anual"] for r in historico) if historico else 0,
-        "maxima": max(r["valor_anual"] for r in historico) if historico else 0,
-        "media": round(sum(r["valor_anual"] for r in historico) / len(historico), 2) if historico else 0,
-        "historico": historico
-    }
+    # ============================================================
+    # 1. SELETOR DE ATIVO (CORRIGIDO - session_state)
+    # ============================================================
+    df['Display'] = df['Ticker'] + ' - ' + df['Nome']
+    display_list = sorted([str(x) for x in df['Display'].tolist()])
 
-    with open(SELIC_FILE, "w", encoding="utf-8") as f:
-        json.dump(selic_data, f, ensure_ascii=False, indent=2)
+    ticker_from_ranking = st.session_state.get("ticker_destino")
 
-    logger.info(f"SELIC salva: {SELIC_FILE} ({len(historico)} registros)")
+    default_index = 0
+    if ticker_from_ranking:
+        for i, disp in enumerate(display_list):
+            if disp.startswith(ticker_from_ranking + ' -'):
+                default_index = i
+                break
+        if "ticker_destino" in st.session_state:
+            del st.session_state["ticker_destino"]
 
-# ---------------------------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------------------------
+    ativo_selecionado = st.selectbox(
+        "Selecione o ativo",
+        options=display_list,
+        index=default_index,
+        key="ativo_selector_v2"
+    )
 
-def main():
-    logger.info("=" * 60)
-    logger.info("SOBRAL INVEST - Atualizacao de Ativos")
-    logger.info("=" * 60)
+    ticker = ativo_selecionado.split(' - ')[0]
+    ativo = df[df['Ticker'] == ticker].iloc[0] if len(df[df['Ticker'] == ticker]) > 0 else None
 
-    # 1. Busca SELIC historica (serie 432 - Meta SELIC) e salva JSON
-    logger.info("Buscando SELIC historica (serie 432 - Meta SELIC)...")
-    selic_historico = get_selic_historico()
-    salvar_selic_json(selic_historico)
+    if ativo is None:
+        st.error("Ativo nao encontrado.")
+        return
 
-    # 2. Pega SELIC atual do historico para valuation
-    selic = selic_historico[-1]["valor_anual"] if selic_historico else 13.75
-    logger.info(f"SELIC atual (serie 432 - Meta): {selic}%")
+    # ============================================================
+    # INFO DO ATIVO - SETOR/SUBSETOR/SEGMENTO
+    # ============================================================
+    st.markdown(f"""
+    <div style="display: flex; gap: 24px; margin: 8px 0 16px 0; padding: 0;">
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Setor</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Setor', 'N/A')}</span></div>
+        <div style="color: #475569;">&rsaquo;</div>
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">SubSetor</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('SubSetor', 'N/A')}</span></div>
+        <div style="color: #475569;">&rsaquo;</div>
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Segmento</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Segmento', 'N/A')}</span></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # 3. Busca dados MFinance
-    client = MFinanceClient()
-    stocks = client.get_stocks()
-    indicators = client.get_indicators()
+    st.markdown("<div style='margin: 16px 0;'></div>", unsafe_allow_html=True)
 
-    stock_symbols = {s.get("symbol") for s in stocks if s.get("symbol")}
-    ind_symbols = {i.get("symbol") for i in indicators if i.get("symbol")}
-    all_symbols = sorted(stock_symbols | ind_symbols)
+    # ============================================================
+    # WIDGET TRADINGVIEW DO ATIVO
+    # ============================================================
+    tv_symbol = f"BMFBOVESPA:{ticker}"
+    tv_chart = f"""
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
+      {{"symbols": [["{tv_symbol}|1D"]], "chartOnly": false, "width": "100%", "height": "350", "locale": "br", "colorTheme": "dark", "autosize": false, "showVolume": true, "showMA": false, "hideDateRanges": false, "hideMarketStatus": false, "hideSymbolLogo": false, "scalePosition": "right", "scaleMode": "Normal", "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif", "fontSize": "10", "noTimeScale": false, "valuesTracking": "1", "changeMode": "price-and-percent", "chartType": "area", "maLineColor": "#2962FF", "maLineWidth": 1, "maLength": 9, "lineWidth": 2, "lineType": 0, "dateRanges": ["1d|1", "1m|30", "3m|60", "12m|1D", "60m|1W", "all|1M"]}}
+      </script>
+    </div>
+    """
+    components.html(tv_chart, height=360)
 
-    dividends_map = client.get_all_dividends(all_symbols, delay=0.2)
+    # ============================================================
+    # 3. VALUATION - 6 colunas x 2 linhas (COM CORES SEMANTICAS)
+    # ============================================================
+    st.markdown('<div class="section-title-v2">Valuation</div>', unsafe_allow_html=True)
 
-    merged = merge_mfinance_data(stocks, indicators, dividends_map)
-    logger.info(f"Total antes do filtro: {len(merged)} tickers")
+    valuation_data = [
+        ("P/L (PL)", f"{ativo.get('PL', 0):.2f}x"),
+        ("P/VP (PVP)", f"{ativo.get('PVP', 0):.2f}x"),
+        ("P/E (PE)", f"{ativo.get('PE', 0):.2f}x"),
+        ("EPS", f"R$ {ativo.get('EPS', 0):.2f}"),
+        ("PSR (P/Receita)", f"{ativo.get('PSR', 0):.2f}x"),
+        ("P/Ativo", f"{ativo.get('PAtivo', 0):.2f}x"),
+        ("P/Cap.Giro", f"{ativo.get('PCapGiro', 0):.2f}x"),
+        ("P/Ativo Circ. Liq.", f"{ativo.get('PAtivoCircLiq', 0):.2f}x"),
+        ("P/EBIT", f"{ativo.get('PEBIT', 0):.2f}x"),
+        ("P/EBITDA", f"{ativo.get('PEBITDA', 0):.2f}x"),
+        ("EV/EBIT", f"{ativo.get('EV_EBIT', 0):.2f}x"),
+        ("EV/EBITDA", f"{ativo.get('EV_EBITDA', 0):.2f}x"),
+    ]
 
-    # -----------------------------------------------------------------------
-    # ENGENHARIA REVERSA & CORRECOES DE DADOS
-    # -----------------------------------------------------------------------
-    for row in merged:
-        mc = row.get("Market_Cap", 0)
-        cot = row.get("Cotacao", 0)
+    for row_idx in range(2):
+        cols = st.columns(6)
+        for col_idx in range(6):
+            idx = row_idx * 6 + col_idx
+            if idx < len(valuation_data):
+                label, value = valuation_data[idx]
+                sem_color = get_semantic_color(label, value)
+                cols[col_idx].markdown(f"""
+                <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
+                    <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
+                    <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 4. RENTABILIDADE - 4 colunas x 2 linhas (COM CORES SEMANTICAS)
+    # ============================================================
+    st.markdown('<div class="section-title-v2">Rentabilidade</div>', unsafe_allow_html=True)
+
+    rent_data = [
+        ("ROE", f"{ativo.get('ROE', 0):.2f}%"),
+        ("ROA", f"{ativo.get('ROA', 0):.2f}%"),
+        ("ROIC", f"{ativo.get('ROIC', 0):.2f}%"),
+        ("Giro Ativos", f"{ativo.get('GiroAtivos', 0):.2f}x"),
+        ("Margem Bruta", f"{ativo.get('MargemBruta', 0):.2f}%"),
+        ("Margem EBITDA", f"{ativo.get('MargemEBITDA', 0):.2f}%"),
+        ("Margem EBIT", f"{ativo.get('MargemEBIT', 0):.2f}%"),
+        ("Margem Liquida", f"{ativo.get('MargemLiquida', 0):.2f}%"),
+    ]
+
+    for row_idx in range(2):
+        cols = st.columns(4)
+        for col_idx in range(4):
+            idx = row_idx * 4 + col_idx
+            if idx < len(rent_data):
+                label, value = rent_data[idx]
+                sem_color = get_semantic_color(label, value)
+                cols[col_idx].markdown(f"""
+                <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
+                    <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
+                    <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 5. ENDIVIDAMENTO - 4 colunas x 2 linhas (COM CORES SEMANTICAS)
+    # ============================================================
+    st.markdown('<div class="section-title-v2">Endividamento</div>', unsafe_allow_html=True)
+
+    endiv_data = [
+        ("Div.Liq / Ativos", f"{ativo.get('DivLiquida_Ativos', 0):.2f}x"),
+        ("Div.Liq / PL", f"{ativo.get('DivLiquida_PL', 0):.2f}x"),
+        ("Div.Liq / EBIT", f"{ativo.get('DivLiquida_EBIT', 0):.2f}x"),
+        ("Div.Liq / EBITDA", f"{ativo.get('DivLiquida_EBITDA', 0):.2f}x"),
+        ("Liquidez Corrente", f"{ativo.get('LiquidezCorrente', 0):.2f}x"),
+        ("Passivos / Ativos", f"{ativo.get('Passivos_Ativos', 0):.2f}x"),
+        ("PL / Ativos", f"{ativo.get('PL_Ativos', 0):.2f}x"),
+    ]
+
+    for row_idx in range(2):
+        cols = st.columns(4)
+        for col_idx in range(4):
+            idx = row_idx * 4 + col_idx
+            if idx < len(endiv_data):
+                label, value = endiv_data[idx]
+                sem_color = get_semantic_color(label, value)
+                cols[col_idx].markdown(f"""
+                <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
+                    <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
+                    <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 6. RESULTADO - 6 colunas x 1 linha (COM CORES SEMANTICAS)
+    # ============================================================
+    st.markdown('<div class="section-title-v2">Resultado</div>', unsafe_allow_html=True)
+
+    res_data = [
+        ("LPA", f"R$ {ativo.get('LPA', 0):.2f}"),
+        ("VPA", f"R$ {ativo.get('VPA', 0):.2f}"),
+        ("Patrimonio Liq.", f"R$ {ativo.get('Patrimonio', 0)/1e9:.2f}B"),
+        ("Lucro Liquido", f"R$ {ativo.get('Lucro_Liquido', 0)/1e9:.2f}B"),
+        ("EBIT", f"R$ {ativo.get('EBIT', 0)/1e9:.2f}B"),
+        ("Receita Liq.", f"R$ {ativo.get('Receita_Liquida', 0)/1e9:.2f}B"),
+    ]
+
+    cols_res = st.columns(6)
+    for i, (label, value) in enumerate(res_data):
+        sem_color = get_semantic_color(label, value)
+        cols_res[i].markdown(f"""
+        <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
+            <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
+            <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 7. CRESCIMENTO - 1 linha (COM CORES SEMANTICAS)
+    # ============================================================
+    st.markdown('<div class="section-title-v2">Crescimento</div>', unsafe_allow_html=True)
+
+    cresc_data = [
+        ("CAGR Receitas 5a", f"{ativo.get('CAGR_Receitas_5a', 0):.2f}%"),
+        ("CAGR Lucros 5a", f"{ativo.get('CAGR_Lucros_5a', 0):.2f}%"),
+        ("Qtd. de Acoes", f"{ativo.get('Qtd_Acoes', 0)/1e9:.2f}B"),
+    ]
+
+    cols_cresc = st.columns(3)
+    for i, (label, value) in enumerate(cresc_data):
+        sem_color = get_semantic_color(label, value)
+        cols_cresc[i].markdown(f"""
+        <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
+            <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
+            <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 8. DIVIDENDOS - 1 linha (COM CORES SEMANTICAS)
+    # ============================================================
+    st.markdown('<div class="section-title-v2">Dividendos</div>', unsafe_allow_html=True)
+
+    div_data = [
+        ("DY Atual", f"{ativo.get('DY', 0):.2f}%"),
+        ("DY 12 meses", f"{ativo.get('DY_12m', 0):.2f}%"),
+        ("Div. Medio 12m", f"R$ {ativo.get('Dividendo_Medio_12m', 0):.4f}"),
+        ("Div. Total 12m", f"R$ {ativo.get('Dividendo_Total_12m', 0):.4f}"),
+        ("Div. Ultimo", f"R$ {ativo.get('Dividendo_Ultimo', 0):.4f}"),
+        ("Qtd. Div. 12m", f"{int(ativo.get('Qtd_Dividendos_12m', 0))}"),
+        ("Div. Medio 6a", f"R$ {ativo.get('Dividendo_Medio_6a', 0):.4f}"),
+    ]
+
+    cols_div = st.columns(7)
+    for i, (label, value) in enumerate(div_data):
+        sem_color = get_semantic_color(label, value)
+        cols_div[i].markdown(f"""
+        <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
+            <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
+            <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 9. PRECO JUSTO - lado a lado com upside
+    # ============================================================
+    st.markdown('<div class="section-title-v2">Preco Justo</div>', unsafe_allow_html=True)
+
+    pj_data = [
+        ("Graham", ativo.get('Graham', 0), ativo.get('Upside_Graham', 0)),
+        ("Graham BR", ativo.get('Graham_BR', 0), ativo.get('Upside_Graham_BR', 0)),
+        ("Bazin", ativo.get('Bazin', 0), ativo.get('Upside_Bazin', 0)),
+        ("Lynch", ativo.get('Lynch', 0), ativo.get('Upside_Lynch', 0)),
+        ("AGF Medio", ativo.get('AGF_Medio', 0), ativo.get('Upside_AGF_Medio', 0)),
+    ]
+
+    cols_pj = st.columns(5)
+    for i, (title, preco, upside) in enumerate(pj_data):
+        try:
+            upside_val = float(upside)
+            if upside_val > 0:
+                up_color, up_bg = "#10b981", "#065f46"
+            elif upside_val < 0:
+                up_color, up_bg = "#ef4444", "#991b1b"
+            else:
+                up_color, up_bg = "#94a3b8", "#475569"
+        except:
+            up_color, up_bg = "#94a3b8", "#475569"
+            upside_val = 0
+
+        preco_str = f"R$ {preco:.2f}" if preco > 0 else "N/A"
+        upside_str = f"{upside_val:+.1f}%" if preco > 0 else "-"
+
+        cols_pj[i].markdown(f"""
+        <div class="pj-card-v2" style="border-left: 4px solid {up_color};">
+            <div class="pj-title-v2">{title}</div>
+            <div class="pj-valor-v2">{preco_str}</div>
+            <div class="pj-upside-v2" style="background: {up_bg}40; color: {up_color};">{upside_str}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================================
+    # 10. SCORE CS (11 CRITÉRIOS - CAGR RECEITA ADICIONADO)
+    # ============================================================
+    st.markdown('<div class="section-title-v2">SCORE CS</div>', unsafe_allow_html=True)
+
+    bh_items = [
+        ("ROE > 10%", ativo.get('ROE_10pct', 0), "Rentabilidade do patrimonio"),
+        ("DY > 6%", ativo.get('DY_6pct', 0), "Dividend Yield atrativo"),
+        ("Div.Liq/EBITDA < 2.5", ativo.get('DivLiq_EBITDA_2_5', 0), "Endividamento controlado"),
+        ("PL < 15", ativo.get('PL_15', 0), "Preco nao esta caro"),
+        ("PVP < 2", ativo.get('PVP_2', 0), "Proximo do valor patrimonial"),
+        ("Margem > 10%", ativo.get('Margem_10pct', 0), "Lucratividade saudavel"),
+        ("Liq.Corrente > 1", ativo.get('LiqCorrente_1', 0), "Capacidade de pagamento"),
+        ("CAGR > 5%", ativo.get('CAGR_5pct', 0), "Crescimento consistente"),
+        ("ROIC > 10%", ativo.get('ROIC_10pct', 0), "Retorno sobre capital"),
+        ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diaria"),
         
-        # 1. Qtd_Acoes = Market_Cap / Cotação
-        if mc > 0 and cot > 0:
-            row["Qtd_Acoes"] = round(mc / cot, 0)
-            
-        # 2. Lucro_Liquido = Market_Cap / PL
-        pl = row.get("PL", 0)
-        if mc > 0 and pl > 0:
-            row["Lucro_Liquido"] = mc / pl
-            
-        # 3. Patrimonio = Market_Cap / PVP
-        pvp = row.get("PVP", 0)
-        if mc > 0 and pvp > 0:
-            row["Patrimonio"] = mc / pvp
-            
-        # 4. Receita_Liquida = Market_Cap / PSR
-        psr = row.get("PSR", 0)
-        if mc > 0 and psr > 0:
-            row["Receita_Liquida"] = mc / psr
-            
-        # 5. EBIT = Market_Cap / PEBIT
-        pebit = row.get("PEBIT", 0)
-        if mc > 0 and pebit > 0:
-            row["EBIT"] = mc / pebit
-
-        # 6. CORREÇÃO DIVLIQ/PL (Fallback Inteligente)
-        # Se a API retornou 0, calculamos via: (DivLiq/EBIT * EBIT) / Patrimonio
-        div_liq_pl_api = row.get("DivLiquida_PL", 0)
-        if div_liq_pl_api == 0:
-            div_liq_ebit_ratio = row.get("DivLiquida_EBIT", 0)
-            ebit_calc = row.get("EBIT", 0)
-            patrimonio_calc = row.get("Patrimonio", 0)
-            
-            # Só calcula se tivermos os componentes necessários
-            if div_liq_ebit_ratio > 0 and ebit_calc > 0 and patrimonio_calc > 0:
-                # DivLiquida_PL = (DivLiquida/EBIT * EBIT) / PL
-                # Nota: DivLiquida/EBIT é uma razão, EBIT é absoluto, PL é absoluto.
-                # Resultado é uma razão (adimensional).
-                row["DivLiquida_PL"] = (div_liq_ebit_ratio * ebit_calc) / patrimonio_calc
-
-    # 7. Calculos Padrão (DY, Score, Valuation)
-    for row in merged:
-        row["DY_12m"] = round(calcular_dy_12m(row), 2)
-        score, classif, checks = calcular_score_cs(row)
-        row["Score_CS"] = score
-        row["Score_CS_Classificacao"] = classif
-        for k, v in checks.items():
-            row[k] = 1 if v else 0
-        val = calcular_valuation(row, selic)
-        row.update(val)
-
-    merged_filtrado = [r for r in merged if r.get("Nome") and r.get("Nome") != "#N/A"]
-    removidos = len(merged) - len(merged_filtrado)
-    logger.info(f"Removidos {removidos} tickers com Nome=#N/A")
-    logger.info(f"Total apos filtro: {len(merged_filtrado)} tickers")
-
-    df = pd.DataFrame(merged_filtrado)
-
-    colunas_primeiras = [
-        "Ticker", "Nome", "Setor", "SubSetor", "Segmento",
-        "Cotacao", "Variacao", "Abertura", "Maxima", "Minima",
-        "Fechamento_Anterior", "Volume", "Volume_Medio",
-        "Maxima_52s", "Minima_52s", "Market_Cap",
-        "PE", "EPS", "DY", "DY_12m",
-        "PL", "PVP", "PSR", "PAtivo", "PCapGiro", "PAtivoCircLiq",
-        "PEBIT", "PEBITDA", "EV_EBIT", "EV_EBITDA",
-        "LPA", "VPA", "Patrimonio", "Lucro_Liquido", "EBIT", "Receita_Liquida",
-        "ROE", "ROA", "ROIC", "GiroAtivos",
-        "MargemBruta", "MargemEBITDA", "MargemEBIT", "MargemLiquida",
-        "DivLiquida_Ativos", "DivLiquida_PL", "DivLiquida_EBIT", "DivLiquida_EBITDA",
-        "LiquidezCorrente", "Passivos_Ativos", "PL_Ativos",
-        "CAGR_Receitas_5a", "CAGR_Lucros_5a", "Qtd_Acoes",
-        "Dividendo_Medio_12m", "Dividendo_Total_12m", "Dividendo_Ultimo",
-        "Qtd_Dividendos_12m", "Dividendo_Medio_6a",
+        # ✅ NOVO CRITÉRIO IMPLEMENTADO
+        ("CAGR Receita > 0", 
+         1 if (pd.notna(ativo.get('CAGR_Receitas_5a')) and float(ativo.get('CAGR_Receitas_5a', 0)) > 0) else 0, 
+         "Crescimento real da receita nos ultimos 5 anos"),
     ]
-    colunas_valuation = [
-        "Graham", "Graham_BR", "Bazin", "Lynch", "AGF_Medio",
-        "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin", "Upside_Lynch", "Upside_AGF_Medio",
-    ]
-    colunas_score = ["Score_CS", "Score_CS_Classificacao"]
-    colunas_checks = [
-        "ROE_10pct", "DY_6pct", "DivLiq_EBITDA_2_5", "PL_15", "PVP_2",
-        "Margem_10pct", "LiqCorrente_1", "CAGR_5pct", "ROIC_10pct", "Volume_1M",
-    ]
-    colunas_extras = [c for c in df.columns if c not in colunas_primeiras + colunas_valuation + colunas_score + colunas_checks]
 
-    ordem_final = colunas_primeiras + colunas_valuation + colunas_score + colunas_checks + colunas_extras
-    ordem_final = [c for c in ordem_final if c in df.columns]
-    df = df[ordem_final]
+    # Calcula o score somando todos os criterios (agora 11 no total)
+    score = sum(item[1] for item in bh_items)
 
-    df.to_excel(ATIVOS_FILE, index=False, engine="openpyxl", sheet_name="Dados")
-    df.to_csv(ATIVOS_CSV, index=False)
+    # Classificacao visual do score (mantida original conforme solicitado)
+    if score >= 9:
+        score_color, score_bg, score_label = "#10b981", "#065f46", "Excelente"
+    elif score >= 7:
+        score_color, score_bg, score_label = "#84cc16", "#3f6212", "Bom"
+    elif score >= 5:
+        score_color, score_bg, score_label = "#f59e0b", "#92400e", "Regular"
+    elif score >= 3:
+        score_color, score_bg, score_label = "#f97316", "#7c2d12", "Fraco"
+    else:
+        score_color, score_bg, score_label = "#dc2626", "#7f1d1d", "Pessimo"
 
-    logger.info(f"\nPlanilha salva:")
-    logger.info(f" Excel: {ATIVOS_FILE}")
-    logger.info(f" CSV: {ATIVOS_CSV}")
-    logger.info(f" Linhas: {len(df)}")
-    logger.info(f" Colunas: {len(df.columns)}")
+    # Exibicao do card principal do Score
+    score_cols = st.columns([2, 3, 2])
+    with score_cols[1]:
+        st.markdown(f"""
+        <div class="score-card-v2" style="background: linear-gradient(135deg, {score_bg} 0%, {score_color}20 100%); border: 2px solid {score_color};">
+            <div class="score-number-v2" style="color: {score_color};">{score}</div>
+            <div class="score-label-v2" style="color: {score_color};">{score_label}</div>
+            <div class="score-desc-v2">de 10 pontos</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    score_counts = df["Score_CS_Classificacao"].value_counts().to_dict()
-    logger.info(f"\nDistribuicao Score CS:")
-    for cls in ["Excelente", "Bom", "Regular", "Fraco", "Pessimo"]:
-        if cls in score_counts:
-            logger.info(f" {cls}: {score_counts[cls]}")
+    st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
 
-    return df
+    # Exibicao dos cards individuais de cada criterio
+    cols_bh = st.columns(5)
+    for i, (title, value, desc) in enumerate(bh_items):
+        is_true = bool(value) if not pd.isna(value) else False
+        icon = "V" if is_true else "X"
+        border_color = "#10b981" if is_true else "#ef4444"
+        bg_icon = "#10b981" if is_true else "#ef4444"
 
-if __name__ == "__main__":
-    main()
+        cols_bh[i % 5].markdown(f"""
+        <div class="bh-card-v2" style="border-color: {border_color}60;">
+            <div class="bh-icon-v2" style="background: {bg_icon};">{icon}</div>
+            <div class="bh-title-v2">{title}</div>
+            <div class="bh-desc-v2">{desc}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
