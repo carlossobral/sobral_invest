@@ -175,9 +175,7 @@ def pagina_analise():
 
     st.markdown('<div class="analise-container">', unsafe_allow_html=True)
 
-    with st.spinner("Carregando dados de mercado..."):
-        df = load_data()
-        
+    df = load_data()
     if df.empty:
         st.warning("Dados nao disponiveis.")
         return
@@ -444,7 +442,7 @@ def pagina_analise():
         """, unsafe_allow_html=True)
 
     # ============================================================
-    # 10. SCORE CS
+    # 10. SCORE CS (CLASSIFICACAO ORIGINAL MANTIDA)
     # ============================================================
     st.markdown('<div class="section-title-v2">SCORE CS</div>', unsafe_allow_html=True)
 
@@ -461,7 +459,10 @@ def pagina_analise():
         ("Volume > 1M", ativo.get('Volume_1M', 0), "Liquidez diaria"),
     ]
 
-    score = int(ativo.get('Score_CS', 0))
+    # Calcula o score somando todos os criterios (10 no total)
+    score = sum(item[1] for item in bh_items)
+
+    # Classificacao visual do score (escala original 0-10)
     if score >= 9:
         score_color, score_bg, score_label = "#10b981", "#065f46", "Excelente"
     elif score >= 7:
@@ -473,6 +474,7 @@ def pagina_analise():
     else:
         score_color, score_bg, score_label = "#dc2626", "#7f1d1d", "Pessimo"
 
+    # Exibicao do card principal do Score
     score_cols = st.columns([2, 3, 2])
     with score_cols[1]:
         st.markdown(f"""
@@ -485,6 +487,7 @@ def pagina_analise():
 
     st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
 
+    # Exibicao dos cards individuais de cada criterio
     cols_bh = st.columns(5)
     for i, (title, value, desc) in enumerate(bh_items):
         is_true = bool(value) if not pd.isna(value) else False
