@@ -183,7 +183,7 @@ def pagina_rankings():
                         # ✅ NAVEGAÇÃO OFICIAL STREAMLIT (sem query_params, sem reset)
                         if st.button(f"{ticker}", key=f"nav_{ticker}_{col_indicador}_{idx}", use_container_width=False):
                             st.session_state["ticker_destino"] = ticker
-                            st.switch_page("pages/analise.py")  # Ajuste para "analise.py" se não estiver na pasta pages/
+                            st.switch_page("analise.py")  # Ajuste para "analise.py" se não estiver na pasta pages/
                         
                         st.markdown(f"""
                         <div class="ranking-card">
