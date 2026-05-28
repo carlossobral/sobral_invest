@@ -2,9 +2,10 @@ import pandas as pd
 import streamlit as st
 
 def load_data():
-    """Carrega dados do data/ativos.xlsx com conversao correta."""
+    """Carrega dados do data/ativos.xlsx com conversão correta."""
     try:
-        df = pd.read_excel("data/ativos.xlsx", sheet_name="Dados")
+        # Ajustado para ler a aba DADOS! criada pelo novo app.py
+        df = pd.read_excel("data/ativos.xlsx", sheet_name="DADOS!")
     except:
         try:
             df = pd.read_csv("data/ativos.csv", encoding="utf-8-sig")
@@ -12,24 +13,18 @@ def load_data():
             st.error("Erro ao carregar dados. Verifique se data/ativos.xlsx ou data/ativos.csv existem.")
             return pd.DataFrame()
 
-    # Converter colunas numericas
+    # Lista atualizada com os NOVOS nomes de colunas definidos no app.py
     numeric_cols = [
-        "Cotacao", "Variacao", "Volume", "Volume_Medio", "Market_Cap",
-        "PE", "EPS", "DY", "DY_12m",
-        "PL", "PVP", "PSR", "PAtivo", "PCapGiro", "PAtivoCircLiq",
-        "PEBIT", "PEBITDA", "EV_EBIT", "EV_EBITDA",
-        "LPA", "VPA", "Patrimonio", "Lucro_Liquido", "EBIT", "Receita_Liquida",
-        "ROE", "ROA", "ROIC", "GiroAtivos",
-        "MargemBruta", "MargemEBITDA", "MargemEBIT", "MargemLiquida",
-        "DivLiquida_Ativos", "DivLiquida_PL", "DivLiquida_EBIT", "DivLiquida_EBITDA",
-        "LiquidezCorrente", "Passivos_Ativos", "PL_Ativos",
-        "CAGR_Receitas_5a", "CAGR_Lucros_5a",
-        "Dividendo_Medio_12m", "Dividendo_Total_12m", "Dividendo_Ultimo",
-        "Dividendo_Medio_6a",
-        "Graham", "Graham_BR", "Bazin", "Lynch", "AGF_Medio",
-        "Upside_Graham", "Upside_Graham_BR", "Upside_Bazin", "Upside_Lynch", "Upside_AGF_Medio",
-        "Score_CS",
-        "Beta", "Media_50d", "Media_200d", "FCO", "FCL"
+        "Preco_Atual", "Volume", "Valor_Mercado", "Qtd_Acoes", "DY_Atual",
+        "P_L", "P_VP", "P_Receita", "P_Ativo", "P_Cap_Giro", "P_Ativo_Circ_Liq",
+        "P_EBIT", "P_EBITDA", "EV_EBIT", "EV_EBITDA",
+        "ROE", "ROA", "ROIC", "Giro_Ativos",
+        "Margem_Bruta", "Margem_EBITDA", "Margem_EBIT", "Margem_Liquida",
+        "Div_Liq_Ativos", "Div_Liq_PL", "Div_Liq_EBIT", "Div_Liq_EBITDA",
+        "Liquidez_Corrente", "Passivos_Ativos", "PL_Ativos",
+        "CAGR_Receitas_5a", "CAGR_Lucros_5a", "Receita_Liquida", "Lucro_Liquido", "EBIT",
+        "Div_1A", "Div_2A", "Div_3A", "Div_4A", "Div_5A", "Consistencia_5A",
+        "Anos_Listagem", "Score_CS"
     ]
 
     for col in numeric_cols:
