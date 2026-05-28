@@ -54,8 +54,8 @@ def main():
         pages = [
             ("home", "🏠 Home"),
             ("analise", "🔍 Análise"),
-            ("rankings", " Rankings"),
-            ("comparativo", " Comparativo"),
+            ("rankings", "🏆 Rankings"),
+            ("comparativo", "📊 Comparativo"),
             ("configuracoes", "⚙️ Configurações")
         ]
 
