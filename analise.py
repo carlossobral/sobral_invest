@@ -55,6 +55,31 @@ TOOLTIP_DESC = {
     "AGF Medio": "Preco Justo Medio das 4 formulas (Graham, Graham_BR, Bazin, Lynch). Consenso de valuation.",
 }
 
+def get_semantic_color(metric_label, value_str):
+    """Retorna cor semantica financeira baseada no tipo do indicador."""
+    try:
+        clean = value_str.replace('R$', '').replace('x', '').replace('%', '').replace('+', '').replace('-', '').strip()
+        val = float(clean)
+    except:
+        return "#94a3b8"  # Cinza neutro para erros ou N/A
+
+    label = metric_label.lower()
+    
+    # Indicadores onde MENOR é melhor (Dívida, Multiplos de Preço)
+    if any(k in label for k in ["p/l", "p/vp", "ev/ebit", "div.liq", "passivos", "psr"]):
+        if val < 10: return "#10b981"  # Verde (Bom)
+        if val < 20: return "#f59e0b"  # Amarelo (Atencao)
+        return "#ef4444"               # Vermelho (Alto/Ruim)
+    
+    # Indicadores onde MAIOR é melhor (Rentabilidade, Margens, Crescimento, DY)
+    if any(k in label for k in ["roe", "roic", "margem", "dy ", "cagr", "upside", "score", "roa"]):
+        if val > 15: return "#10b981"  # Verde (Bom)
+        if val > 5:  return "#f59e0b"  # Amarelo (Medio)
+        return "#ef4444"               # Vermelho (Baixo/Ruim)
+        
+    # Neutros (Preços, Volumes, Nomes, LPA, VPA, Quantidades)
+    return "#38bdf8"
+
 def tooltip_html(label_text):
     desc = TOOLTIP_DESC.get(label_text, "")
     if desc:
@@ -68,200 +93,83 @@ def pagina_analise():
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-    .analise-container * {
-        font-family: 'Inter', sans-serif;
+    .analise-container * { font-family: 'Inter', sans-serif; }
+    .analise-container { padding: 0 8px 40px 8px; }
+
+    .section-title-v2 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin: 40px 0 22px 0;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #334155;
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
 
     .metric-card-v2 {
         background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
         border: 1px solid #334155;
         border-radius: 12px;
-        padding: 16px;
+        padding: 18px 16px;
         transition: all 0.3s ease;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 95px;
     }
     .metric-card-v2:hover {
         transform: translateY(-2px);
-        box-shadow: 0 8px 12px rgba(0,0,0,0.2);
+        box-shadow: 0 8px 12px rgba(0,0,0,0.25);
         border-color: #3b82f6;
     }
+
     .metric-label-v2 {
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         font-weight: 600;
         color: #94a3b8;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 8px;
-        line-height: 1.2;
-    }
-    .metric-value-v2 {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #f1f5f9;
-        line-height: 1.2;
-    }
-    .score-card-v2 {
-        border-radius: 16px;
-        padding: 24px;
-        text-align: center;
-        box-shadow: 0 10px 15px rgba(0,0,0,0.2);
-    }
-    .score-number-v2 {
-        font-size: 3.5rem;
-        font-weight: 800;
-        line-height: 1;
-        margin-bottom: 8px;
-    }
-    .score-label-v2 {
-        font-size: 1.1rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-    }
-    .score-desc-v2 {
-        font-size: 0.8rem;
-        color: #94a3b8;
-        margin-top: 6px;
-    }
-    .bh-card-v2 {
-        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-        border: 2px solid;
-        border-radius: 12px;
-        padding: 14px;
-        text-align: center;
-        transition: all 0.3s ease;
-    }
-    .bh-card-v2:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 10px rgba(0,0,0,0.2);
-    }
-    .bh-icon-v2 {
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 8px auto;
-        font-size: 16px;
-        font-weight: 700;
-        color: white;
-    }
-    .bh-title-v2 {
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: #f1f5f9;
-        margin-bottom: 2px;
-        line-height: 1.2;
-    }
-    .bh-desc-v2 {
-        font-size: 0.65rem;
-        color: #94a3b8;
-        line-height: 1.2;
-    }
-    .section-title-v2 {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #f1f5f9;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        margin: 28px 0 16px 0;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #334155;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .pj-card-v2 {
-        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 16px;
-        text-align: center;
-        transition: all 0.3s ease;
-    }
-    .pj-card-v2:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 12px rgba(0,0,0,0.2);
-    }
-    .pj-title-v2 {
-        font-size: 0.7rem;
-        font-weight: 600;
-        color: #94a3b8;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
         margin-bottom: 10px;
+        line-height: 1.3;
     }
-    .pj-valor-v2 {
-        font-size: 1.2rem;
+
+    .metric-value-v2 {
+        font-size: 1.45rem;
         font-weight: 700;
         color: #f1f5f9;
-        margin-bottom: 4px;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
     }
-    .pj-upside-v2 {
-        font-size: 0.9rem;
-        font-weight: 600;
-        padding: 3px 10px;
-        border-radius: 12px;
-        display: inline-block;
-    }
-    .tooltip-container {
-        position: relative;
-        display: inline-block;
-    }
-    .tooltip-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: #475569;
-        color: #f1f5f9;
-        font-size: 11px;
-        font-weight: 700;
-        cursor: help;
-        margin-left: 6px;
-        transition: all 0.2s ease;
-    }
-    .tooltip-icon:hover {
-        background: #3b82f6;
-    }
-    .tooltip-text {
-        visibility: hidden;
-        width: 280px;
-        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-        border: 1px solid #475569;
-        color: #e2e8f0;
-        text-align: left;
-        border-radius: 10px;
-        padding: 12px 14px;
-        position: absolute;
-        z-index: 1000;
-        bottom: 125%;
-        left: 50%;
-        margin-left: -140px;
-        opacity: 0;
-        transition: opacity 0.3s;
-        font-size: 0.8rem;
-        line-height: 1.4;
-        box-shadow: 0 10px 15px rgba(0,0,0,0.3);
-    }
-    .tooltip-text::after {
-        content: "";
-        position: absolute;
-        top: 100%;
-        left: 50%;
-        margin-left: -5px;
-        border-width: 5px;
-        border-style: solid;
-        border-color: #475569 transparent transparent transparent;
-    }
-    .tooltip-container:hover .tooltip-text {
-        visibility: visible;
-        opacity: 1;
-    }
+
+    .score-card-v2 { border-radius: 16px; padding: 24px; text-align: center; box-shadow: 0 10px 15px rgba(0,0,0,0.2); }
+    .score-number-v2 { font-size: 3.5rem; font-weight: 800; line-height: 1; margin-bottom: 8px; }
+    .score-label-v2 { font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+    .score-desc-v2 { font-size: 0.8rem; color: #94a3b8; margin-top: 6px; }
+    
+    .bh-card-v2 { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 2px solid; border-radius: 12px; padding: 14px; text-align: center; transition: all 0.3s ease; }
+    .bh-card-v2:hover { transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0,0,0,0.2); }
+    .bh-icon-v2 { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px auto; font-size: 16px; font-weight: 700; color: white; }
+    .bh-title-v2 { font-size: 0.75rem; font-weight: 600; color: #f1f5f9; margin-bottom: 2px; line-height: 1.2; }
+    .bh-desc-v2 { font-size: 0.65rem; color: #94a3b8; line-height: 1.2; }
+    
+    .pj-card-v2 { background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 12px; padding: 16px; text-align: center; transition: all 0.3s ease; }
+    .pj-card-v2:hover { transform: translateY(-2px); box-shadow: 0 8px 12px rgba(0,0,0,0.2); }
+    .pj-title-v2 { font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    .pj-valor-v2 { font-size: 1.2rem; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+    .pj-upside-v2 { font-size: 0.9rem; font-weight: 600; padding: 3px 10px; border-radius: 12px; display: inline-block; }
+    
+    .tooltip-container { position: relative; display: inline-block; }
+    .tooltip-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #475569; color: #f1f5f9; font-size: 11px; font-weight: 700; cursor: help; margin-left: 6px; transition: all 0.2s ease; }
+    .tooltip-icon:hover { background: #3b82f6; }
+    .tooltip-text { visibility: hidden; width: 280px; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%); border: 1px solid #475569; color: #e2e8f0; text-align: left; border-radius: 10px; padding: 12px 14px; position: absolute; z-index: 1000; bottom: 125%; left: 50%; margin-left: -140px; opacity: 0; transition: opacity 0.3s; font-size: 0.8rem; line-height: 1.4; box-shadow: 0 10px 15px rgba(0,0,0,0.3); }
+    .tooltip-text::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #475569 transparent transparent transparent; }
+    .tooltip-container:hover .tooltip-text { visibility: visible; opacity: 1; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -273,12 +181,11 @@ def pagina_analise():
         return
 
     # ============================================================
-    # 1. SELETOR DE ATIVO (CORRIGIDO - FUNCIONA COM st.session_state)
+    # 1. SELETOR DE ATIVO (CORRIGIDO - session_state)
     # ============================================================
     df['Display'] = df['Ticker'] + ' - ' + df['Nome']
     display_list = sorted([str(x) for x in df['Display'].tolist()])
 
-    # ✅ Lê o ticker enviado pelo ranking
     ticker_from_ranking = st.session_state.get("ticker_destino")
 
     default_index = 0
@@ -287,7 +194,6 @@ def pagina_analise():
             if disp.startswith(ticker_from_ranking + ' -'):
                 default_index = i
                 break
-        # ✅ Limpa imediatamente para não travar em navegações manuais futuras
         if "ticker_destino" in st.session_state:
             del st.session_state["ticker_destino"]
 
@@ -310,20 +216,11 @@ def pagina_analise():
     # ============================================================
     st.markdown(f"""
     <div style="display: flex; gap: 24px; margin: 8px 0 16px 0; padding: 0;">
-        <div>
-            <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Setor</span>
-            <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Setor', 'N/A')}</span>
-        </div>
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Setor</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Setor', 'N/A')}</span></div>
         <div style="color: #475569;">&rsaquo;</div>
-        <div>
-            <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">SubSetor</span>
-            <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('SubSetor', 'N/A')}</span>
-        </div>
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">SubSetor</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('SubSetor', 'N/A')}</span></div>
         <div style="color: #475569;">&rsaquo;</div>
-        <div>
-            <span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Segmento</span>
-            <span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Segmento', 'N/A')}</span>
-        </div>
+        <div><span style="font-size: 0.7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Segmento</span><span style="font-size: 0.85rem; font-weight: 500; color: #f1f5f9; margin-left: 8px;">{ativo.get('Segmento', 'N/A')}</span></div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -337,50 +234,14 @@ def pagina_analise():
     <div class="tradingview-widget-container">
       <div class="tradingview-widget-container__widget"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js" async>
-      {{
-        "symbols": [
-          ["{tv_symbol}|1D"]
-        ],
-        "chartOnly": false,
-        "width": "100%",
-        "height": "350",
-        "locale": "br",
-        "colorTheme": "dark",
-        "autosize": false,
-        "showVolume": true,
-        "showMA": false,
-        "hideDateRanges": false,
-        "hideMarketStatus": false,
-        "hideSymbolLogo": false,
-        "scalePosition": "right",
-        "scaleMode": "Normal",
-        "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif",
-        "fontSize": "10",
-        "noTimeScale": false,
-        "valuesTracking": "1",
-        "changeMode": "price-and-percent",
-        "chartType": "area",
-        "maLineColor": "#2962FF",
-        "maLineWidth": 1,
-        "maLength": 9,
-        "lineWidth": 2,
-        "lineType": 0,
-        "dateRanges": [
-          "1d|1",
-          "1m|30",
-          "3m|60",
-          "12m|1D",
-          "60m|1W",
-          "all|1M"
-        ]
-      }}
+      {{"symbols": [["{tv_symbol}|1D"]], "chartOnly": false, "width": "100%", "height": "350", "locale": "br", "colorTheme": "dark", "autosize": false, "showVolume": true, "showMA": false, "hideDateRanges": false, "hideMarketStatus": false, "hideSymbolLogo": false, "scalePosition": "right", "scaleMode": "Normal", "fontFamily": "-apple-system, BlinkMacSystemFont, Trebuchet MS, Roboto, Ubuntu, sans-serif", "fontSize": "10", "noTimeScale": false, "valuesTracking": "1", "changeMode": "price-and-percent", "chartType": "area", "maLineColor": "#2962FF", "maLineWidth": 1, "maLength": 9, "lineWidth": 2, "lineType": 0, "dateRanges": ["1d|1", "1m|30", "3m|60", "12m|1D", "60m|1W", "all|1M"]}}
       </script>
     </div>
     """
     components.html(tv_chart, height=360)
 
     # ============================================================
-    # 3. VALUATION - 6 colunas x 2 linhas
+    # 3. VALUATION - 6 colunas x 2 linhas (COM CORES SEMANTICAS)
     # ============================================================
     st.markdown('<div class="section-title-v2">Valuation</div>', unsafe_allow_html=True)
 
@@ -405,15 +266,16 @@ def pagina_analise():
             idx = row_idx * 6 + col_idx
             if idx < len(valuation_data):
                 label, value = valuation_data[idx]
+                sem_color = get_semantic_color(label, value)
                 cols[col_idx].markdown(f"""
-                <div class="metric-card-v2">
+                <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
                     <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
-                    <div class="metric-value-v2">{value}</div>
+                    <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
     # ============================================================
-    # 4. RENTABILIDADE - 4 colunas x 2 linhas
+    # 4. RENTABILIDADE - 4 colunas x 2 linhas (COM CORES SEMANTICAS)
     # ============================================================
     st.markdown('<div class="section-title-v2">Rentabilidade</div>', unsafe_allow_html=True)
 
@@ -434,15 +296,16 @@ def pagina_analise():
             idx = row_idx * 4 + col_idx
             if idx < len(rent_data):
                 label, value = rent_data[idx]
+                sem_color = get_semantic_color(label, value)
                 cols[col_idx].markdown(f"""
-                <div class="metric-card-v2">
+                <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
                     <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
-                    <div class="metric-value-v2">{value}</div>
+                    <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
     # ============================================================
-    # 5. ENDIVIDAMENTO - 4 colunas x 2 linhas
+    # 5. ENDIVIDAMENTO - 4 colunas x 2 linhas (COM CORES SEMANTICAS)
     # ============================================================
     st.markdown('<div class="section-title-v2">Endividamento</div>', unsafe_allow_html=True)
 
@@ -462,15 +325,16 @@ def pagina_analise():
             idx = row_idx * 4 + col_idx
             if idx < len(endiv_data):
                 label, value = endiv_data[idx]
+                sem_color = get_semantic_color(label, value)
                 cols[col_idx].markdown(f"""
-                <div class="metric-card-v2">
+                <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
                     <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
-                    <div class="metric-value-v2">{value}</div>
+                    <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
     # ============================================================
-    # 6. RESULTADO - 6 colunas x 1 linha
+    # 6. RESULTADO - 6 colunas x 1 linha (COM CORES SEMANTICAS)
     # ============================================================
     st.markdown('<div class="section-title-v2">Resultado</div>', unsafe_allow_html=True)
 
@@ -485,15 +349,16 @@ def pagina_analise():
 
     cols_res = st.columns(6)
     for i, (label, value) in enumerate(res_data):
+        sem_color = get_semantic_color(label, value)
         cols_res[i].markdown(f"""
-        <div class="metric-card-v2">
+        <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
             <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
-            <div class="metric-value-v2">{value}</div>
+            <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
         </div>
         """, unsafe_allow_html=True)
 
     # ============================================================
-    # 7. CRESCIMENTO - 1 linha
+    # 7. CRESCIMENTO - 1 linha (COM CORES SEMANTICAS)
     # ============================================================
     st.markdown('<div class="section-title-v2">Crescimento</div>', unsafe_allow_html=True)
 
@@ -505,15 +370,16 @@ def pagina_analise():
 
     cols_cresc = st.columns(3)
     for i, (label, value) in enumerate(cresc_data):
+        sem_color = get_semantic_color(label, value)
         cols_cresc[i].markdown(f"""
-        <div class="metric-card-v2">
+        <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
             <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
-            <div class="metric-value-v2">{value}</div>
+            <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
         </div>
         """, unsafe_allow_html=True)
 
     # ============================================================
-    # 8. DIVIDENDOS - 1 linha
+    # 8. DIVIDENDOS - 1 linha (COM CORES SEMANTICAS)
     # ============================================================
     st.markdown('<div class="section-title-v2">Dividendos</div>', unsafe_allow_html=True)
 
@@ -529,10 +395,11 @@ def pagina_analise():
 
     cols_div = st.columns(7)
     for i, (label, value) in enumerate(div_data):
+        sem_color = get_semantic_color(label, value)
         cols_div[i].markdown(f"""
-        <div class="metric-card-v2">
+        <div class="metric-card-v2" style="border-left: 4px solid {sem_color};">
             <div class="metric-label-v2">{label}{tooltip_html(label)}</div>
-            <div class="metric-value-v2">{value}</div>
+            <div class="metric-value-v2" style="color: {sem_color};">{value}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -567,7 +434,7 @@ def pagina_analise():
         upside_str = f"{upside_val:+.1f}%" if preco > 0 else "-"
 
         cols_pj[i].markdown(f"""
-        <div class="pj-card-v2" style="border-color: {up_color}40;">
+        <div class="pj-card-v2" style="border-left: 4px solid {up_color};">
             <div class="pj-title-v2">{title}</div>
             <div class="pj-valor-v2">{preco_str}</div>
             <div class="pj-upside-v2" style="background: {up_bg}40; color: {up_color};">{upside_str}</div>
