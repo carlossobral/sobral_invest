@@ -10,7 +10,7 @@ import time
 import logging
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -93,14 +93,26 @@ class BrapiClient:
         return None
 
 # ---------------------------------------------------------------------------
-# FUNÇÕES DE CÁLCULO
+# FUNÇÕES AUXILIARES
 # ---------------------------------------------------------------------------
 
-def calculate_dividends_5_years(dividends_data):
+def extract_indicator_value(indicator_data):
+    """Extrai apenas o valor numérico de um indicador da API MFinance."""
+    if isinstance(indicator_data, dict):
+        return float(indicator_data.get('value', 0) or 0)
+    try:
+        return float(indicator_data)
+    except:
+        return 0.0
+
+def calculate_dividends_by_year(dividends_data, current_year=None):
     """
-    Calcula os totais de dividendos por ano civil (2021-2025) e conta anos com pagamento.
-    Retorna: dict com DIV_1A_ a DIV_5A_ e DY_5A_PG
+    Calcula totais de dividendos por ano civil (2021-2025) e conta anos com pagamento.
+    Retorna dict com DIV_1A_ a DIV_5A_ e DY_5A_PG.
     """
+    if current_year is None:
+        current_year = datetime.now().year
+    
     if not dividends_data:
         return {
             'DIV_1A_': 0.0, 'DIV_2A_': 0.0, 'DIV_3A_': 0.0,
@@ -114,20 +126,17 @@ def calculate_dividends_5_years(dividends_data):
             'DIV_4A_': 0.0, 'DIV_5A_': 0.0, 'DY_5A_PG': 0
         }
 
-    current_year = datetime.now().year
-    # Anos de referência: 2021, 2022, 2023, 2024, 2025 (considerando 2026 como ano atual)
-    target_years = {current_year - 5, current_year - 4, current_year - 3, current_year - 2, current_year - 1}
+    # Anos alvo: 2021, 2022, 2023, 2024, 2025 (considerando 2026 como ano atual)
+    target_years = [current_year - 5, current_year - 4, current_year - 3, current_year - 2, current_year - 1]
     yearly_totals = {y: 0.0 for y in target_years}
 
     for d in div_list:
         try:
-            # API retorna "date" no formato ISO 8601 ou null
             d_date_str = d.get("date")
             if not d_date_str:
                 continue
-            d_date = pd.to_datetime(d_date_str)
-            d_year = d_date.year
-            # Ignorar datas futuras ou fora do intervalo
+            # Extrair ano da data ISO 8601: "2025-01-31T00:00:00Z" → 2025
+            d_year = int(d_date_str[:4])
             if d_year not in target_years:
                 continue
             d_val = float(d.get("value") or 0)
@@ -135,8 +144,7 @@ def calculate_dividends_5_years(dividends_data):
         except:
             continue
 
-    # Mapear para colunas (ordem cronológica inversa: 1A = ano mais recente)
-    result = {
+    return {
         'DIV_1A_': round(yearly_totals.get(current_year - 1, 0.0), 4),
         'DIV_2A_': round(yearly_totals.get(current_year - 2, 0.0), 4),
         'DIV_3A_': round(yearly_totals.get(current_year - 3, 0.0), 4),
@@ -144,26 +152,25 @@ def calculate_dividends_5_years(dividends_data):
         'DIV_5A_': round(yearly_totals.get(current_year - 5, 0.0), 4),
         'DY_5A_PG': sum(1 for v in yearly_totals.values() if v > 0)
     }
-    return result
 
 def update_score_cs(row):
-    """Atualiza o Score CS com os novos critérios (11 critérios totais)"""
+    """Atualiza o Score CS com 11 critérios (incluindo consistência 5A)."""
     score = 0
-    
-    if row.get('ROE', 0) > 10: score += 1
-    if row.get('DY_12m', 0) > 6: score += 1
-    if 0 < row.get('DivLiquida_EBITDA', 999) < 2.5: score += 1
-    if 0 < row.get('PL', 999) < 15: score += 1
-    if 0 < row.get('PVP', 999) < 2: score += 1
-    if row.get('MargemLiquida', 0) > 10: score += 1
-    if row.get('LiquidezCorrente', 0) > 1: score += 1
-    if row.get('CAGR_Lucros_5a', 0) > 5: score += 1
-    if row.get('ROIC', 0) > 10: score += 1
-    if row.get('Volume', 0) > 1000000: score += 1
+    if extract_indicator_value(row.get('returnOnEquity')) > 10: score += 1
+    if extract_indicator_value(row.get('dividendYield')) > 6: score += 1
+    dv_ebitda = extract_indicator_value(row.get('netDebtToEbitda'))
+    if 0 < dv_ebitda < 2.5: score += 1
+    pe = extract_indicator_value(row.get('priceEarningsRatio'))
+    if 0 < pe < 15: score += 1
+    pb = extract_indicator_value(row.get('priceToBookValue'))
+    if 0 < pb < 2: score += 1
+    if extract_indicator_value(row.get('netMargin')) > 10: score += 1
+    if extract_indicator_value(row.get('currentLiquidity')) > 1: score += 1
+    if extract_indicator_value(row.get('cagrProfitsFiveYears')) > 5: score += 1
+    if extract_indicator_value(row.get('returnOnInvestedCapital')) > 10: score += 1
+    if extract_indicator_value(row.get('volume')) > 1000000: score += 1
     if row.get('anos_listagem', 0) >= 5: score += 1
-    # ✅ NOVO CRITÉRIO: Consistência de dividendos nos últimos 5 anos
     if row.get('DY_5A_PG', 0) >= 3: score += 1
-
     return score
 
 def get_classification(score):
@@ -172,6 +179,35 @@ def get_classification(score):
     elif score >= 6: return "Regular"
     elif score >= 4: return "Fraco"
     else: return "Pessimo"
+
+def define_column_order():
+    """Define ordem explícita das colunas para garantir consistência."""
+    # Colunas básicas de identificação e mercado
+    basic = ['symbol', 'name', 'sector', 'subSector', 'segment', 'type',
+             'lastPrice', 'marketCap', 'volume', 'dividendYield', 'eps']
+    
+    # Indicadores fundamentais (API keys do MFinance)
+    indicators = [
+        'priceEarningsRatio', 'priceToBookValue', 'priceEarningsGrowthRatio',
+        'priceToSales', 'priceToAssets', 'priceToNetNetWorkingCapital',
+        'priceToNetCurrentAssets', 'priceToEbit', 'priceToEbitda',
+        'enterpriseValueEbit', 'enterpriseValueEbitda',
+        'returnOnEquity', 'returnOnAssets', 'returnOnInvestedCapital',
+        'assetTurnoverRatio', 'grossMargin', 'ebitdaMargin', 'ebitMargin',
+        'netMargin', 'netDebtToAssets', 'netDebtToEquity', 'netDebtToEbit',
+        'netDebtToEbitda', 'currentLiquidity', 'liabilitiesToAssetsRatio',
+        'equityToAssetsRatio', 'earningsPerShare', 'bookValuePerShare',
+        'marketCap', 'netIncome', 'ebit', 'netRevenue',
+        'cagrRecipesFiveYears', 'cagrProfitsFiveYears', 'shares'
+    ]
+    
+    # Novas colunas de dividendos
+    dividends = ['DIV_1A_', 'DIV_2A_', 'DIV_3A_', 'DIV_4A_', 'DIV_5A_', 'DY_5A_PG']
+    
+    # Score
+    score_cols = ['anos_listagem', 'Score_CS', 'Score_CS_Classificacao']
+    
+    return basic + indicators + dividends + score_cols
 
 # ---------------------------------------------------------------------------
 # MAIN
@@ -197,6 +233,7 @@ def main():
     all_tickers = sorted(set(stocks_map.keys()) | set(ind_map.keys()))
 
     results = []
+    current_year = datetime.now().year
 
     logger.info(f"Processando {len(all_tickers)} ativos...")
 
@@ -217,15 +254,21 @@ def main():
             try:
                 dt = datetime.strptime(listing_date_str, "%Y-%m-%d")
                 anos_listagem = (datetime.now() - dt).days / 365.25
-            except: pass
+            except: 
+                pass
         row['anos_listagem'] = round(anos_listagem, 2)
 
-        # B. Histórico de Dividendos 5 Anos (MFinance) - NOVA LÓGICA
-        divs = mf.get_dividends(ticker)
-        div_calc = calculate_dividends_5_years(divs)
-        row.update(div_calc)  # Adiciona DIV_1A_ a DIV_5A_ e DY_5A_PG
+        # B. Extrair TODOS os indicadores fundamentais (apenas o valor numérico)
+        for key, data in ind_info.items():
+            if key not in ['symbol', 'name', 'sector', 'subSector', 'segment', 'type']:
+                row[key] = extract_indicator_value(data)
 
-        # C. Atualização do Score CS
+        # C. Calcular dividendos por ano civil (2021-2025)
+        divs = mf.get_dividends(ticker)
+        div_calc = calculate_dividends_by_year(divs, current_year)
+        row.update(div_calc)
+
+        # D. Score CS
         row['Score_CS'] = update_score_cs(row)
         row['Score_CS_Classificacao'] = get_classification(row['Score_CS'])
 
@@ -234,28 +277,42 @@ def main():
     df = pd.DataFrame(results)
 
     # Filtros de qualidade
-    if 'Nome' in df.columns:
-        df = df[df['Nome'].notna() & (df['Nome'] != '#N/A') & (df['Nome'] != '')]
-    if 'Cotacao' in df.columns:
-        df = df[df['Cotacao'] > 0]
+    if 'name' in df.columns:
+        df = df[df['name'].notna() & (df['name'] != '#N/A') & (df['name'] != '')]
+    if 'lastPrice' in df.columns:
+        df = df[df['lastPrice'] > 0]
+
+    # Converter colunas numéricas para float (tratando erros)
+    numeric_cols = [c for c in df.columns if c not in ['symbol', 'name', 'sector', 'subSector', 'segment', 'type', 'Score_CS_Classificacao']]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+    # Ordenar colunas explicitamente
+    col_order = define_column_order()
+    existing_cols = [c for c in col_order if c in df.columns]
+    # Adicionar colunas extras que não estavam na lista padrão
+    extra_cols = [c for c in df.columns if c not in existing_cols]
+    df = df[existing_cols + extra_cols]
 
     logger.info(f"Total de ativos válidos: {len(df)}")
+    logger.info(f"Total de colunas: {len(df.columns)}")
 
     try:
-        # ✅ Salvamento nos 3 arquivos obrigatórios
-        df.to_csv(ATIVOS_CSV, index=False)
+        # Salvar nos 3 arquivos obrigatórios
+        df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
         df.to_excel(ATIVOS_FILE, index=False)
         
-        # selic.json (mantém rotina existente - exemplo mínimo)
-        selic_data = {"taxa": 0.0, "data_atualizacao": datetime.now().isoformat()}
+        # selic.json (mantém rotina existente)
+        selic_data = {"taxa": 10.75, "data_atualizacao": datetime.now().isoformat()}
         with open(SELIC_FILE, 'w', encoding='utf-8') as f:
             json.dump(selic_data, f, ensure_ascii=False, indent=2)
             
-        logger.info(f"Arquivos salvos: {ATIVOS_CSV}, {ATIVOS_FILE}, {SELIC_FILE}")
+        logger.info(f"✓ Arquivos salvos: {ATIVOS_CSV}, {ATIVOS_FILE}, {SELIC_FILE}")
     except Exception as e:
-        logger.error(f"Erro ao salvar arquivos: {e}")
+        logger.error(f"✗ Erro ao salvar arquivos: {e}")
+        raise
 
-    logger.info("ATUALIZAÇÃO CONCLUÍDA COM SUCESSO!")
+    logger.info("✓ ATUALIZAÇÃO CONCLUÍDA COM SUCESSO!")
 
 if __name__ == "__main__":
     main()
