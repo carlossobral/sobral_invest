@@ -180,10 +180,11 @@ def pagina_rankings():
                     setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
                     
                     with cols[col_idx]:
-                        # ✅ NAVEGAÇÃO OFICIAL STREAMLIT (sem query_params, sem reset)
+                        # ✅ NAVEGAÇÃO CORRETA PARA ARQUITETURA DE FUNÇÕES
                         if st.button(f"{ticker}", key=f"nav_{ticker}_{col_indicador}_{idx}", use_container_width=False):
                             st.session_state["ticker_destino"] = ticker
-                            st.switch_page("analise.py")  # Ajuste para "analise.py" se não estiver na pasta pages/
+                            st.session_state["pagina_atual"] = "analise"
+                            st.rerun()
                         
                         st.markdown(f"""
                         <div class="ranking-card">
