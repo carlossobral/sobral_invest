@@ -5,7 +5,9 @@ def pagina_configuracoes():
     """Pagina de configuracoes."""
     st.markdown('<h1 class="main-header">⚙️ Configuracoes</h1>', unsafe_allow_html=True)
 
-    df = load_data()
+    with st.spinner("Carregando estatísticas gerais..."):
+        df = load_data()
+        
     if df.empty:
         st.warning("Dados nao disponiveis.")
         return
