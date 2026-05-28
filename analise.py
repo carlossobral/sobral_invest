@@ -175,7 +175,9 @@ def pagina_analise():
 
     st.markdown('<div class="analise-container">', unsafe_allow_html=True)
 
-    df = load_data()
+    with st.spinner("Carregando dados de mercado..."):
+        df = load_data()
+        
     if df.empty:
         st.warning("Dados nao disponiveis.")
         return
