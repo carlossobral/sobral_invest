@@ -406,34 +406,39 @@ def main():
     
     df.rename(columns=COLUNAS_MAPEAMENTO, inplace=True)
     
-    # ==========================================================
+# -------------------------------------------------
     # 🧮 MATEMÁTICA REVERSA (Indicadores Ausentes)
-    # ==========================================================
+    # -------------------------------------------------
     logger.info("Calculando indicadores por matemática reversa...")
-    for col in ['LPA', 'Qtd_Acoes', 'Valor_Mercado', 'P_EBIT', 'P_EBITDA', 'Margem_Liquida', 'Margem_EBITDA', 'P_L']:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # 1️⃣ Garantir existência das colunas base (evita KeyError)
+    for col in ['LPA', 'Qtd_Acoes', 'Valor_Mercado', 'P_EBIT', 'P_EBITDA', 
+                'Margem_Liquida', 'Margem_EBITDA', 'P_L', 'P_Receita']:
+        if col not in df.columns:
+            df[col] = np.nan
 
-    # 1. Lucro Líquido (LPA * Qtd_Acoes)
+    # 2️⃣ Lucro Líquido (LPA * Qtd_Acoes)
     df['Lucro_Liquido'] = df['LPA'] * df['Qtd_Acoes']
-    df.loc[df['Lucro_Liquido'].isna(), 'Lucro_Liquido'] = safe_div(df['Valor_Mercado'], df['P_L'])
+    mask_lucro = df['Lucro_Liquido'].isna() | (df['Lucro_Liquido'] == 0)
+    df.loc[mask_lucro, 'Lucro_Liquido'] = safe_div(df['Valor_Mercado'], df['P_L'])
 
-    # 2. EBIT (Valor_Mercado / P_EBIT)
+    # 3️⃣ EBIT (Valor_Mercado / P_EBIT)
     df['EBIT'] = safe_div(df['Valor_Mercado'], df['P_EBIT'])
 
-    # 3. Receita Líquida (Valor_Mercado / P_Receita ou margens)
+    # 4️⃣ Receita Líquida (Valor_Mercado / P_Receita ou margens)
     df['Receita_Liquida'] = safe_div(df['Valor_Mercado'], df['P_Receita'])
     mask_rec = df['Receita_Liquida'].isna() | (df['Receita_Liquida'] == 0)
     df.loc[mask_rec, 'Receita_Liquida'] = safe_div(df['Lucro_Liquido'], df['Margem_Liquida'] / 100)
     ebitda_est = safe_div(df['Valor_Mercado'], df['P_EBITDA'])
     df.loc[mask_rec & df['Receita_Liquida'].isna(), 'Receita_Liquida'] = safe_div(ebitda_est, df['Margem_EBITDA'] / 100)
 
-    # 4. P/Receita (Recalcular para consistência)
+    # 5️⃣ P/Receita (Recalcular para consistência final)
     df['P_Receita'] = safe_div(df['Valor_Mercado'], df['Receita_Liquida'])
 
-    # Limpar infinitos e nulos gerados por divisões inválidas
+    # 6️⃣ Limpar infinitos e nulos gerados por divisões inválidas
     for col in ['Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']:
         df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
-
+        
     # ==========================================================
     # 📊 CÁLCULO DE VALUATION (NOVAS COLUNAS)
     # ==========================================================
