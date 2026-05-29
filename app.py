@@ -1,6 +1,6 @@
 """
 Sobral Invest - Coletor de Dados de Ativos B3
-Atualiza data/ativos.xlsx, data/ativos.csv e data/selic.json
+Atualiza data/ativos.xlsx (aba DADOS!), data/ativos.csv e data/selic.json
 """
 
 import os
@@ -8,6 +8,7 @@ import json
 import time
 import logging
 import requests
+import yfinance as yf
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -34,11 +35,10 @@ SELIC_FILE = OUTPUT_DIR / "selic.json"
 FALHAS_LOG = OUTPUT_DIR / "falhas_dividendos.log"
 
 MF_BASE = "https://mfinance.com.br/api/v1"
-BRAPI_TOKEN = os.getenv("BRAPI_TOKEN", "")
 BCB_BASE = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados"
 
 # ---------------------------------------------------------------------------
-# MAPEAMENTO DE COLUNAS
+# MAPEAMENTO E ORDEM DE COLUNAS
 # ---------------------------------------------------------------------------
 COLUNAS_MAPEAMENTO = {
     'symbol': 'Ticker', 'name': 'Nome', 'sector': 'Setor', 'subSector': 'SubSetor',
@@ -112,52 +112,8 @@ class MFinanceClient:
         time.sleep(0.75)
         return self._get(f"{MF_BASE}/stocks/dividends/{symbol}", retries=3, delay=1)
 
-class BrapiClient:
-    def __init__(self, token):
-        self.token = token
-        self.session = requests.Session()
-        if not self.token:
-            logger.warning("⚠ BRAPI_TOKEN não configurado. Coluna 'Anos_Listagem' ficará vazia.")
-
-    def get_listing_date(self, ticker):
-        """Consulta Brapi v2 com logs explícitos e timeout seguro."""
-        if not self.token:
-            return None
-        
-        url = f"https://brapi.dev/api/v2/quote/{ticker}"
-        try:
-            logger.debug(f"Brapi: consultando {ticker}...")
-            resp = self.session.get(url, params={"token": self.token}, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
-            results = data.get("results", [])
-            
-            if results:
-                stock = results[0]
-                ms = stock.get("firstTradeDateMilliseconds")
-                if ms:
-                    dt = datetime.fromtimestamp(ms / 1000)
-                    logger.debug(f"Brapi: {ticker} -> IPO em {dt.strftime('%Y-%m-%d')}")
-                    return dt.strftime("%Y-%m-%d")
-                listing = stock.get("listingDate")
-                if listing:
-                    logger.debug(f"Brapi: {ticker} -> listingDate {listing}")
-                    return listing
-                    
-            logger.warning(f"Brapi: {ticker} retornado, mas sem data de listagem.")
-            return None
-            
-        except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response else "N/A"
-            logger.error(f"Brapi HTTP {ticker} ({status}): {e}")
-        except requests.exceptions.Timeout:
-            logger.error(f"Brapi Timeout: {ticker}")
-        except Exception as e:
-            logger.error(f"Brapi Erro inesperado {ticker}: {e}")
-        return None
-
 # ---------------------------------------------------------------------------
-# FUNÇÕES SELIC (COM CACHE INTELIGENTE)
+# FUNÇÕES SELIC (COM CACHE INTELIGENTE + RETRY)
 # ---------------------------------------------------------------------------
 def coletar_selic_historico():
     hoje = datetime.now()
@@ -184,6 +140,7 @@ def coletar_selic_historico():
         except Exception as e:
             logger.warning(f"SELIC falha tentativa {attempt+1}: {e}")
             if attempt < 2: time.sleep(5 * (2 ** attempt))
+            
     logger.error("SELIC: falha definitiva. Mantendo cache anterior.")
     return None
 
@@ -222,14 +179,25 @@ def extract_val(data):
     try: return float(data)
     except: return None
 
+def get_listing_date_yf(ticker):
+    """Calcula anos de listagem usando yfinance (primeira data de cotação disponível)."""
+    try:
+        yf_ticker = yf.Ticker(f"{ticker}.SA")
+        hist = yf_ticker.history(period="max")
+        if not hist.empty:
+            first_date = hist.index[0].date()
+            anos = (datetime.now().date() - first_date).days / 365.25
+            return round(anos, 2)
+    except Exception as e:
+        logger.debug(f"yfinance falhou para {ticker}: {e}")
+    return 0.0
+
 def calc_divs(div_data, current_year=None):
-    """Calcula dividendos por ano civil. Consistencia_5A conta apenas anos 1-5 (5 anos completos)."""
     if current_year is None: current_year = datetime.now().year
     if not div_data: return None
     divs = div_data.get("dividends", []) if isinstance(div_data, dict) else []
     if not divs: return None
     
-    # Inclui ano 0 (atual) até ano 5 para exibição
     years = [current_year - i for i in range(6)]
     totals = {y: 0.0 for y in years}
     
@@ -248,32 +216,29 @@ def calc_divs(div_data, current_year=None):
         'DIV_3A_': round(totals.get(current_year - 3, 0.0), 4),
         'DIV_4A_': round(totals.get(current_year - 4, 0.0), 4),
         'DIV_5A_': round(totals.get(current_year - 5, 0.0), 4),
-        # Consistencia_5A: conta apenas anos 1 a 5 (5 anos completos), excluindo ano 0
         'DY_5A_PG': sum(1 for i in range(1, 6) if totals.get(current_year - i, 0) > 0)
     }
 
 def update_score(row):
-    """Calcula Score CS com 11 critérios. Inclui Consistencia_5A (DY_5A_PG) como critério."""
     s = 0
     v = lambda k, d=None: extract_val(row.get(k)) or d
-    
-    if v('returnOnEquity', 0) > 10: s += 1  # ROE > 10%
-    if v('dividendYield', 0) > 6: s += 1     # DY > 6%
+    if v('returnOnEquity', 0) > 10: s += 1
+    if v('dividendYield', 0) > 6: s += 1
     dv = v('netDebtToEbitda')
-    if dv is not None and 0 < dv < 2.5: s += 1  # Dívida/EBITDA < 2.5
+    if dv is not None and 0 < dv < 2.5: s += 1
     pe = v('priceEarningsRatio')
-    if pe is not None and 0 < pe < 15: s += 1  # P/L < 15
+    if pe is not None and 0 < pe < 15: s += 1
     pb = v('priceToBookValue')
-    if pb is not None and 0 < pb < 2: s += 1  # P/VP < 2
-    if v('netMargin', 0) > 10: s += 1  # Margem Líq > 10%
-    if v('currentLiquidity', 0) > 1: s += 1  # Liquidez > 1
-    if v('cagrProfitsFiveYears', 0) > 5: s += 1  # CAGR Lucros > 5%
-    if v('returnOnInvestedCapital', 0) > 10: s += 1  # ROIC > 10%
-    if v('volume', 0) > 1000000: s += 1  # Volume > 1M
-    # Consistencia_5A: paga dividendos em pelo menos 3 dos últimos 5 anos completos
+    if pb is not None and 0 < pb < 2: s += 1
+    if v('netMargin', 0) > 10: s += 1
+    if v('currentLiquidity', 0) > 1: s += 1
+    if v('cagrProfitsFiveYears', 0) > 5: s += 1
+    if v('returnOnInvestedCapital', 0) > 10: s += 1
+    if v('volume', 0) > 1000000: s += 1
+    anos = row.get('Anos_Listagem', 0)
+    if anos is not None and anos >= 5: s += 1
     cons = row.get('Consistencia_5A')
     if cons is not None and cons >= 3: s += 1
-    
     return s
 
 def get_class(s):
@@ -296,7 +261,7 @@ def main():
     selic_novos = coletar_selic_historico()
     salvar_selic_json(selic_novos)
 
-    mf, brapi = MFinanceClient(), BrapiClient(BRAPI_TOKEN)
+    mf = MFinanceClient()
     stocks, indicators = mf.get_stocks(), mf.get_indicators()
     if not stocks or not indicators:
         logger.error("Falha ao obter dados iniciais."); return
@@ -313,15 +278,8 @@ def main():
         
         row = {**s_map.get(t, {}), **i_map.get(t, {})}
         
-        # Brapi com log de sucesso/falha explícito
-        listing = brapi.get_listing_date(t)
-        if listing:
-            try:
-                dt = datetime.strptime(listing, "%Y-%m-%d")
-                row['Anos_Listagem'] = round((datetime.now() - dt).days / 365.25, 2)
-            except: row['Anos_Listagem'] = None
-        else:
-            row['Anos_Listagem'] = None
+        # yfinance para anos de listagem (contorna 404 do Brapi)
+        row['Anos_Listagem'] = get_listing_date_yf(t)
 
         for k, v in i_map.get(t, {}).items():
             if k not in ['symbol','name','sector','subSector','segment','type']:
@@ -332,13 +290,13 @@ def main():
         if not d_calc:
             falhas += 1
             with open(FALHAS_LOG, 'a') as f: f.write(f"{datetime.now().isoformat()}|{t}|Falha API\n")
-            # Fallback com 0.0 explícito para evitar células vazias
             d_calc = {f'DIV_{x}A_': 0.0 for x in range(6)} | {'DY_5A_PG': 0}
         row.update(d_calc)
         
         row['Score_CS'] = update_score(row)
         row['Classificacao_CS'] = get_class(row['Score_CS'])
         results.append(row)
+        time.sleep(0.3)  # Segurança contra rate limit
 
     df = pd.DataFrame(results)
     df = df[df['name'].notna() & (df['name'] != '') & (df.get('lastPrice', pd.Series([1])) > 0)]
@@ -348,7 +306,7 @@ def main():
     extras = [c for c in df.columns if c not in existentes]
     df = df[existentes + extras]
 
-    # Conversão numérica forçada para colunas críticas
+    # Conversão numérica forçada para garantir zeros ao invés de vazio
     numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A', 'Anos_Listagem']
     for col in numeric_targets:
         if col in df.columns:
@@ -364,6 +322,8 @@ def main():
         logger.error(f"✗ Erro ao salvar: {e}")
 
     logger.info("✓ ATUALIZAÇÃO CONCLUÍDA!")
+    if falhas > 0:
+        logger.warning(f"⚠ {falhas} tickers tiveram falha na coleta de dividendos.")
 
 if __name__ == "__main__":
     main()
