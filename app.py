@@ -15,8 +15,12 @@ from datetime import datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# CONFIGURAÇÕES
+# CONFIGURAÇÕES GERAIS
 # ---------------------------------------------------------------------------
+# 🎛️ FLAG DE CONTROLE: Defina False para pular yfinance (útil para CI/CD ou testes)
+# Pode ser sobrescrito via variável de ambiente: export USE_YFINANCE=false
+USE_YFINANCE = os.getenv("USE_YFINANCE", "false").lower() in ("true", "1", "yes")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -209,33 +213,52 @@ def salvar_cache_listagem(cache):
         logger.error(f"Erro ao salvar cache de listagem: {e}")
 
 def get_listing_date_yf(ticker, cache, force_update=False):
-    """Calcula anos de listagem usando cache local e, opcionalmente, yfinance."""
+    """
+    Calcula anos de listagem usando cache local e, opcionalmente, yfinance.
+    
+    🎛️ Se USE_YFINANCE = False, pula completamente a chamada ao yfinance
+    e retorna 0.0 ou valor do cache existente.
+    """
+    # 1️⃣ Tenta ler do cache primeiro (sempre)
     if ticker in cache:
         cached_val = cache[ticker]
-        if cached_val == "N/A": return 0.0
+        if cached_val == "N/A": 
+            return 0.0
         try:
             first_date = datetime.strptime(cached_val, "%Y-%m-%d").date()
             anos = (datetime.now().date() - first_date).days / 365.25
             return round(anos, 2)
         except Exception as e:
             logger.warning(f"Erro ao converter data do cache para {ticker}: {e}")
-            
-    if not force_update: return 0.0
+            return 0.0
     
+    # 2️⃣ Se USE_YFINANCE estiver desativado, NÃO tenta yfinance
+    if not USE_YFINANCE:
+        logger.debug(f"yfinance desativado: retornando 0.0 para {ticker}")
+        return 0.0
+    
+    # 3️⃣ Se force_update=False e já temos cache, não busca novamente
+    if not force_update:
+        return 0.0
+    
+    # 4️⃣ Tenta buscar no yfinance
     try:
         logger.info(f"yfinance: buscando data de listagem para {ticker}...")
         yf_ticker = yf.Ticker(f"{ticker}.SA")
         hist = yf_ticker.history(period="max")
+        
         if not hist.empty:
             first_date = hist.index[0].date()
             cache[ticker] = first_date.strftime("%Y-%m-%d")
             anos = (datetime.now().date() - first_date).days / 365.25
-            time.sleep(0.5)
+            time.sleep(0.5)  # Rate limit
             return round(anos, 2)
         else:
             cache[ticker] = "N/A"
     except Exception as e:
-        logger.warning(f"yfinance falhou ao buscar listagem para {ticker}: {e}")
+        logger.warning(f"yfinance falhou para {ticker}: {e}")
+        # Não quebra o pipeline, apenas loga e segue
+    
     return 0.0
 
 def calc_divs(div_data, current_year=None):
@@ -314,9 +337,6 @@ def calcular_valuation(df):
     df['GrahamBR'] = np.sqrt(15 * df['LPA'] * df['VPA'])
     
     # 3. Bazin: (DY / 6%) × Preço
-    # Fórmula: Preço Justo = Dividendo por Ação / 0.06
-    # Como temos DY% = (Div/Preço)*100 -> Div = (DY * Preço) / 100
-    # Logo: Preço Justo = (DY * Preço / 100) / 0.06 = Preço * DY / 6
     df['Bazin'] = df['Preco_Atual'] * df['DY_Atual'] / 6.0
     
     # 4. Lynch: LPA × (1 + CAGR_Lucros_5a/100)
@@ -325,7 +345,7 @@ def calcular_valuation(df):
     # 5. AGF (Média Ponderada): (Graham + GrahamBR + Bazin + Lynch + Preço*0.8) / 5
     df['Agf'] = (df['Graham'] + df['GrahamBR'] + df['Bazin'] + df['Lynch'] + (df['Preco_Atual'] * 0.8)) / 5.0
     
-    # 6. Diferenças Percentuais (Upside/Downside): (Preço Justo / Preço Atual - 1) * 100
+    # 6. Diferenças Percentuais (Upside/Downside)
     df['Graham_dif'] = (safe_div(df['Graham'], df['Preco_Atual']) - 1) * 100
     df['GrahamBR_dif'] = (safe_div(df['GrahamBR'], df['Preco_Atual']) - 1) * 100
     df['Bazin_dif'] = (safe_div(df['Bazin'], df['Preco_Atual']) - 1) * 100
@@ -347,6 +367,7 @@ def calcular_valuation(df):
 def main():
     logger.info("=" * 60)
     logger.info("INICIANDO ATUALIZAÇÃO - SOBRAL INVEST")
+    logger.info(f"USE_YFINANCE = {USE_YFINANCE}")
     logger.info("=" * 60)
 
     # 1. SELIC
@@ -375,6 +396,7 @@ def main():
         
         row = {**s_map.get(t, {}), **i_map.get(t, {})}
         
+        # yfinance para anos de listagem (respeita flag USE_YFINANCE)
         tamanho_cache_antes = len(cache_listagem)
         row['Anos_Listagem'] = get_listing_date_yf(t, cache_listagem, force_update=(t not in cache_listagem))
         if len(cache_listagem) > tamanho_cache_antes:
@@ -406,41 +428,41 @@ def main():
     
     df.rename(columns=COLUNAS_MAPEAMENTO, inplace=True)
     
-# -------------------------------------------------
+    # -------------------------------------------------
     # 🧮 MATEMÁTICA REVERSA (Indicadores Ausentes)
     # -------------------------------------------------
     logger.info("Calculando indicadores por matemática reversa...")
     
-    # 1️⃣ Garantir existência das colunas base (evita KeyError)
+    # Garantir existência das colunas base
     for col in ['LPA', 'Qtd_Acoes', 'Valor_Mercado', 'P_EBIT', 'P_EBITDA', 
                 'Margem_Liquida', 'Margem_EBITDA', 'P_L', 'P_Receita']:
         if col not in df.columns:
             df[col] = np.nan
 
-    # 2️⃣ Lucro Líquido (LPA * Qtd_Acoes)
+    # Lucro Líquido
     df['Lucro_Liquido'] = df['LPA'] * df['Qtd_Acoes']
     mask_lucro = df['Lucro_Liquido'].isna() | (df['Lucro_Liquido'] == 0)
     df.loc[mask_lucro, 'Lucro_Liquido'] = safe_div(df['Valor_Mercado'], df['P_L'])
 
-    # 3️⃣ EBIT (Valor_Mercado / P_EBIT)
+    # EBIT
     df['EBIT'] = safe_div(df['Valor_Mercado'], df['P_EBIT'])
 
-    # 4️⃣ Receita Líquida (Valor_Mercado / P_Receita ou margens)
+    # Receita Líquida
     df['Receita_Liquida'] = safe_div(df['Valor_Mercado'], df['P_Receita'])
     mask_rec = df['Receita_Liquida'].isna() | (df['Receita_Liquida'] == 0)
     df.loc[mask_rec, 'Receita_Liquida'] = safe_div(df['Lucro_Liquido'], df['Margem_Liquida'] / 100)
     ebitda_est = safe_div(df['Valor_Mercado'], df['P_EBITDA'])
     df.loc[mask_rec & df['Receita_Liquida'].isna(), 'Receita_Liquida'] = safe_div(ebitda_est, df['Margem_EBITDA'] / 100)
 
-    # 5️⃣ P/Receita (Recalcular para consistência final)
+    # P/Receita (recalcular)
     df['P_Receita'] = safe_div(df['Valor_Mercado'], df['Receita_Liquida'])
 
-    # 6️⃣ Limpar infinitos e nulos gerados por divisões inválidas
+    # Limpar infinitos/nulos
     for col in ['Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']:
         df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
         
     # ==========================================================
-    # 📊 CÁLCULO DE VALUATION (NOVAS COLUNAS)
+    # 📊 CÁLCULO DE VALUATION
     # ==========================================================
     df = calcular_valuation(df)
 
