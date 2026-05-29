@@ -75,7 +75,10 @@ ORDEM_FINAL = [
     'Liquidez_Corrente', 'Passivos_Ativos', 'PL_Ativos',
     'CAGR_Receitas_5a', 'CAGR_Lucros_5a', 'Receita_Liquida', 'Lucro_Liquido', 'EBIT',
     'Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A',
-    'Anos_Listagem', 'Score_CS', 'Classificacao_CS'
+    'Anos_Listagem', 'Score_CS', 'Classificacao_CS',
+    # Colunas de Valuation (novas)
+    'Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf',
+    'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif'
 ]
 
 # ---------------------------------------------------------------------------
@@ -179,6 +182,12 @@ def extract_val(data):
         return float(v) if v is not None else None
     try: return float(data)
     except: return None
+
+def safe_div(a, b):
+    """Divisão segura que retorna 0 se b for 0 ou NaN."""
+    with np.errstate(divide='ignore', invalid='ignore'):
+        result = np.where(b != 0, a / b, 0)
+        return np.where(np.isfinite(result), result, 0)
 
 CACHE_LISTAGEM_FILE = OUTPUT_DIR / "listagem.json"
 
@@ -286,6 +295,53 @@ def get_class(s):
     return "Pessimo"
 
 # ---------------------------------------------------------------------------
+# CÁLCULO DE VALUATION (NOVAS COLUNAS)
+# ---------------------------------------------------------------------------
+def calcular_valuation(df):
+    """Calcula as 10 colunas de valuation solicitadas."""
+    logger.info("Calculando indicadores de valuation (Graham, Bazin, Lynch, AGF)...")
+    
+    # Garantir tipos numéricos
+    cols_numericas = ['Preco_Atual', 'LPA', 'VPA', 'DY_Atual', 'CAGR_Lucros_5a']
+    for col in cols_numericas:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    # 1. Graham Clássico: √(22.5 × LPA × VPA)
+    df['Graham'] = np.sqrt(22.5 * df['LPA'] * df['VPA'])
+    
+    # 2. Graham BR (Conservador): √(15 × LPA × VPA)
+    df['GrahamBR'] = np.sqrt(15 * df['LPA'] * df['VPA'])
+    
+    # 3. Bazin: (DY / 6%) × Preço
+    # Fórmula: Preço Justo = Dividendo por Ação / 0.06
+    # Como temos DY% = (Div/Preço)*100 -> Div = (DY * Preço) / 100
+    # Logo: Preço Justo = (DY * Preço / 100) / 0.06 = Preço * DY / 6
+    df['Bazin'] = df['Preco_Atual'] * df['DY_Atual'] / 6.0
+    
+    # 4. Lynch: LPA × (1 + CAGR_Lucros_5a/100)
+    df['Lynch'] = df['LPA'] * (1 + df['CAGR_Lucros_5a'] / 100.0)
+    
+    # 5. AGF (Média Ponderada): (Graham + GrahamBR + Bazin + Lynch + Preço*0.8) / 5
+    df['Agf'] = (df['Graham'] + df['GrahamBR'] + df['Bazin'] + df['Lynch'] + (df['Preco_Atual'] * 0.8)) / 5.0
+    
+    # 6. Diferenças Percentuais (Upside/Downside): (Preço Justo / Preço Atual - 1) * 100
+    df['Graham_dif'] = (safe_div(df['Graham'], df['Preco_Atual']) - 1) * 100
+    df['GrahamBR_dif'] = (safe_div(df['GrahamBR'], df['Preco_Atual']) - 1) * 100
+    df['Bazin_dif'] = (safe_div(df['Bazin'], df['Preco_Atual']) - 1) * 100
+    df['Lynch_dif'] = (safe_div(df['Lynch'], df['Preco_Atual']) - 1) * 100
+    df['Agf_dif'] = (safe_div(df['Agf'], df['Preco_Atual']) - 1) * 100
+    
+    # Arredondar para 2 casas decimais
+    cols_valuation = ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf', 
+                      'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif']
+    for col in cols_valuation:
+        if col in df.columns:
+            df[col] = df[col].round(2)
+    
+    return df
+
+# ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
 def main():
@@ -359,23 +415,29 @@ def main():
 
     # 1. Lucro Líquido (LPA * Qtd_Acoes)
     df['Lucro_Liquido'] = df['LPA'] * df['Qtd_Acoes']
-    df.loc[df['Lucro_Liquido'].isna(), 'Lucro_Liquido'] = df['Valor_Mercado'] / df['P_L']
+    df.loc[df['Lucro_Liquido'].isna(), 'Lucro_Liquido'] = safe_div(df['Valor_Mercado'], df['P_L'])
 
     # 2. EBIT (Valor_Mercado / P_EBIT)
-    df['EBIT'] = df['Valor_Mercado'] / df['P_EBIT']
+    df['EBIT'] = safe_div(df['Valor_Mercado'], df['P_EBIT'])
 
     # 3. Receita Líquida (Valor_Mercado / P_Receita ou margens)
-    df['Receita_Liquida'] = df['Valor_Mercado'] / df['P_Receita']
-    df.loc[df['Receita_Liquida'].isna(), 'Receita_Liquida'] = df['Lucro_Liquido'] / (df['Margem_Liquida'] / 100)
-    ebitda_est = df['Valor_Mercado'] / df['P_EBITDA']
-    df.loc[df['Receita_Liquida'].isna(), 'Receita_Liquida'] = ebitda_est / (df['Margem_EBITDA'] / 100)
+    df['Receita_Liquida'] = safe_div(df['Valor_Mercado'], df['P_Receita'])
+    mask_rec = df['Receita_Liquida'].isna() | (df['Receita_Liquida'] == 0)
+    df.loc[mask_rec, 'Receita_Liquida'] = safe_div(df['Lucro_Liquido'], df['Margem_Liquida'] / 100)
+    ebitda_est = safe_div(df['Valor_Mercado'], df['P_EBITDA'])
+    df.loc[mask_rec & df['Receita_Liquida'].isna(), 'Receita_Liquida'] = safe_div(ebitda_est, df['Margem_EBITDA'] / 100)
 
     # 4. P/Receita (Recalcular para consistência)
-    df['P_Receita'] = df['Valor_Mercado'] / df['Receita_Liquida']
+    df['P_Receita'] = safe_div(df['Valor_Mercado'], df['Receita_Liquida'])
 
     # Limpar infinitos e nulos gerados por divisões inválidas
     for col in ['Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']:
         df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
+
+    # ==========================================================
+    # 📊 CÁLCULO DE VALUATION (NOVAS COLUNAS)
+    # ==========================================================
+    df = calcular_valuation(df)
 
     # Reordenar colunas
     existentes = [c for c in ORDEM_FINAL if c in df.columns]
@@ -383,7 +445,10 @@ def main():
     df = df[existentes + extras]
 
     # Conversão numérica forçada
-    numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A', 'Anos_Listagem', 'Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']
+    numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A', 'Anos_Listagem', 
+                       'Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita',
+                       'Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf',
+                       'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif']
     for col in numeric_targets:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
