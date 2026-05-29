@@ -134,13 +134,11 @@ class BrapiClient:
             
             if results:
                 stock = results[0]
-                # Prioriza firstTradeDateMilliseconds (IPO real)
                 ms = stock.get("firstTradeDateMilliseconds")
                 if ms:
                     dt = datetime.fromtimestamp(ms / 1000)
                     logger.debug(f"Brapi: {ticker} -> IPO em {dt.strftime('%Y-%m-%d')}")
                     return dt.strftime("%Y-%m-%d")
-                # Fallback para listingDate
                 listing = stock.get("listingDate")
                 if listing:
                     logger.debug(f"Brapi: {ticker} -> listingDate {listing}")
@@ -225,12 +223,13 @@ def extract_val(data):
     except: return None
 
 def calc_divs(div_data, current_year=None):
+    """Calcula dividendos por ano civil. Consistencia_5A conta apenas anos 1-5 (5 anos completos)."""
     if current_year is None: current_year = datetime.now().year
     if not div_data: return None
     divs = div_data.get("dividends", []) if isinstance(div_data, dict) else []
     if not divs: return None
     
-    # Inclui ano 0 (atual) até ano 5
+    # Inclui ano 0 (atual) até ano 5 para exibição
     years = [current_year - i for i in range(6)]
     totals = {y: 0.0 for y in years}
     
@@ -249,30 +248,32 @@ def calc_divs(div_data, current_year=None):
         'DIV_3A_': round(totals.get(current_year - 3, 0.0), 4),
         'DIV_4A_': round(totals.get(current_year - 4, 0.0), 4),
         'DIV_5A_': round(totals.get(current_year - 5, 0.0), 4),
-        # Consistência mantém foco nos 5 anos completos (1 a 5) para não distorcer o score
+        # Consistencia_5A: conta apenas anos 1 a 5 (5 anos completos), excluindo ano 0
         'DY_5A_PG': sum(1 for i in range(1, 6) if totals.get(current_year - i, 0) > 0)
     }
 
 def update_score(row):
+    """Calcula Score CS com 11 critérios. Inclui Consistencia_5A (DY_5A_PG) como critério."""
     s = 0
     v = lambda k, d=None: extract_val(row.get(k)) or d
-    if v('returnOnEquity', 0) > 10: s += 1
-    if v('dividendYield', 0) > 6: s += 1
+    
+    if v('returnOnEquity', 0) > 10: s += 1  # ROE > 10%
+    if v('dividendYield', 0) > 6: s += 1     # DY > 6%
     dv = v('netDebtToEbitda')
-    if dv is not None and 0 < dv < 2.5: s += 1
+    if dv is not None and 0 < dv < 2.5: s += 1  # Dívida/EBITDA < 2.5
     pe = v('priceEarningsRatio')
-    if pe is not None and 0 < pe < 15: s += 1
+    if pe is not None and 0 < pe < 15: s += 1  # P/L < 15
     pb = v('priceToBookValue')
-    if pb is not None and 0 < pb < 2: s += 1
-    if v('netMargin', 0) > 10: s += 1
-    if v('currentLiquidity', 0) > 1: s += 1
-    if v('cagrProfitsFiveYears', 0) > 5: s += 1
-    if v('returnOnInvestedCapital', 0) > 10: s += 1
-    if v('volume', 0) > 1000000: s += 1
-    anos = row.get('Anos_Listagem')
-    if anos is not None and anos >= 5: s += 1
+    if pb is not None and 0 < pb < 2: s += 1  # P/VP < 2
+    if v('netMargin', 0) > 10: s += 1  # Margem Líq > 10%
+    if v('currentLiquidity', 0) > 1: s += 1  # Liquidez > 1
+    if v('cagrProfitsFiveYears', 0) > 5: s += 1  # CAGR Lucros > 5%
+    if v('returnOnInvestedCapital', 0) > 10: s += 1  # ROIC > 10%
+    if v('volume', 0) > 1000000: s += 1  # Volume > 1M
+    # Consistencia_5A: paga dividendos em pelo menos 3 dos últimos 5 anos completos
     cons = row.get('Consistencia_5A')
     if cons is not None and cons >= 3: s += 1
+    
     return s
 
 def get_class(s):
