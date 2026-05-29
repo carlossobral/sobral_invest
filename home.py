@@ -4,64 +4,50 @@ import json
 import pandas as pd
 import plotly.graph_objects as go
 from pathlib import Path
-from datetime import datetime, timedelta
-import requests
+from datetime import datetime
 
-def get_selic_from_api():
-    """Busca SELIC da API BCB (Serie 432 - Meta SELIC % a.a.)."""
-    hoje = datetime.now()
-    data_inicial = hoje.replace(year=hoje.year - 10)
-    data_inicial_str = data_inicial.strftime("%d/%m/%Y")
-    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados?formato=json&dataInicial={data_inicial_str}"
-    
-    try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        dados = resp.json()
-        registros = []
-        for d in dados:
-            try:
-                valor_anual = float(d.get("valor", 0))
-                if valor_anual > 0:
-                    registros.append({
-                        "data": d.get("data"),
-                        "valor_dia": None,
-                        "valor_anual": round(valor_anual, 2)
-                    })
-            except:
-                continue
-        return registros
-    except Exception as e:
-        st.warning(f"Erro API BCB: {e}")
-        return []
+# ============================================================
+# SELIC - LEITURA EXCLUSIVA DO JSON (SEM API EM TEMPO REAL)
+# ============================================================
 
 def get_selic_historico():
-    """Le SELIC de data/selic.json ou busca da API."""
+    """
+    Lê SELIC APENAS de data/selic.json.
+    NUNCA chama a API do BCB em tempo real.
+    Retorna DataFrame vazio se não houver dados válidos.
+    """
     selic_file = Path("data/selic.json")
+    
+    if not selic_file.exists():
+        return pd.DataFrame()
+    
     try:
-        if selic_file.exists():
-            with open(selic_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            historico = data.get("historico", [])
-            if historico:
-                df = pd.DataFrame(historico)
-                df['data'] = pd.to_datetime(df['data'], dayfirst=True)
-                return df.sort_values('data')
+        with open(selic_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        # Tenta ler a série histórica (chave "historico")
+        historico = data.get("historico", [])
+        
+        if historico and isinstance(historico, list) and len(historico) > 0:
+            df = pd.DataFrame(historico)
+            # Garante que as colunas necessárias existem
+            if 'data' in df.columns and 'valor_anual' in df.columns:
+                df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce')
+                df = df.dropna(subset=['data', 'valor_anual'])
+                return df.sort_values('data').reset_index(drop=True)
+        
+        # Se não houver histórico válido, retorna vazio (não quebra)
+        return pd.DataFrame()
+        
     except Exception as e:
         st.warning(f"Erro ao ler selic.json: {e}")
-
-    registros = get_selic_from_api()
-    if registros:
-        df = pd.DataFrame(registros)
-        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
-        return df.sort_values('data')
-
-    return pd.DataFrame()
+        return pd.DataFrame()
 
 def plot_selic(df):
-    """Plota grafico de area da SELIC historica."""
+    """Plota gráfico de área da SELIC histórica."""
     if df.empty:
         return None
+    
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=df['data'],
@@ -73,7 +59,7 @@ def plot_selic(df):
         name='SELIC % a.a.'
     ))
     fig.update_layout(
-        title=dict(text='Taxa SELIC Historica (% ao ano)', font=dict(size=16, color='#f1f5f9'), x=0.5),
+        title=dict(text='Taxa SELIC Histórica (% ao ano)', font=dict(size=16, color='#f1f5f9'), x=0.5),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#94a3b8', size=11),
@@ -186,22 +172,37 @@ def pagina_inicial():
     """
     components.html(tv_hotlists, height=560)
 
-    # 3. GRAFICO SELIC HISTORICA
+    # 3. GRAFICO SELIC HISTORICA (LEITURA APENAS DO JSON)
     st.markdown("---")
     st.subheader("Taxa SELIC")
+    
     df_selic = get_selic_historico()
+    
     if not df_selic.empty:
         fig = plot_selic(df_selic)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
-        selic_atual = df_selic['valor_anual'].iloc[-1]
-        selic_min = df_selic['valor_anual'].min()
-        selic_max = df_selic['valor_anual'].max()
-        selic_media = df_selic['valor_anual'].mean()
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Atual", f"{selic_atual:.2f}%")
-        c2.metric("Minima", f"{selic_min:.2f}%")
-        c3.metric("Maxima", f"{selic_max:.2f}%")
-        c4.metric("Media", f"{selic_media:.2f}%")
+        
+        # Métricas seguras (só acessa se houver dados)
+        try:
+            selic_atual = df_selic['valor_anual'].iloc[-1]
+            selic_min = df_selic['valor_anual'].min()
+            selic_max = df_selic['valor_anual'].max()
+            selic_media = df_selic['valor_anual'].mean()
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Atual", f"{selic_atual:.2f}%")
+            c2.metric("Mínima", f"{selic_min:.2f}%")
+            c3.metric("Máxima", f"{selic_max:.2f}%")
+            c4.metric("Média", f"{selic_media:.2f}%")
+        except:
+            st.info("Métricas da SELIC indisponíveis no momento.")
     else:
-        st.info("Dados da SELIC nao disponiveis no momento.")
+        st.info("Dados históricos da SELIC não disponíveis. Execute o coletor (app.py) para atualizar.")
+
+    # Rodapé informativo
+    st.markdown("""
+    <div style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #334155; text-align: center; color: #64748b; font-size: 0.75rem;'>
+        Dados da SELIC atualizados apenas quando o coletor (app.py) é executado. 
+        Última atualização: <code>data/selic.json</code>
+    </div>
+    """, unsafe_allow_html=True)
