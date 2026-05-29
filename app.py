@@ -9,7 +9,7 @@ import time
 import logging
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -36,6 +36,7 @@ FALHAS_LOG = OUTPUT_DIR / "falhas_dividendos.log"
 MF_BASE = "https://mfinance.com.br/api/v1"
 BRAPI_BASE = "https://brapi.dev/api/v2/quote"
 BRAPI_TOKEN = os.getenv("BRAPI_TOKEN", "")
+BCB_BASE = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados"
 
 # ---------------------------------------------------------------------------
 # MAPEAMENTO DE COLUNAS
@@ -117,7 +118,7 @@ class BrapiClient:
         self.token = token
         self.session = requests.Session()
         if not self.token:
-            logger.warning("️ BRAPI_TOKEN não configurado.")
+            logger.warning("⚠ BRAPI_TOKEN não configurado.")
 
     def get_listing_date(self, ticker):
         if not self.token: return None
@@ -132,6 +133,107 @@ class BrapiClient:
         except Exception as e:
             logger.debug(f"Erro Brapi {ticker}: {e}")
         return None
+
+# ---------------------------------------------------------------------------
+# FUNÇÕES SELIC (COM CACHE INTELIGENTE + RETRY)
+# ---------------------------------------------------------------------------
+def coletar_selic_historico():
+    """
+    Coleta série histórica da SELIC (10 anos) da API do BCB.
+    - Timeout: 60s
+    - Retries: 3 com backoff exponencial (5s → 10s → 20s)
+    - Retorna lista de dicts: [{"data": "DD/MM/YYYY", "valor_anual": 10.75}, ...]
+    """
+    hoje = datetime.now()
+    data_inicial = hoje.replace(year=hoje.year - 10)
+    data_inicial_str = data_inicial.strftime("%d/%m/%Y")
+    url = f"{BCB_BASE}?formato=json&dataInicial={data_inicial_str}"
+    
+    last_error = None
+    for attempt in range(3):
+        try:
+            logger.info(f"Buscando SELIC na API BCB (tentativa {attempt+1}/3)...")
+            # Timeout aumentado para 60s
+            resp = requests.get(url, timeout=60)
+            resp.raise_for_status()
+            dados = resp.json()
+            
+            registros = []
+            for d in dados:
+                try:
+                    valor = float(d.get("valor", 0))
+                    if valor > 0:
+                        registros.append({
+                            "data": d.get("data"),  # Formato: "DD/MM/YYYY"
+                            "valor_anual": round(valor, 2)
+                        })
+                except:
+                    continue
+            
+            if registros:
+                logger.info(f"✓ SELIC: {len(registros)} registros coletados com sucesso")
+                return registros
+            else:
+                logger.warning("SELIC: API retornou, mas sem dados válidos")
+                
+        except requests.exceptions.Timeout:
+            last_error = "Timeout"
+            logger.warning(f"SELIC: Timeout na tentativa {attempt+1}/3")
+        except requests.exceptions.HTTPError as e:
+            last_error = f"HTTP {e.response.status_code}"
+            logger.warning(f"SELIC: Erro HTTP na tentativa {attempt+1}/3: {e}")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"SELIC: Erro na tentativa {attempt+1}/3: {e}")
+        
+        if attempt < 2:
+            # Backoff exponencial: 5s, 10s, 20s
+            wait = 5 * (2 ** attempt)
+            logger.info(f"SELIC: Aguardando {wait}s antes da próxima tentativa...")
+            time.sleep(wait)
+    
+    logger.error(f"SELIC: Falha após 3 tentativas. Último erro: {last_error}")
+    return None
+
+def salvar_selic_json(novos_dados=None):
+    """
+    Salva selic.json com cache inteligente:
+    - Se novos_dados != None: sobrescreve com dados novos + timestamp de sucesso
+    - Se novos_dados == None: NÃO sobrescreve, mantém arquivo existente intacto
+    """
+    agora = datetime.now().isoformat()
+    
+    if novos_dados is not None:
+        # Coleta bem-sucedida: salva novos dados
+        payload = {
+            "taxa_atual": novos_dados[-1]["valor_anual"] if novos_dados else None,
+            "data_atualizacao": agora,
+            "ultima_coleta_sucesso": agora,
+            "historico": novos_dados
+        }
+        try:
+            with open(SELIC_FILE, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            logger.info(f"✓ selic.json atualizado com {len(novos_dados)} registros")
+            return True
+        except Exception as e:
+            logger.error(f"✗ Erro ao salvar selic.json: {e}")
+            return False
+    else:
+        # Coleta falhou: NÃO sobrescreve, apenas loga
+        logger.warning("⚠ SELIC: coleta falhou. Mantendo selic.json anterior intacto.")
+        # Opcional: atualizar apenas o timestamp de última tentativa (sem apagar histórico)
+        try:
+            if SELIC_FILE.exists():
+                with open(SELIC_FILE, "r", encoding="utf-8") as f:
+                    existente = json.load(f)
+                existente["ultima_tentativa"] = agora
+                with open(SELIC_FILE, "w", encoding="utf-8") as f:
+                    json.dump(existente, f, ensure_ascii=False, indent=2)
+                logger.info("✓ selic.json: atualizado apenas 'ultima_tentativa'")
+        except:
+            pass  # Se não der para ler o existente, tudo bem
+        return False
 
 # ---------------------------------------------------------------------------
 # FUNÇÕES AUXILIARES
@@ -199,6 +301,11 @@ def main():
     logger.info("INICIANDO ATUALIZAÇÃO - SOBRAL INVEST")
     logger.info("=" * 60)
 
+    # 1. Coleta SELIC primeiro (com cache inteligente)
+    logger.info("Coletando dados da SELIC...")
+    selic_novos = coletar_selic_historico()
+    salvar_selic_json(selic_novos)  # Só salva se sucesso; se falhar, mantém arquivo anterior
+
     mf, brapi = MFinanceClient(), BrapiClient(BRAPI_TOKEN)
     stocks, indicators = mf.get_stocks(), mf.get_indicators()
     if not stocks or not indicators:
@@ -247,10 +354,13 @@ def main():
         with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='DADOS!', index=False)
         df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
-        with open(SELIC_FILE, 'w') as f: json.dump({"taxa": 10.75, "data": datetime.now().isoformat()}, f)
-        logger.info("✓ Arquivos salvos com sucesso!")
+        logger.info("✓ Arquivos de ativos salvos com sucesso!")
     except Exception as e:
-        logger.error(f"✗ Erro ao salvar: {e}")
+        logger.error(f"✗ Erro ao salvar ativos: {e}")
+
+    logger.info("✓ ATUALIZAÇÃO CONCLUÍDA!")
+    if falhas > 0:
+        logger.warning(f"⚠ {falhas} tickers tiveram falha na coleta de dividendos.")
 
 if __name__ == "__main__":
     main()
