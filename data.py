@@ -4,7 +4,6 @@ import streamlit as st
 def load_data():
     """Carrega dados do data/ativos.xlsx com conversão correta."""
     try:
-        # Ajustado para ler a aba DADOS! criada pelo novo app.py
         df = pd.read_excel("data/ativos.xlsx", sheet_name="DADOS!")
     except:
         try:
@@ -13,7 +12,6 @@ def load_data():
             st.error("Erro ao carregar dados. Verifique se data/ativos.xlsx ou data/ativos.csv existem.")
             return pd.DataFrame()
 
-    # Lista atualizada com os NOVOS nomes de colunas definidos no app.py
     numeric_cols = [
         "Preco_Atual", "Volume", "Valor_Mercado", "Qtd_Acoes", "DY_Atual",
         "P_L", "P_VP", "P_Receita", "P_Ativo", "P_Cap_Giro", "P_Ativo_Circ_Liq",
@@ -31,7 +29,6 @@ def load_data():
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    # Garantir que Ticker seja string
     if "Ticker" in df.columns:
         df["Ticker"] = df["Ticker"].astype(str)
 
