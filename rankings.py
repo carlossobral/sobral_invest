@@ -101,7 +101,6 @@ def pagina_rankings():
                     nome_curto = nome[:22] + "..." if len(nome) > 22 else nome
                     setor_curto = setor[:15] + "..." if len(setor) > 15 else setor
                     with cols[col_idx]:
-                        # ✅ NAVEGAÇÃO CORRETA: salva ticker e muda pagina via session_state
                         if st.button(f"{ticker}", key=f"nav_{ticker}_{col_indicador}_{idx}", use_container_width=False):
                             st.session_state["ticker_destino"] = ticker
                             st.session_state["pagina_atual"] = "analise"
