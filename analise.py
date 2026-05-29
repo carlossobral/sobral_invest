@@ -102,11 +102,16 @@ def pagina_analise():
 
     df['Disp'] = df['Ticker'] + ' - ' + df['Nome']
     opts = sorted(df['Disp'].tolist())
+    
+    # ✅ CORREÇÃO: Blindagem contra None no session_state
     idx = 0
-    if "ticker_destino" in st.session_state:
+    ticker_dest = st.session_state.get("ticker_destino")
+    if ticker_dest:
         for i, o in enumerate(opts):
-            if o.startswith(st.session_state["ticker_destino"] + ' -'): idx = i; break
-        del st.session_state["ticker_destino"]
+            if o.startswith(ticker_dest + ' -'):
+                idx = i
+                break
+        st.session_state.pop("ticker_destino", None)
 
     sel = st.selectbox("Selecione o ativo", options=opts, index=idx, key="sel_v2")
     ticker = sel.split(' - ')[0]
@@ -147,7 +152,7 @@ def pagina_analise():
     cy = datetime.now().year
     cards = [(f"Div {i}A", f"R$ {safe(ativo.get(f'Div_{i}A')):.4f}", str(safe(ativo.get(f'Div_{i}A')) > 0), cy-i) for i in range(1,6)]
     cons = int(safe(ativo.get('Consistencia_5A'), 0))
-    cb, cc = (f"✅ {cons}/5", "#10b981") if cons >= 3 else (f"️ {cons}/5", "#f59e0b")
+    cb, cc = (f"✅ {cons}/5", "#10b981") if cons >= 3 else (f"⚠️ {cons}/5", "#f59e0b")
     cards.append(("Consistência", cb, "True", None))
     cs = st.columns(6)
     for i, (l, v, p, y) in enumerate(cards):
@@ -166,7 +171,9 @@ def pagina_analise():
     cps = st.columns(4)
     for i, (t, p, u) in enumerate(pj):
         c, b = ("#10b981", "#065f46") if u > 0 else (("#ef4444", "#991b1b") if u < 0 else ("#94a3b8", "#475569"))
-        cps[i].markdown(f"""<div class="pc" style="border-left: 4px solid {c};"><div class="pt">{t}</div><div class="pv">R$ {p:.2f} if pr > 0 else N/A</div><div class="pu" style="background: {b}40; color: {c};">{u:+.1f}%</div></div>""", unsafe_allow_html=True)
+        # ✅ CORREÇÃO: Exibir N/A quando pr <= 0
+        price_str = f"R$ {p:.2f}" if p > 0 else "N/A"
+        cps[i].markdown(f"""<div class="pc" style="border-left: 4px solid {c};"><div class="pt">{t}</div><div class="pv">{price_str}</div><div class="pu" style="background: {b}40; color: {c};">{u:+.1f}%</div></div>""", unsafe_allow_html=True)
 
     st.markdown('<div class="st">SCORE CS</div>', unsafe_allow_html=True)
     items = [
