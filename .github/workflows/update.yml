@@ -43,7 +43,7 @@ jobs:
         env:
           BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
           USEBOLSAI_TOKEN: ${{ secrets.USEBOLSAI_TOKEN }}
-
+          USE_YFINANCE: "false"  # ← Desativa yfinance no workflow
       - name: Verificar arquivos gerados
         run: |
           echo "📁 Verificando arquivos em data/..."
