@@ -100,8 +100,8 @@ def pagina_analise():
     if df.empty:
         st.warning("Dados não disponíveis."); return
 
-    df['Disp'] = df['Ticker'] + ' - ' + df['Nome']
-    opts = sorted(df['Disp'].tolist())
+    df['Disp'] = (df['Ticker'].fillna('') + ' - ' + df['Nome'].fillna('')).astype(str)
+opts = sorted(df['Disp'].tolist())
     
     idx = 0
     ticker_dest = st.session_state.get("ticker_destino")
