@@ -3,7 +3,7 @@ from home import pagina_inicial
 from analise import pagina_analise
 from rankings import pagina_rankings
 from comparativo import pagina_comparativo
-from .configs import pagina_configuracoes
+from configs import pagina_configuracoes
 
 import os
 from datetime import datetime
