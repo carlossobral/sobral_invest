@@ -102,7 +102,6 @@ def pagina_analise():
 
     df['Disp'] = (df['Ticker'].fillna('') + ' - ' + df['Nome'].fillna('')).astype(str)
 opts = sorted(df['Disp'].tolist())
-    
     idx = 0
     ticker_dest = st.session_state.get("ticker_destino")
     if ticker_dest:
