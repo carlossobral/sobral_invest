@@ -6,10 +6,6 @@ import plotly.graph_objects as go
 from pathlib import Path
 from datetime import datetime
 
-# ============================================================
-# SELIC - LEITURA EXCLUSIVA DO JSON (SEM API EM TEMPO REAL)
-# ============================================================
-
 def get_selic_historico():
     """
     Lê SELIC APENAS de data/selic.json.
@@ -25,18 +21,15 @@ def get_selic_historico():
         with open(selic_file, "r", encoding="utf-8") as f:
             data = json.load(f)
         
-        # Tenta ler a série histórica (chave "historico")
         historico = data.get("historico", [])
         
         if historico and isinstance(historico, list) and len(historico) > 0:
             df = pd.DataFrame(historico)
-            # Garante que as colunas necessárias existem
             if 'data' in df.columns and 'valor_anual' in df.columns:
                 df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce')
                 df = df.dropna(subset=['data', 'valor_anual'])
                 return df.sort_values('data').reset_index(drop=True)
         
-        # Se não houver histórico válido, retorna vazio (não quebra)
         return pd.DataFrame()
         
     except Exception as e:
@@ -183,7 +176,6 @@ def pagina_inicial():
         if fig:
             st.plotly_chart(fig, use_container_width=True)
         
-        # Métricas seguras (só acessa se houver dados)
         try:
             selic_atual = df_selic['valor_anual'].iloc[-1]
             selic_min = df_selic['valor_anual'].min()
@@ -199,7 +191,6 @@ def pagina_inicial():
     else:
         st.info("Dados históricos da SELIC não disponíveis. Execute o coletor (app.py) para atualizar.")
 
-    # Rodapé informativo
     st.markdown("""
     <div style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #334155; text-align: center; color: #64748b; font-size: 0.75rem;'>
         Dados da SELIC atualizados apenas quando o coletor (app.py) é executado. 
