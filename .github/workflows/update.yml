@@ -2,7 +2,7 @@ name: Atualizar Dados SOBRAL Invest
 
 on:
   schedule:
-    - cron: '0 4 * * *'  # 4h UTC = 1h BRT
+    - cron: '0 1 * * *'  # 4h UTC = 1h BRT
   workflow_dispatch:
 
 permissions:
