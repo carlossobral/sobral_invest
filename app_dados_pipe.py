@@ -15,8 +15,12 @@ from datetime import datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# CONFIGURAÇÕES
+# CONFIGURAÇÕES GERAIS
 # ---------------------------------------------------------------------------
+# 🎛️ FLAG DE CONTROLE: Defina False para pular yfinance (útil para CI/CD ou testes)
+# Pode ser sobrescrito via variável de ambiente: export USE_YFINANCE=false
+USE_YFINANCE = os.getenv("USE_YFINANCE", "false").lower() in ("true", "1", "yes")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -449,7 +453,7 @@ def etapa_6_exportacao(df):
     return df
 
 # ---------------------------------------------------------------------------
-# ETAPA 7: LISTAGEM YF (COM CACHE RESILIENTE)
+# ETAPA 7: LISTAGEM YF (COM CACHE RESILIENTE + FLAG USE_YFINANCE)
 # ---------------------------------------------------------------------------
 def carregar_cache_listagem():
     if CACHE_LISTAGEM_FILE.exists():
@@ -471,9 +475,13 @@ def salvar_cache_listagem(cache):
 def get_listing_date_yf(ticker, cache):
     """
     Busca data de listagem via yfinance.
+    
+    🎛️ Se USE_YFINANCE = False, pula completamente a chamada ao yfinance
+    e retorna 0.0 ou valor do cache existente.
+    
     REGRA DE OURO: Se já tem no cache e falhar, NÃO faz nada, segue a vida.
     """
-    # 1. Tenta ler do cache primeiro
+    # 1. Tenta ler do cache primeiro (sempre)
     if ticker in cache:
         cached_val = cache[ticker]
         if cached_val == "N/A":
@@ -487,9 +495,14 @@ def get_listing_date_yf(ticker, cache):
             # Se falhar na conversão do cache, retorna 0 mas NÃO tenta yfinance
             return 0.0
     
-    # 2. Se não tem no cache, tenta yfinance
+    # 2. Se USE_YFINANCE estiver desativado, NÃO tenta yfinance
+    if not USE_YFINANCE:
+        logger.debug(f"yfinance desativado: retornando 0.0 para {ticker}")
+        return 0.0
+    
+    # 3. Se não tem no cache e USE_YFINANCE=True, tenta yfinance
     try:
-        logger.debug(f"yfinance: buscando listagem para {ticker}...")
+        logger.info(f"yfinance: buscando data de listagem para {ticker}...")
         yf_ticker = yf.Ticker(f"{ticker}.SA")
         hist = yf_ticker.history(period="max")
         
@@ -512,6 +525,11 @@ def etapa_7_listagem_yf(df):
     """Calcula Anos_Listagem via yfinance com cache resiliente."""
     logger.info("🟩 ETAPA 7: Calculando Anos_Listagem (yfinance + cache)...")
     
+    # Se yfinance estiver desativado, pula a etapa e retorna df original
+    if not USE_YFINANCE:
+        logger.info("⏭️ yfinance desativado: pulando cálculo de Anos_Listagem")
+        return df
+    
     cache = carregar_cache_listagem()
     cache_modificado = False
     
@@ -519,7 +537,7 @@ def etapa_7_listagem_yf(df):
     col_ticker = 'Ticker' if 'Ticker' in df.columns else 'symbol'
     
     for i, ticker in enumerate(df[col_ticker].dropna().unique()):
-        if i % 50 == 0 and i >  0:
+        if i % 50 == 0 and i > 0:
             logger.info(f"Listagem: processados {i} tickers...")
         
         anos = get_listing_date_yf(ticker, cache)
@@ -546,6 +564,7 @@ def etapa_7_listagem_yf(df):
 def main():
     logger.info("=" * 70)
     logger.info("🚀 INICIANDO PIPELINE SOBRAL INVEST")
+    logger.info(f"🎛️ USE_YFINANCE = {USE_YFINANCE}")
     logger.info("=" * 70)
     
     # Inicializar cliente
