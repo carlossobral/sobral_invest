@@ -179,7 +179,7 @@ def extract_val(data):
     try: return float(data)
     except: return None
 
-CACHE_LISTAGEM_FILE = OUTPUT_DIR / "listing_dates.json"
+CACHE_LISTAGEM_FILE = OUTPUT_DIR / "listagem.json"
 
 def carregar_cache_listagem():
     if CACHE_LISTAGEM_FILE.exists():
