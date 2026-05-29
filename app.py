@@ -9,7 +9,7 @@ import time
 import logging
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -34,7 +34,6 @@ SELIC_FILE = OUTPUT_DIR / "selic.json"
 FALHAS_LOG = OUTPUT_DIR / "falhas_dividendos.log"
 
 MF_BASE = "https://mfinance.com.br/api/v1"
-BRAPI_BASE = "https://brapi.dev/api/v2/quote"
 BRAPI_TOKEN = os.getenv("BRAPI_TOKEN", "")
 BCB_BASE = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados"
 
@@ -58,7 +57,7 @@ COLUNAS_MAPEAMENTO = {
     'cagrProfitsFiveYears': 'CAGR_Lucros_5a', 'netRevenue': 'Receita_Liquida',
     'netIncome': 'Lucro_Liquido', 'ebit': 'EBIT', 'earningsPerShare': 'LPA',
     'bookValuePerShare': 'VPA',
-    'DIV_1A_': 'Div_1A', 'DIV_2A_': 'Div_2A', 'DIV_3A_': 'Div_3A',
+    'DIV_0A_': 'Div_0A', 'DIV_1A_': 'Div_1A', 'DIV_2A_': 'Div_2A', 'DIV_3A_': 'Div_3A',
     'DIV_4A_': 'Div_4A', 'DIV_5A_': 'Div_5A', 'DY_5A_PG': 'Consistencia_5A',
     'anos_listagem': 'Anos_Listagem', 'Score_CS': 'Score_CS',
     'Score_CS_Classificacao': 'Classificacao_CS'
@@ -74,7 +73,7 @@ ORDEM_FINAL = [
     'Div_Liq_Ativos', 'Div_Liq_PL', 'Div_Liq_EBIT', 'Div_Liq_EBITDA',
     'Liquidez_Corrente', 'Passivos_Ativos', 'PL_Ativos',
     'CAGR_Receitas_5a', 'CAGR_Lucros_5a', 'Receita_Liquida', 'Lucro_Liquido', 'EBIT',
-    'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A',
+    'Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A',
     'Anos_Listagem', 'Score_CS', 'Classificacao_CS'
 ]
 
@@ -118,95 +117,83 @@ class BrapiClient:
         self.token = token
         self.session = requests.Session()
         if not self.token:
-            logger.warning("⚠ BRAPI_TOKEN não configurado.")
+            logger.warning("⚠ BRAPI_TOKEN não configurado. Coluna 'Anos_Listagem' ficará vazia.")
 
     def get_listing_date(self, ticker):
-        if not self.token: return None
+        """Consulta Brapi v2 com logs explícitos e timeout seguro."""
+        if not self.token:
+            return None
+        
+        url = f"https://brapi.dev/api/v2/quote/{ticker}"
         try:
-            resp = self.session.get(f"{BRAPI_BASE}/{ticker}", params={"token": self.token}, timeout=15)
+            logger.debug(f"Brapi: consultando {ticker}...")
+            resp = self.session.get(url, params={"token": self.token}, timeout=30)
             resp.raise_for_status()
-            results = resp.json().get("results", [])
+            data = resp.json()
+            results = data.get("results", [])
+            
             if results:
-                ms = results[0].get("firstTradeDateMilliseconds")
-                if ms: return datetime.fromtimestamp(ms / 1000).strftime("%Y-%m-%d")
-                return results[0].get("listingDate")
+                stock = results[0]
+                # Prioriza firstTradeDateMilliseconds (IPO real)
+                ms = stock.get("firstTradeDateMilliseconds")
+                if ms:
+                    dt = datetime.fromtimestamp(ms / 1000)
+                    logger.debug(f"Brapi: {ticker} -> IPO em {dt.strftime('%Y-%m-%d')}")
+                    return dt.strftime("%Y-%m-%d")
+                # Fallback para listingDate
+                listing = stock.get("listingDate")
+                if listing:
+                    logger.debug(f"Brapi: {ticker} -> listingDate {listing}")
+                    return listing
+                    
+            logger.warning(f"Brapi: {ticker} retornado, mas sem data de listagem.")
+            return None
+            
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response else "N/A"
+            logger.error(f"Brapi HTTP {ticker} ({status}): {e}")
+        except requests.exceptions.Timeout:
+            logger.error(f"Brapi Timeout: {ticker}")
         except Exception as e:
-            logger.debug(f"Erro Brapi {ticker}: {e}")
+            logger.error(f"Brapi Erro inesperado {ticker}: {e}")
         return None
 
 # ---------------------------------------------------------------------------
-# FUNÇÕES SELIC (COM CACHE INTELIGENTE + RETRY)
+# FUNÇÕES SELIC (COM CACHE INTELIGENTE)
 # ---------------------------------------------------------------------------
 def coletar_selic_historico():
-    """
-    Coleta série histórica da SELIC (10 anos) da API do BCB.
-    - Timeout: 60s
-    - Retries: 3 com backoff exponencial (5s → 10s → 20s)
-    - Retorna lista de dicts: [{"data": "DD/MM/YYYY", "valor_anual": 10.75}, ...]
-    """
     hoje = datetime.now()
     data_inicial = hoje.replace(year=hoje.year - 10)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
     url = f"{BCB_BASE}?formato=json&dataInicial={data_inicial_str}"
     
-    last_error = None
     for attempt in range(3):
         try:
-            logger.info(f"Buscando SELIC na API BCB (tentativa {attempt+1}/3)...")
-            # Timeout aumentado para 60s
+            logger.info(f"SELIC: tentativa {attempt+1}/3...")
             resp = requests.get(url, timeout=60)
             resp.raise_for_status()
             dados = resp.json()
-            
             registros = []
             for d in dados:
                 try:
                     valor = float(d.get("valor", 0))
                     if valor > 0:
-                        registros.append({
-                            "data": d.get("data"),  # Formato: "DD/MM/YYYY"
-                            "valor_anual": round(valor, 2)
-                        })
-                except:
-                    continue
-            
+                        registros.append({"data": d.get("data"), "valor_anual": round(valor, 2)})
+                except: continue
             if registros:
-                logger.info(f"✓ SELIC: {len(registros)} registros coletados com sucesso")
+                logger.info(f"✓ SELIC: {len(registros)} registros coletados")
                 return registros
-            else:
-                logger.warning("SELIC: API retornou, mas sem dados válidos")
-                
-        except requests.exceptions.Timeout:
-            last_error = "Timeout"
-            logger.warning(f"SELIC: Timeout na tentativa {attempt+1}/3")
-        except requests.exceptions.HTTPError as e:
-            last_error = f"HTTP {e.response.status_code}"
-            logger.warning(f"SELIC: Erro HTTP na tentativa {attempt+1}/3: {e}")
         except Exception as e:
-            last_error = str(e)
-            logger.warning(f"SELIC: Erro na tentativa {attempt+1}/3: {e}")
-        
-        if attempt < 2:
-            # Backoff exponencial: 5s, 10s, 20s
-            wait = 5 * (2 ** attempt)
-            logger.info(f"SELIC: Aguardando {wait}s antes da próxima tentativa...")
-            time.sleep(wait)
-    
-    logger.error(f"SELIC: Falha após 3 tentativas. Último erro: {last_error}")
+            logger.warning(f"SELIC falha tentativa {attempt+1}: {e}")
+            if attempt < 2: time.sleep(5 * (2 ** attempt))
+    logger.error("SELIC: falha definitiva. Mantendo cache anterior.")
     return None
 
 def salvar_selic_json(novos_dados=None):
-    """
-    Salva selic.json com cache inteligente:
-    - Se novos_dados != None: sobrescreve com dados novos + timestamp de sucesso
-    - Se novos_dados == None: NÃO sobrescreve, mantém arquivo existente intacto
-    """
     agora = datetime.now().isoformat()
-    
     if novos_dados is not None:
-        # Coleta bem-sucedida: salva novos dados
         payload = {
-            "taxa_atual": novos_dados[-1]["valor_anual"] if novos_dados else None,
+            "taxa_atual": novos_dados[-1]["valor_anual"],
             "data_atualizacao": agora,
             "ultima_coleta_sucesso": agora,
             "historico": novos_dados
@@ -214,26 +201,17 @@ def salvar_selic_json(novos_dados=None):
         try:
             with open(SELIC_FILE, "w", encoding="utf-8") as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
-            logger.info(f"✓ selic.json atualizado com {len(novos_dados)} registros")
-            return True
+            logger.info("✓ selic.json atualizado com sucesso")
         except Exception as e:
             logger.error(f"✗ Erro ao salvar selic.json: {e}")
-            return False
     else:
-        # Coleta falhou: NÃO sobrescreve, apenas loga
-        logger.warning("⚠ SELIC: coleta falhou. Mantendo selic.json anterior intacto.")
-        # Opcional: atualizar apenas o timestamp de última tentativa (sem apagar histórico)
+        logger.warning("⚠ SELIC: coleta falhou. Arquivo anterior mantido.")
         try:
             if SELIC_FILE.exists():
-                with open(SELIC_FILE, "r", encoding="utf-8") as f:
-                    existente = json.load(f)
+                with open(SELIC_FILE, "r", encoding="utf-8") as f: existente = json.load(f)
                 existente["ultima_tentativa"] = agora
-                with open(SELIC_FILE, "w", encoding="utf-8") as f:
-                    json.dump(existente, f, ensure_ascii=False, indent=2)
-                logger.info("✓ selic.json: atualizado apenas 'ultima_tentativa'")
-        except:
-            pass  # Se não der para ler o existente, tudo bem
-        return False
+                with open(SELIC_FILE, "w", encoding="utf-8") as f: json.dump(existente, f, ensure_ascii=False, indent=2)
+        except: pass
 
 # ---------------------------------------------------------------------------
 # FUNÇÕES AUXILIARES
@@ -251,8 +229,11 @@ def calc_divs(div_data, current_year=None):
     if not div_data: return None
     divs = div_data.get("dividends", []) if isinstance(div_data, dict) else []
     if not divs: return None
-    years = [current_year - i for i in range(5, 0, -1)]
+    
+    # Inclui ano 0 (atual) até ano 5
+    years = [current_year - i for i in range(6)]
     totals = {y: 0.0 for y in years}
+    
     for d in divs:
         try:
             dt = d.get("date")
@@ -260,9 +241,17 @@ def calc_divs(div_data, current_year=None):
             y = int(dt[:4])
             if y in totals: totals[y] += float(d.get("value") or 0)
         except: continue
+        
     return {
-        f'DIV_{5-i}A_': round(totals.get(current_year - i, 0.0), 4) for i in range(1, 6)
-    } | {'DY_5A_PG': sum(1 for v in totals.values() if v > 0)}
+        'DIV_0A_': round(totals.get(current_year, 0.0), 4),
+        'DIV_1A_': round(totals.get(current_year - 1, 0.0), 4),
+        'DIV_2A_': round(totals.get(current_year - 2, 0.0), 4),
+        'DIV_3A_': round(totals.get(current_year - 3, 0.0), 4),
+        'DIV_4A_': round(totals.get(current_year - 4, 0.0), 4),
+        'DIV_5A_': round(totals.get(current_year - 5, 0.0), 4),
+        # Consistência mantém foco nos 5 anos completos (1 a 5) para não distorcer o score
+        'DY_5A_PG': sum(1 for i in range(1, 6) if totals.get(current_year - i, 0) > 0)
+    }
 
 def update_score(row):
     s = 0
@@ -301,10 +290,10 @@ def main():
     logger.info("INICIANDO ATUALIZAÇÃO - SOBRAL INVEST")
     logger.info("=" * 60)
 
-    # 1. Coleta SELIC primeiro (com cache inteligente)
-    logger.info("Coletando dados da SELIC...")
+    # 1. SELIC
+    logger.info("Coletando SELIC...")
     selic_novos = coletar_selic_historico()
-    salvar_selic_json(selic_novos)  # Só salva se sucesso; se falhar, mantém arquivo anterior
+    salvar_selic_json(selic_novos)
 
     mf, brapi = MFinanceClient(), BrapiClient(BRAPI_TOKEN)
     stocks, indicators = mf.get_stocks(), mf.get_indicators()
@@ -318,12 +307,21 @@ def main():
 
     logger.info(f"Processando {len(tickers)} ativos...")
     for i, t in enumerate(tickers):
-        if i % 50 == 0 and i > 0: logger.info(f"Processados: {i}/{len(tickers)} | Falhas div: {falhas}")
+        if i % 50 == 0 and i > 0: 
+            logger.info(f"Processados: {i}/{len(tickers)} | Falhas div: {falhas}")
         
         row = {**s_map.get(t, {}), **i_map.get(t, {})}
-        listing = brapi.get_listing_date(t)
-        row['Anos_Listagem'] = round((datetime.now() - datetime.strptime(listing, "%Y-%m-%d")).days / 365.25, 2) if listing else None
         
+        # Brapi com log de sucesso/falha explícito
+        listing = brapi.get_listing_date(t)
+        if listing:
+            try:
+                dt = datetime.strptime(listing, "%Y-%m-%d")
+                row['Anos_Listagem'] = round((datetime.now() - dt).days / 365.25, 2)
+            except: row['Anos_Listagem'] = None
+        else:
+            row['Anos_Listagem'] = None
+
         for k, v in i_map.get(t, {}).items():
             if k not in ['symbol','name','sector','subSector','segment','type']:
                 row[k] = extract_val(v)
@@ -333,7 +331,8 @@ def main():
         if not d_calc:
             falhas += 1
             with open(FALHAS_LOG, 'a') as f: f.write(f"{datetime.now().isoformat()}|{t}|Falha API\n")
-            d_calc = {f'DIV_{x}A_': None for x in range(1,6)} | {'DY_5A_PG': None}
+            # Fallback com 0.0 explícito para evitar células vazias
+            d_calc = {f'DIV_{x}A_': 0.0 for x in range(6)} | {'DY_5A_PG': 0}
         row.update(d_calc)
         
         row['Score_CS'] = update_score(row)
@@ -343,24 +342,27 @@ def main():
     df = pd.DataFrame(results)
     df = df[df['name'].notna() & (df['name'] != '') & (df.get('lastPrice', pd.Series([1])) > 0)]
     
-    # Renomear e Reordenar
     df.rename(columns=COLUNAS_MAPEAMENTO, inplace=True)
     existentes = [c for c in ORDEM_FINAL if c in df.columns]
     extras = [c for c in df.columns if c not in existentes]
     df = df[existentes + extras]
+
+    # Conversão numérica forçada para colunas críticas
+    numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A', 'Anos_Listagem']
+    for col in numeric_targets:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
     logger.info(f"Total válidos: {len(df)} | Colunas: {len(df.columns)}")
     try:
         with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='DADOS!', index=False)
         df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
-        logger.info("✓ Arquivos de ativos salvos com sucesso!")
+        logger.info("✓ Arquivos salvos com sucesso!")
     except Exception as e:
-        logger.error(f"✗ Erro ao salvar ativos: {e}")
+        logger.error(f"✗ Erro ao salvar: {e}")
 
     logger.info("✓ ATUALIZAÇÃO CONCLUÍDA!")
-    if falhas > 0:
-        logger.warning(f"⚠ {falhas} tickers tiveram falha na coleta de dividendos.")
 
 if __name__ == "__main__":
     main()
