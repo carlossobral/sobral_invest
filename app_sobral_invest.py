@@ -3,7 +3,14 @@ from home import pagina_inicial
 from analise import pagina_analise
 from rankings import pagina_rankings
 from comparativo import pagina_comparativo
-from configs import pagina_configuracoes
+from .configs import pagina_configuracoes
+
+import os
+from datetime import datetime
+
+def debug_log(message):
+    with open(os.path.join(os.path.dirname(__file__), "data", "debug_indic.log"), "a", encoding="utf-8") as f:
+        f.write(f"{datetime.utcnow().isoformat()} - {message}\n")
 
 # Configuração da página
 st.set_page_config(page_title="Sobral Invest", page_icon="📊", layout="wide")
@@ -103,6 +110,7 @@ def render_header(pagina):
 def main():
     # 1. Renderiza o Header Unificado no topo
     render_header(st.session_state["pagina_atual"])
+    debug_log(f"Rendered header for page: {st.session_state.get('pagina_atual', 'unknown')}")
 
     # 2. Sidebar com navegação estilo Card (Foto 2)
     with st.sidebar:

@@ -198,9 +198,11 @@ def salvar_cache_listagem(cache):
     except Exception as e:
         logger.error(f"Erro ao salvar cache de listagem: {e}")
 
-def get_listing_date_yf(ticker, cache):
-    """Calcula anos de listagem usando cache local e yfinance (fallback)."""
-    # 1. Tentar ler do cache
+def get_listing_date_yf(ticker, cache, force_update=False):
+    """Calcula anos de listagem usando cache local e, opcionalmente, yfinance.
+    Quando force_update=True, tenta atualizar o cache com yfinance; caso contrário,
+    usa apenas o cache existente (ou retorna 0 se não houver)."""
+    # 1️⃣ Tenta ler do cache
     if ticker in cache:
         cached_val = cache[ticker]
         if cached_val == "N/A":
@@ -211,8 +213,9 @@ def get_listing_date_yf(ticker, cache):
             return round(anos, 2)
         except Exception as e:
             logger.warning(f"Erro ao converter data do cache para {ticker}: {e}")
-
-    # 2. Se não estiver no cache, buscar no yfinance
+    # 2️⃣ Se solicitado, usa yfinance para buscar a data
+    if not force_update:
+        return 0.0
     try:
         logger.info(f"yfinance: buscando data de listagem para {ticker}...")
         yf_ticker = yf.Ticker(f"{ticker}.SA")
@@ -222,13 +225,12 @@ def get_listing_date_yf(ticker, cache):
             first_date_str = first_date.strftime("%Y-%m-%d")
             cache[ticker] = first_date_str
             anos = (datetime.now().date() - first_date).days / 365.25
-            time.sleep(0.5)  # Evitar sobrecarga/rate-limit ao fazer requisições
+            time.sleep(0.5)  # Evitar rate‑limit
             return round(anos, 2)
         else:
             cache[ticker] = "N/A"
     except Exception as e:
         logger.warning(f"yfinance falhou ao buscar listagem para {ticker}: {e}")
-        
     return 0.0
 
 def calc_divs(div_data, current_year=None):
@@ -350,6 +352,41 @@ def main():
         time.sleep(0.3)  # Segurança contra rate limit
 
     df = pd.DataFrame(results)
+# -------------------------------------------------
+# 1️⃣ Calcular indicadores ausentes usando dados disponíveis
+# -------------------------------------------------
+# Garantir colunas auxiliares
+for col in ['Valor_Mercado', 'P_EBIT', 'P_L', 'ROE', 'VPA', 'Qtd_Acoes', 'NetMargin']:
+    if col not in df.columns:
+        df[col] = pd.NA
+
+# EBIT = Valor_Mercado / P_EBIT
+df['EBIT'] = pd.to_numeric(df['Valor_Mercado'], errors='coerce') / pd.to_numeric(df['P_EBIT'], errors='coerce')
+df.loc[df['P_EBIT'].isna() | (df['P_EBIT'] == 0), 'EBIT'] = 0
+
+# Equity = VPA * Qtd_Acoes
+df['Equity'] = pd.to_numeric(df['VPA'], errors='coerce') * pd.to_numeric(df['Qtd_Acoes'], errors='coerce')
+df['Equity'].fillna(0, inplace=True)
+
+# Lucro Líquido = ROE * Equity  (fallback usando P/L)
+df['Lucro_Liquido'] = pd.to_numeric(df['ROE'], errors='coerce') * df['Equity']
+mask = df['Lucro_Liquido'].isna() | (df['Lucro_Liquido'] == 0)
+df.loc[mask, 'Lucro_Liquido'] = pd.to_numeric(df['Valor_Mercado'], errors='coerce') / pd.to_numeric(df['P_L'], errors='coerce')
+df['Lucro_Liquido'].fillna(0, inplace=True)
+
+# Receita Líquida = Lucro_Liquido / NetMargin
+df['Receita_Liquida'] = df['Lucro_Liquido'] / pd.to_numeric(df['NetMargin'], errors='coerce')
+df.loc[pd.to_numeric(df['NetMargin'], errors='coerce') == 0, 'Receita_Liquida'] = 0
+df['Receita_Liquida'].fillna(0, inplace=True)
+
+# P_Receita = Valor_Mercado / Receita_Liquida
+df['P_Receita'] = pd.to_numeric(df['Valor_Mercado'], errors='coerce') / pd.to_numeric(df['Receita_Liquida'], errors='coerce')
+df.loc[df['Receita_Liquida'] == 0, 'P_Receita'] = 0
+df['P_Receita'].fillna(0, inplace=True)
+
+# Remover coluna auxiliar temporária
+if 'Equity' in df.columns:
+    df.drop(columns=['Equity'], inplace=True)
     df = df[df['name'].notna() & (df['name'] != '') & (df.get('lastPrice', pd.Series([1])) > 0)]
     
     df.rename(columns=COLUNAS_MAPEAMENTO, inplace=True)
