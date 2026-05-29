@@ -179,17 +179,56 @@ def extract_val(data):
     try: return float(data)
     except: return None
 
-def get_listing_date_yf(ticker):
-    """Calcula anos de listagem usando yfinance (primeira data de cotação disponível)."""
+CACHE_LISTAGEM_FILE = OUTPUT_DIR / "listing_dates.json"
+
+def carregar_cache_listagem():
+    if CACHE_LISTAGEM_FILE.exists():
+        try:
+            with open(CACHE_LISTAGEM_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Erro ao carregar cache de listagem: {e}")
+    return {}
+
+def salvar_cache_listagem(cache):
     try:
+        with open(CACHE_LISTAGEM_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+        logger.info("✓ Cache de listagem salvo com sucesso")
+    except Exception as e:
+        logger.error(f"Erro ao salvar cache de listagem: {e}")
+
+def get_listing_date_yf(ticker, cache):
+    """Calcula anos de listagem usando cache local e yfinance (fallback)."""
+    # 1. Tentar ler do cache
+    if ticker in cache:
+        cached_val = cache[ticker]
+        if cached_val == "N/A":
+            return 0.0
+        try:
+            first_date = datetime.strptime(cached_val, "%Y-%m-%d").date()
+            anos = (datetime.now().date() - first_date).days / 365.25
+            return round(anos, 2)
+        except Exception as e:
+            logger.warning(f"Erro ao converter data do cache para {ticker}: {e}")
+
+    # 2. Se não estiver no cache, buscar no yfinance
+    try:
+        logger.info(f"yfinance: buscando data de listagem para {ticker}...")
         yf_ticker = yf.Ticker(f"{ticker}.SA")
         hist = yf_ticker.history(period="max")
         if not hist.empty:
             first_date = hist.index[0].date()
+            first_date_str = first_date.strftime("%Y-%m-%d")
+            cache[ticker] = first_date_str
             anos = (datetime.now().date() - first_date).days / 365.25
+            time.sleep(0.5)  # Evitar sobrecarga/rate-limit ao fazer requisições
             return round(anos, 2)
+        else:
+            cache[ticker] = "N/A"
     except Exception as e:
-        logger.debug(f"yfinance falhou para {ticker}: {e}")
+        logger.warning(f"yfinance falhou ao buscar listagem para {ticker}: {e}")
+        
     return 0.0
 
 def calc_divs(div_data, current_year=None):
@@ -271,6 +310,10 @@ def main():
     tickers = sorted(set(s_map.keys()) | set(i_map.keys()))
     results, current_year, falhas = [], datetime.now().year, 0
 
+    # Carregar cache de listagem
+    cache_listagem = carregar_cache_listagem()
+    cache_modificado = False
+
     logger.info(f"Processando {len(tickers)} ativos...")
     for i, t in enumerate(tickers):
         if i % 50 == 0 and i > 0: 
@@ -279,7 +322,10 @@ def main():
         row = {**s_map.get(t, {}), **i_map.get(t, {})}
         
         # yfinance para anos de listagem (contorna 404 do Brapi)
-        row['Anos_Listagem'] = get_listing_date_yf(t)
+        tamanho_cache_antes = len(cache_listagem)
+        row['Anos_Listagem'] = get_listing_date_yf(t, cache_listagem)
+        if len(cache_listagem) > tamanho_cache_antes:
+            cache_modificado = True
 
         for k, v in i_map.get(t, {}).items():
             if k not in ['symbol','name','sector','subSector','segment','type']:
@@ -296,6 +342,11 @@ def main():
         row['Score_CS'] = update_score(row)
         row['Classificacao_CS'] = get_class(row['Score_CS'])
         results.append(row)
+        
+        # Salvar cache periodicamente a cada 10 novos itens coletados para evitar perda de dados em caso de interrupção
+        if cache_modificado and i > 0 and i % 10 == 0:
+            salvar_cache_listagem(cache_listagem)
+            
         time.sleep(0.3)  # Segurança contra rate limit
 
     df = pd.DataFrame(results)
@@ -320,6 +371,10 @@ def main():
         logger.info("✓ Arquivos salvos com sucesso!")
     except Exception as e:
         logger.error(f"✗ Erro ao salvar: {e}")
+
+    # Salvar cache se houve modificações
+    if cache_modificado:
+        salvar_cache_listagem(cache_listagem)
 
     logger.info("✓ ATUALIZAÇÃO CONCLUÍDA!")
     if falhas > 0:
