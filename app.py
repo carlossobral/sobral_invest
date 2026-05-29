@@ -7,6 +7,7 @@ import os
 import json
 import time
 import logging
+import numpy as np
 import requests
 import yfinance as yf
 import pandas as pd
@@ -199,33 +200,28 @@ def salvar_cache_listagem(cache):
         logger.error(f"Erro ao salvar cache de listagem: {e}")
 
 def get_listing_date_yf(ticker, cache, force_update=False):
-    """Calcula anos de listagem usando cache local e, opcionalmente, yfinance.
-    Quando force_update=True, tenta atualizar o cache com yfinance; caso contrário,
-    usa apenas o cache existente (ou retorna 0 se não houver)."""
-    # 1️⃣ Tenta ler do cache
+    """Calcula anos de listagem usando cache local e, opcionalmente, yfinance."""
     if ticker in cache:
         cached_val = cache[ticker]
-        if cached_val == "N/A":
-            return 0.0
+        if cached_val == "N/A": return 0.0
         try:
             first_date = datetime.strptime(cached_val, "%Y-%m-%d").date()
             anos = (datetime.now().date() - first_date).days / 365.25
             return round(anos, 2)
         except Exception as e:
             logger.warning(f"Erro ao converter data do cache para {ticker}: {e}")
-    # 2️⃣ Se solicitado, usa yfinance para buscar a data
-    if not force_update:
-        return 0.0
+            
+    if not force_update: return 0.0
+    
     try:
         logger.info(f"yfinance: buscando data de listagem para {ticker}...")
         yf_ticker = yf.Ticker(f"{ticker}.SA")
         hist = yf_ticker.history(period="max")
         if not hist.empty:
             first_date = hist.index[0].date()
-            first_date_str = first_date.strftime("%Y-%m-%d")
-            cache[ticker] = first_date_str
+            cache[ticker] = first_date.strftime("%Y-%m-%d")
             anos = (datetime.now().date() - first_date).days / 365.25
-            time.sleep(0.5)  # Evitar rate‑limit
+            time.sleep(0.5)
             return round(anos, 2)
         else:
             cache[ticker] = "N/A"
@@ -323,9 +319,8 @@ def main():
         
         row = {**s_map.get(t, {}), **i_map.get(t, {})}
         
-        # yfinance para anos de listagem (contorna 404 do Brapi)
         tamanho_cache_antes = len(cache_listagem)
-        row['Anos_Listagem'] = get_listing_date_yf(t, cache_listagem)
+        row['Anos_Listagem'] = get_listing_date_yf(t, cache_listagem, force_update=(t not in cache_listagem))
         if len(cache_listagem) > tamanho_cache_antes:
             cache_modificado = True
 
@@ -345,57 +340,50 @@ def main():
         row['Classificacao_CS'] = get_class(row['Score_CS'])
         results.append(row)
         
-        # Salvar cache periodicamente a cada 10 novos itens coletados para evitar perda de dados em caso de interrupção
         if cache_modificado and i > 0 and i % 10 == 0:
             salvar_cache_listagem(cache_listagem)
             
-        time.sleep(0.3)  # Segurança contra rate limit
+        time.sleep(0.3)
 
     df = pd.DataFrame(results)
-# -------------------------------------------------
-# 1️⃣ Calcular indicadores ausentes usando dados disponíveis
-# -------------------------------------------------
-# Garantir colunas auxiliares
-for col in ['Valor_Mercado', 'P_EBIT', 'P_L', 'ROE', 'VPA', 'Qtd_Acoes', 'NetMargin']:
-    if col not in df.columns:
-        df[col] = pd.NA
-
-# EBIT = Valor_Mercado / P_EBIT
-df['EBIT'] = pd.to_numeric(df['Valor_Mercado'], errors='coerce') / pd.to_numeric(df['P_EBIT'], errors='coerce')
-df.loc[df['P_EBIT'].isna() | (df['P_EBIT'] == 0), 'EBIT'] = 0
-
-# Equity = VPA * Qtd_Acoes
-df['Equity'] = pd.to_numeric(df['VPA'], errors='coerce') * pd.to_numeric(df['Qtd_Acoes'], errors='coerce')
-df['Equity'].fillna(0, inplace=True)
-
-# Lucro Líquido = ROE * Equity  (fallback usando P/L)
-df['Lucro_Liquido'] = pd.to_numeric(df['ROE'], errors='coerce') * df['Equity']
-mask = df['Lucro_Liquido'].isna() | (df['Lucro_Liquido'] == 0)
-df.loc[mask, 'Lucro_Liquido'] = pd.to_numeric(df['Valor_Mercado'], errors='coerce') / pd.to_numeric(df['P_L'], errors='coerce')
-df['Lucro_Liquido'].fillna(0, inplace=True)
-
-# Receita Líquida = Lucro_Liquido / NetMargin
-df['Receita_Liquida'] = df['Lucro_Liquido'] / pd.to_numeric(df['NetMargin'], errors='coerce')
-df.loc[pd.to_numeric(df['NetMargin'], errors='coerce') == 0, 'Receita_Liquida'] = 0
-df['Receita_Liquida'].fillna(0, inplace=True)
-
-# P_Receita = Valor_Mercado / Receita_Liquida
-df['P_Receita'] = pd.to_numeric(df['Valor_Mercado'], errors='coerce') / pd.to_numeric(df['Receita_Liquida'], errors='coerce')
-df.loc[df['Receita_Liquida'] == 0, 'P_Receita'] = 0
-df['P_Receita'].fillna(0, inplace=True)
-
-# Remover coluna auxiliar temporária
-if 'Equity' in df.columns:
-    df.drop(columns=['Equity'], inplace=True)
     df = df[df['name'].notna() & (df['name'] != '') & (df.get('lastPrice', pd.Series([1])) > 0)]
     
     df.rename(columns=COLUNAS_MAPEAMENTO, inplace=True)
+    
+    # ==========================================================
+    # 🧮 MATEMÁTICA REVERSA (Indicadores Ausentes)
+    # ==========================================================
+    logger.info("Calculando indicadores por matemática reversa...")
+    for col in ['LPA', 'Qtd_Acoes', 'Valor_Mercado', 'P_EBIT', 'P_EBITDA', 'Margem_Liquida', 'Margem_EBITDA', 'P_L']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # 1. Lucro Líquido (LPA * Qtd_Acoes)
+    df['Lucro_Liquido'] = df['LPA'] * df['Qtd_Acoes']
+    df.loc[df['Lucro_Liquido'].isna(), 'Lucro_Liquido'] = df['Valor_Mercado'] / df['P_L']
+
+    # 2. EBIT (Valor_Mercado / P_EBIT)
+    df['EBIT'] = df['Valor_Mercado'] / df['P_EBIT']
+
+    # 3. Receita Líquida (Valor_Mercado / P_Receita ou margens)
+    df['Receita_Liquida'] = df['Valor_Mercado'] / df['P_Receita']
+    df.loc[df['Receita_Liquida'].isna(), 'Receita_Liquida'] = df['Lucro_Liquido'] / (df['Margem_Liquida'] / 100)
+    ebitda_est = df['Valor_Mercado'] / df['P_EBITDA']
+    df.loc[df['Receita_Liquida'].isna(), 'Receita_Liquida'] = ebitda_est / (df['Margem_EBITDA'] / 100)
+
+    # 4. P/Receita (Recalcular para consistência)
+    df['P_Receita'] = df['Valor_Mercado'] / df['Receita_Liquida']
+
+    # Limpar infinitos e nulos gerados por divisões inválidas
+    for col in ['Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']:
+        df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
+
+    # Reordenar colunas
     existentes = [c for c in ORDEM_FINAL if c in df.columns]
     extras = [c for c in df.columns if c not in existentes]
     df = df[existentes + extras]
 
-    # Conversão numérica forçada para garantir zeros ao invés de vazio
-    numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A', 'Anos_Listagem']
+    # Conversão numérica forçada
+    numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A', 'Anos_Listagem', 'Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']
     for col in numeric_targets:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -409,7 +397,6 @@ if 'Equity' in df.columns:
     except Exception as e:
         logger.error(f"✗ Erro ao salvar: {e}")
 
-    # Salvar cache se houve modificações
     if cache_modificado:
         salvar_cache_listagem(cache_listagem)
 
