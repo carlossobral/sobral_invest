@@ -41,7 +41,7 @@ TOOLTIPS = {
     "Div_3A": "Dividendos pagos no ano civil de 3 anos atrás.",
     "Div_4A": "Dividendos pagos no ano civil de 4 anos atrás.",
     "Div_5A": "Dividendos pagos no ano civil de 5 anos atrás.",
-    "Consistencia_5A": "Quantos anos (0-5) o ativo pagou dividendos.",
+    "Consistencia_5A": "Quantos anos (0-5) o ativo pagou dividendos nos últimos 5 anos completos.",
 }
 
 def safe(v, d=0.0):
@@ -103,7 +103,6 @@ def pagina_analise():
     df['Disp'] = df['Ticker'] + ' - ' + df['Nome']
     opts = sorted(df['Disp'].tolist())
     
-    # ✅ CORREÇÃO: Blindagem contra None no session_state
     idx = 0
     ticker_dest = st.session_state.get("ticker_destino")
     if ticker_dest:
@@ -171,7 +170,6 @@ def pagina_analise():
     cps = st.columns(4)
     for i, (t, p, u) in enumerate(pj):
         c, b = ("#10b981", "#065f46") if u > 0 else (("#ef4444", "#991b1b") if u < 0 else ("#94a3b8", "#475569"))
-        # ✅ CORREÇÃO: Exibir N/A quando pr <= 0
         price_str = f"R$ {p:.2f}" if p > 0 else "N/A"
         cps[i].markdown(f"""<div class="pc" style="border-left: 4px solid {c};"><div class="pt">{t}</div><div class="pv">{price_str}</div><div class="pu" style="background: {b}40; color: {c};">{u:+.1f}%</div></div>""", unsafe_allow_html=True)
 
@@ -187,7 +185,7 @@ def pagina_analise():
         ("CAGR > 5%", 1 if safe(ativo.get('CAGR_Lucros_5a')) > 5 else 0, "Crescimento consistente"),
         ("ROIC > 10%", 1 if safe(ativo.get('ROIC')) > 10 else 0, "Retorno sobre capital"),
         ("Volume > 1M", 1 if safe(ativo.get('Volume')) > 1000000 else 0, "Liquidez diaria"),
-        ("Consistência 5A", 1 if cons >= 3 else 0, "Pagou em pelo menos 3 dos ultimos 5 anos"),
+        ("Consistência 5A", 1 if cons >= 3 else 0, "Pagou em pelo menos 3 dos ultimos 5 anos completos"),
     ]
     score = sum(x[1] for x in items)
     col, bg, lbl = ("#10b981", "#065f46", "Excelente") if score >= 9 else (("#84cc16", "#3f6212", "Bom") if score >= 7 else (("#f59e0b", "#92400e", "Regular") if score >= 5 else (("#f97316", "#7c2d12", "Fraco") if score >= 3 else ("#dc2626", "#7f1d1d", "Pessimo"))))
