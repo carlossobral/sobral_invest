@@ -433,31 +433,43 @@ def main():
     # -------------------------------------------------
     logger.info("Calculando indicadores por matemática reversa...")
     
-    # Garantir existência das colunas base
+    # 1️⃣ Garantir existência das colunas base (evita KeyError)
     for col in ['LPA', 'Qtd_Acoes', 'Valor_Mercado', 'P_EBIT', 'P_EBITDA', 
                 'Margem_Liquida', 'Margem_EBITDA', 'P_L', 'P_Receita']:
         if col not in df.columns:
             df[col] = np.nan
 
-    # Lucro Líquido
+    # 2️⃣ Lucro Líquido (LPA * Qtd_Acoes)
     df['Lucro_Liquido'] = df['LPA'] * df['Qtd_Acoes']
     mask_lucro = df['Lucro_Liquido'].isna() | (df['Lucro_Liquido'] == 0)
-    df.loc[mask_lucro, 'Lucro_Liquido'] = safe_div(df['Valor_Mercado'], df['P_L'])
+    # Correção: filtrar apenas as linhas da máscara para evitar mismatch de tamanho
+    df.loc[mask_lucro, 'Lucro_Liquido'] = (
+        df.loc[mask_lucro, 'Valor_Mercado'] / df.loc[mask_lucro, 'P_L']
+    ).replace([np.inf, -np.inf], 0).fillna(0)
 
-    # EBIT
-    df['EBIT'] = safe_div(df['Valor_Mercado'], df['P_EBIT'])
+    # 3️⃣ EBIT (Valor_Mercado / P_EBIT)
+    df['EBIT'] = (df['Valor_Mercado'] / df['P_EBIT']).replace([np.inf, -np.inf], 0).fillna(0)
 
-    # Receita Líquida
-    df['Receita_Liquida'] = safe_div(df['Valor_Mercado'], df['P_Receita'])
+    # 4️⃣ Receita Líquida (Valor_Mercado / P_Receita ou margens)
+    df['Receita_Liquida'] = (df['Valor_Mercado'] / df['P_Receita']).replace([np.inf, -np.inf], 0).fillna(0)
     mask_rec = df['Receita_Liquida'].isna() | (df['Receita_Liquida'] == 0)
-    df.loc[mask_rec, 'Receita_Liquida'] = safe_div(df['Lucro_Liquido'], df['Margem_Liquida'] / 100)
-    ebitda_est = safe_div(df['Valor_Mercado'], df['P_EBITDA'])
-    df.loc[mask_rec & df['Receita_Liquida'].isna(), 'Receita_Liquida'] = safe_div(ebitda_est, df['Margem_EBITDA'] / 100)
+    
+    # Fallback 1: Lucro / Margem Líquida
+    df.loc[mask_rec, 'Receita_Liquida'] = (
+        df.loc[mask_rec, 'Lucro_Liquido'] / (df.loc[mask_rec, 'Margem_Liquida'] / 100)
+    ).replace([np.inf, -np.inf], 0).fillna(0)
+    
+    # Fallback 2: EBITDA / Margem EBITDA
+    ebitda_est = (df['Valor_Mercado'] / df['P_EBITDA']).replace([np.inf, -np.inf], 0)
+    mask_rec2 = mask_rec & df['Receita_Liquida'].isna()
+    df.loc[mask_rec2, 'Receita_Liquida'] = (
+        ebitda_est.loc[mask_rec2] / (df.loc[mask_rec2, 'Margem_EBITDA'] / 100)
+    ).replace([np.inf, -np.inf], 0).fillna(0)
 
-    # P/Receita (recalcular)
-    df['P_Receita'] = safe_div(df['Valor_Mercado'], df['Receita_Liquida'])
+    # 5️⃣ P/Receita (recalcular para consistência)
+    df['P_Receita'] = (df['Valor_Mercado'] / df['Receita_Liquida']).replace([np.inf, -np.inf], 0).fillna(0)
 
-    # Limpar infinitos/nulos
+    # 6️⃣ Limpar infinitos/nulos finais
     for col in ['Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']:
         df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
         
