@@ -220,9 +220,8 @@ def pagina_analise():
     
     sec("Crescimento", [
         ("CAGR Receitas 5a", f"{safe(ativo.get('CAGR_Receitas_5a')):.2f}%"), 
-        ("CAGR Lucros 5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%"), 
-        ("📊 Volume (1D)", f"R$ {safe(ativo.get('Volume'))/1e6:.2f}M")
-    ], 3)
+        ("CAGR Lucros 5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%")
+    ], 2)
 
     st.markdown('<div class="st">Dividendos</div>', unsafe_allow_html=True)
     cy = datetime.now().year
