@@ -63,7 +63,7 @@ COLUNAS_MAPEAMENTO = {
     'netIncome': 'Lucro_Liquido', 'ebit': 'EBIT', 'earningsPerShare': 'LPA',
     'bookValuePerShare': 'VPA',
     'DIV_0A_': 'Div_0A', 'DIV_1A_': 'Div_1A', 'DIV_2A_': 'Div_2A', 'DIV_3A_': 'Div_3A',
-    'DIV_4A_': 'Div_4A', 'DIV_5A_': 'Div_5A', 'DY_5A_PG': 'Consistencia_5A',
+    'DIV_4A_': 'Div_4A', 'DIV_5A_': 'Div_5A', 'DIV_6A_': 'Div_6A', 'DY_5A_PG': 'Consistencia_5A',
     'anos_listagem': 'Anos_Listagem', 'Score_CS': 'Score_CS',
     'Score_CS_Classificacao': 'Classificacao_CS'
 }
@@ -78,7 +78,7 @@ ORDEM_FINAL = [
     'Div_Liq_Ativos', 'Div_Liq_PL', 'Div_Liq_EBIT', 'Div_Liq_EBITDA',
     'Liquidez_Corrente', 'Passivos_Ativos', 'PL_Ativos',
     'CAGR_Receitas_5a', 'CAGR_Lucros_5a', 'Receita_Liquida', 'Lucro_Liquido', 'EBIT',
-    'Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A',
+    'Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Div_6A', 'Consistencia_5A',
     'Anos_Listagem', 'Score_CS', 'Classificacao_CS',
     'Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf',
     'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif'
@@ -254,7 +254,7 @@ def calc_divs(div_data, current_year=None):
     if not div_data: return None
     divs = div_data.get("dividends", []) if isinstance(div_data, dict) else []
     if not divs: return None
-    years = [current_year - i for i in range(6)]
+    years = [current_year - i for i in range(7)]  # ← ALTERAÇÃO: 7 anos (0 a 6)
     totals = {y: 0.0 for y in years}
     for d in divs:
         try:
@@ -265,6 +265,7 @@ def calc_divs(div_data, current_year=None):
         'DIV_0A_': round(totals.get(current_year, 0.0), 4), 'DIV_1A_': round(totals.get(current_year - 1, 0.0), 4),
         'DIV_2A_': round(totals.get(current_year - 2, 0.0), 4), 'DIV_3A_': round(totals.get(current_year - 3, 0.0), 4),
         'DIV_4A_': round(totals.get(current_year - 4, 0.0), 4), 'DIV_5A_': round(totals.get(current_year - 5, 0.0), 4),
+        'DIV_6A_': round(totals.get(current_year - 6, 0.0), 4),  # ← ALTERAÇÃO: Div_6A
         'DY_5A_PG': sum(1 for i in range(1, 6) if totals.get(current_year - i, 0) > 0)
     }
 
@@ -279,7 +280,7 @@ def etapa_4_dividendos(mf_client, df):
         if not d_calc:
             falhas += 1
             with open(FALHAS_LOG, 'a') as f: f.write(f"{datetime.now().isoformat()}|{ticker}|Falha API\n")
-            d_calc = {f'DIV_{x}A_': 0.0 for x in range(6)} | {'DY_5A_PG': 0}
+            d_calc = {f'DIV_{x}A_': 0.0 for x in range(7)} | {'DY_5A_PG': 0}  # ← ALTERAÇÃO: range(7)
         mask = df['symbol'] == ticker if 'symbol' in df.columns else df['Ticker'] == ticker
         for k, v in d_calc.items(): df.loc[mask, k] = v
     logger.info(f"✓ Dividendos coletados. Falhas: {falhas}/{len(tickers)}")
@@ -349,7 +350,7 @@ def get_class(s):
 
 def calcular_valuation(df):
     logger.info("🟪 ETAPA 6b: Calculando valuation...")
-    for col in ['Preco_Atual', 'LPA', 'VPA', 'DY_Atual', 'CAGR_Lucros_5a', 'Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A']:
+    for col in ['Preco_Atual', 'LPA', 'VPA', 'DY_Atual', 'CAGR_Lucros_5a', 'Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Div_6A']:  # ← ALTERAÇÃO: incluir Div_6A
         df = ensure_column(df, col, 0.0)
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
@@ -358,7 +359,8 @@ def calcular_valuation(df):
     df['Bazin'] = df['Preco_Atual'] * df['DY_Atual'] / 6.0
     df['Lynch'] = df['LPA'] * (1 + df['CAGR_Lucros_5a'] / 100.0)
     
-    cols_div = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A']
+    # ← ALTERAÇÃO CRÍTICA: AGF usa Div_1A a Div_6A (exclui Div_0A), média de 6 anos / 0.06
+    cols_div = ['Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Div_6A']
     df['Media_Div_6A'] = df[cols_div].mean(axis=1)
     df['Agf'] = df['Media_Div_6A'] / 0.06  # Método Ações Garantem o Futuro (Barsi)
     
@@ -384,9 +386,9 @@ def etapa_6_exportacao(df):
     extras = [c for c in df.columns if c not in existentes]
     df = df[existentes + extras]
     
-    numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A', 'Anos_Listagem', 
+    numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Div_6A', 'Consistencia_5A', 'Anos_Listagem',  # ← ALTERAÇÃO: incluir Div_6A
                        'Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita', 'Graham', 'GrahamBR', 'Bazin', 
-                       'Lynch', 'Agf', 'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif', 'Div_Liq_PL']  # ← CORREÇÃO: Adicionado Div_Liq_PL
+                       'Lynch', 'Agf', 'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif', 'Div_Liq_PL']
     for col in numeric_targets:
         if col in df.columns:
             try: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
