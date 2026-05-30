@@ -1,6 +1,6 @@
 """
 Sobral Invest - Coletor de Dados de Ativos B3 (Pipeline Modular)
-Etapas: SELIC → Stocks → Indicators → Filter → Dividends → Reverse Math → Export → Listagem YF
+Correções: Extração correta de valores da API + AGF Barsi + Merge sem duplicatas
 """
 
 import os
@@ -17,8 +17,6 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # CONFIGURAÇÕES GERAIS
 # ---------------------------------------------------------------------------
-# 🎛️ FLAG DE CONTROLE: Defina False para pular yfinance (útil para CI/CD ou testes)
-# Pode ser sobrescrito via variável de ambiente: export USE_YFINANCE=false
 USE_YFINANCE = os.getenv("USE_YFINANCE", "false").lower() in ("true", "1", "yes")
 
 logging.basicConfig(
@@ -31,8 +29,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-OUTPUT_DIR = Path("data")
-OUTPUT_DIR.mkdir(exist_ok=True)
+SCRIPT_DIR = Path(__file__).parent.resolve()
+OUTPUT_DIR = SCRIPT_DIR / "data"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 ATIVOS_FILE = OUTPUT_DIR / "ativos.xlsx"
 ATIVOS_CSV = OUTPUT_DIR / "ativos.csv"
@@ -122,24 +121,51 @@ class MFinanceClient:
         return self._get(f"{MF_BASE}/stocks/dividends/{symbol}", retries=3, delay=1)
 
 # ---------------------------------------------------------------------------
-# FUNÇÕES AUXILIARES GERAIS
+# FUNÇÕES AUXILIARES - LIMPEZA CRÍTICA DA API
 # ---------------------------------------------------------------------------
-def extract_val(data):
-    if data is None: return None
-    if isinstance(data, dict):
-        v = data.get('value')
-        return float(v) if v is not None else None
-    try: return float(data)
-    except: return None
+def extrair_valor_api(item):
+    """
+    A API MFinance retorna: {'name': 'P/VP', 'value': 2.85, 'description': '...'}
+    Esta função extrai APENAS o número do campo 'value'.
+    """
+    if item is None:
+        return None
+    if isinstance(item, dict):
+        val = item.get('value')
+        if val is not None:
+            try:
+                return float(val)
+            except:
+                return None
+    try:
+        return float(item)
+    except:
+        return None
+
+def limpar_dataframe_api(df_raw, colunas_texto=None):
+    """
+    Converte todas as colunas numéricas de um DataFrame vindo da API,
+    extraindo o 'value' de dicionários aninhados.
+    """
+    if colunas_texto is None:
+        colunas_texto = ['symbol', 'name', 'sector', 'subSector', 'segment', 'type']
+    
+    df = df_raw.copy()
+    for col in df.columns:
+        if col in colunas_texto:
+            continue
+        df[col] = df[col].apply(extrair_valor_api)
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
 
 def safe_div(a, b):
-    """Divisão segura que retorna 0 se b for 0 ou NaN."""
+    """Divisão segura vetorizada."""
     with np.errstate(divide='ignore', invalid='ignore'):
         result = np.where(b != 0, a / b, 0)
         return np.where(np.isfinite(result), result, 0)
 
 def ensure_column(df, col_name, default=0.0):
-    """Garante que uma coluna exista no DataFrame, criando com valor default se necessário."""
+    """Garante que uma coluna exista no DataFrame."""
     if col_name not in df.columns:
         df[col_name] = default
     return df
@@ -148,9 +174,7 @@ def ensure_column(df, col_name, default=0.0):
 # ETAPA 0: SELIC
 # ---------------------------------------------------------------------------
 def etapa_0_selic():
-    """Coleta histórico SELIC do BCB com retry e salva em JSON."""
     logger.info("🟦 ETAPA 0: Coletando SELIC...")
-    
     hoje = datetime.now()
     data_inicial = hoje.replace(year=hoje.year - 10)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
@@ -204,39 +228,53 @@ def salvar_selic_json(novos_dados=None):
         except: pass
 
 # ---------------------------------------------------------------------------
-# ETAPA 1: STOCKS (MFinance)
+# ETAPA 1: STOCKS (MFinance) - COM LIMPEZA
 # ---------------------------------------------------------------------------
 def etapa_1_stocks(mf_client):
-    """Busca lista de ativos da API MFinance e retorna DataFrame."""
     logger.info("🟦 ETAPA 1: Buscando lista de ativos (MFinance)...")
     stocks = mf_client.get_stocks()
     if not stocks:
         logger.error("✗ Falha ao obter lista de ativos.")
         return None
+    
     df = pd.DataFrame(stocks)
-    logger.info(f"✓ {len(df)} ativos carregados da lista.")
+    
+    # Limpar colunas numéricas da lista de stocks
+    cols_numericas_stocks = ['lastPrice', 'marketCap', 'volume', 'shares', 'dividendYield']
+    for col in cols_numericas_stocks:
+        if col in df.columns:
+            df[col] = df[col].apply(extrair_valor_api)
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    logger.info(f"✓ {len(df)} ativos carregados e limpos.")
     return df
 
 # ---------------------------------------------------------------------------
-# ETAPA 2: INDICATORS (MFinance)
+# ETAPA 2: INDICATORS (MFinance) - CORREÇÃO CRÍTICA
 # ---------------------------------------------------------------------------
 def etapa_2_indicators(mf_client, df_stocks):
-    """Busca indicadores fundamentais e merge com lista de ativos."""
-    logger.info("🟨 ETAPA 2: Buscando indicadores fundamentais (MFinance)...")
+    """
+    CORREÇÃO: Extrai apenas o campo 'value' dos dicionários da API,
+    converte para numérico e faz merge SEM criar colunas duplicadas.
+    """
+    logger.info("🟨 ETAPA 2: Buscando e limpando indicadores fundamentais...")
+    
     indicators = mf_client.get_indicators()
     if not indicators:
         logger.error("✗ Falha ao obter indicadores.")
         return df_stocks
     
+    # 1️⃣ Criar DataFrame e LIMPAR dados aninhados da API
     df_ind = pd.DataFrame(indicators)
-    # Merge por symbol/Ticker
-    if 'symbol' in df_stocks.columns and 'symbol' in df_ind.columns:
-        df_merged = pd.merge(df_stocks, df_ind, on='symbol', how='left', suffixes=('_stocks', '_ind'))
-    else:
-        df_merged = df_stocks.copy()
-        for col in df_ind.columns:
-            if col not in df_merged.columns:
-                df_merged[col] = df_ind[col]
+    df_ind = limpar_dataframe_api(df_ind)
+    
+    # 2️⃣ Merge SEGURO: usar symbol como índice para evitar sufixos (_stocks/_ind)
+    df_stocks = df_stocks.set_index('symbol')
+    df_ind = df_ind.set_index('symbol')
+    
+    # combine_first preenche df_stocks com dados de df_ind, sem duplicar colunas
+    df_merged = df_stocks.combine_first(df_ind)
+    df_merged = df_merged.reset_index()
     
     logger.info(f"✓ Indicadores mesclados. Total colunas: {len(df_merged.columns)}")
     return df_merged
@@ -245,23 +283,27 @@ def etapa_2_indicators(mf_client, df_stocks):
 # ETAPA 3: FILTRO DE LIMPEZA
 # ---------------------------------------------------------------------------
 def etapa_3_filtro_limpeza(df):
-    """Remove linhas com nome em branco ou nulo."""
-    logger.info("🟨 ETAPA 3: Filtrando ativos com nome válido...")
+    logger.info("🟨 ETAPA 3: Filtrando ativos válidos...")
     antes = len(df)
     
-    # Filtra por coluna 'name' ou 'Nome' (depende do mapeamento)
     col_nome = 'name' if 'name' in df.columns else 'Nome'
-    df_limpo = df[df[col_nome].notna() & (df[col_nome].astype(str).str.strip() != '')].copy()
+    col_preco = 'lastPrice' if 'lastPrice' in df.columns else 'Preco_Atual'
+    col_roe = 'returnOnEquity' if 'returnOnEquity' in df.columns else 'ROE'
     
-    depois = len(df_limpo)
-    logger.info(f"✓ Removidos {antes - depois} ativos sem nome. Restam {depois} ativos válidos.")
-    return df_limpo
+    mask_nome = df[col_nome].notna() & (df[col_nome].astype(str).str.strip() != '')
+    mask_preco = pd.to_numeric(df[col_preco], errors='coerce') > 0
+    mask_fund = pd.to_numeric(df[col_roe], errors='coerce').notna()
+    
+    df_filtrado = df[mask_nome & mask_preco & mask_fund].copy()
+    depois = len(df_filtrado)
+    
+    logger.info(f"✓ Removidos {antes - depois} ativos inválidos. Restam {depois}.")
+    return df_filtrado
 
 # ---------------------------------------------------------------------------
 # ETAPA 4: DIVIDENDOS (MFinance)
 # ---------------------------------------------------------------------------
 def calc_divs(div_data, current_year=None):
-    """Calcula dividendos por ano civil e consistência."""
     if current_year is None: current_year = datetime.now().year
     if not div_data: return None
     divs = div_data.get("dividends", []) if isinstance(div_data, dict) else []
@@ -289,8 +331,7 @@ def calc_divs(div_data, current_year=None):
     }
 
 def etapa_4_dividendos(mf_client, df):
-    """Coleta dividendos para cada ativo e calcula métricas anuais."""
-    logger.info("🟥 ETAPA 4: Coletando dividendos (lista filtrada)...")
+    logger.info("🟥 ETAPA 4: Coletando dividendos...")
     falhas = 0
     current_year = datetime.now().year
     
@@ -298,7 +339,7 @@ def etapa_4_dividendos(mf_client, df):
     
     for i, ticker in enumerate(tickers):
         if i % 50 == 0 and i > 0:
-            logger.info(f"Dividendos: processados {i}/{len(tickers)} | Falhas: {falhas}")
+            logger.info(f"Dividendos: {i}/{len(tickers)} | Falhas: {falhas}")
         
         div_data = mf_client.get_dividends(ticker)
         d_calc = calc_divs(div_data, current_year) if div_data else None
@@ -309,7 +350,6 @@ def etapa_4_dividendos(mf_client, df):
                 f.write(f"{datetime.now().isoformat()}|{ticker}|Falha API\n")
             d_calc = {f'DIV_{x}A_': 0.0 for x in range(6)} | {'DY_5A_PG': 0}
         
-        # Atualiza DataFrame
         mask = df['symbol'] == ticker if 'symbol' in df.columns else df['Ticker'] == ticker
         for k, v in d_calc.items():
             df.loc[mask, k] = v
@@ -318,13 +358,11 @@ def etapa_4_dividendos(mf_client, df):
     return df
 
 # ---------------------------------------------------------------------------
-# ETAPA 5: MATEMÁTICA REVERSA (CORRIGIDA)
+# ETAPA 5: MATEMÁTICA REVERSA
 # ---------------------------------------------------------------------------
 def etapa_5_matematica_reversa(df):
-    """Calcula indicadores ausentes via fórmulas reversas."""
     logger.info("🟪 ETAPA 5: Calculando matemática reversa...")
     
-    # ✅ GARANTIR que todas as colunas necessárias existam
     cols_essenciais = {
         'LPA': 0.0, 'Qtd_Acoes': 0.0, 'Valor_Mercado': 0.0,
         'P_EBIT': 0.0, 'P_EBITDA': 0.0, 'Margem_Liquida': 0.0,
@@ -332,53 +370,42 @@ def etapa_5_matematica_reversa(df):
     }
     for col, default in cols_essenciais.items():
         df = ensure_column(df, col, default)
-    
-    # Converter para numérico (evita erros de tipo)
-    for col in cols_essenciais.keys():
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    # 1. Lucro Líquido: LPA × Qtd_Acoes (fallback: Valor_Mercado / P_L)
+    # Lucro Líquido
     df['Lucro_Liquido'] = df['LPA'] * df['Qtd_Acoes']
     mask_lucro = (df['Lucro_Liquido'] <= 0) | (df['Lucro_Liquido'].isna())
     df.loc[mask_lucro, 'Lucro_Liquido'] = safe_div(df.loc[mask_lucro, 'Valor_Mercado'], df.loc[mask_lucro, 'P_L'])
     
-    # 2. EBIT: Valor_Mercado / P_EBIT
+    # EBIT
     df['EBIT'] = safe_div(df['Valor_Mercado'], df['P_EBIT'])
     
-    # 3. Receita Líquida: Valor_Mercado / P_Receita (fallback em cascata)
+    # Receita Líquida
     df['Receita_Liquida'] = safe_div(df['Valor_Mercado'], df['P_Receita'])
     mask_rec = (df['Receita_Liquida'] <= 0) | (df['Receita_Liquida'].isna())
+    df.loc[mask_rec, 'Receita_Liquida'] = safe_div(df.loc[mask_rec, 'Lucro_Liquido'], df.loc[mask_rec, 'Margem_Liquida'] / 100)
     
-    # Fallback 1: Lucro / Margem Líquida
-    df.loc[mask_rec, 'Receita_Liquida'] = safe_div(
-        df.loc[mask_rec, 'Lucro_Liquido'], 
-        df.loc[mask_rec, 'Margem_Liquida'] / 100
-    )
-    
-    # Fallback 2: EBITDA / Margem EBITDA
-    # CORREÇÃO: Usar indexação booleana direta em vez de .loc
     mask_rec2 = mask_rec & (df['Receita_Liquida'] <= 0)
     if mask_rec2.any():
-        ebitda_est_mask = safe_div(df.loc[mask_rec2, 'Valor_Mercado'], df.loc[mask_rec2, 'P_EBITDA'])
-        margem_ebitda_mask = df.loc[mask_rec2, 'Margem_EBITDA'] / 100
-        df.loc[mask_rec2, 'Receita_Liquida'] = safe_div(ebitda_est_mask, margem_ebitda_mask)
+        ebitda_est = safe_div(df.loc[mask_rec2, 'Valor_Mercado'], df.loc[mask_rec2, 'P_EBITDA'])
+        df.loc[mask_rec2, 'Receita_Liquida'] = safe_div(ebitda_est, df.loc[mask_rec2, 'Margem_EBITDA'] / 100)
     
-    # 4. P/Receita: recalcular para consistência
+    # P/Receita
     df['P_Receita'] = safe_div(df['Valor_Mercado'], df['Receita_Liquida'])
     
-    # ✅ Limpar infinitos/nulos finais
+    # Limpar
     for col in ['Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']:
         df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
     
     logger.info("✓ Matemática reversa concluída.")
     return df
+
 # ---------------------------------------------------------------------------
-# ETAPA 6: CÁLCULO DE SCORE E EXPORTAÇÃO
+# ETAPA 6: SCORE + VALUATION + EXPORTAÇÃO
 # ---------------------------------------------------------------------------
 def update_score(row):
-    """Calcula Score_CS com 11 critérios."""
     s = 0
-    v = lambda k, d=None: extract_val(row.get(k)) or d
+    v = lambda k, d=None: extrair_valor_api(row.get(k)) or d
     if v('returnOnEquity', 0) > 10: s += 1
     if v('dividendYield', 0) > 6: s += 1
     dv = v('netDebtToEbitda')
@@ -406,11 +433,15 @@ def get_class(s):
     return "Pessimo"
 
 def calcular_valuation(df):
-    """Calcula as 10 colunas de valuation."""
-    logger.info("🟪 ETAPA 6b: Calculando valuation (Graham, Bazin, Lynch, AGF)...")
+    """
+    Calcula valuation com fórmulas corretas.
+    AGF = Método Ações Garantem o Futuro (Luiz Barsi):
+          Preço Teto = Média dos últimos 6 dividendos ÷ 0.06
+    """
+    logger.info("🟪 ETAPA 6b: Calculando valuation...")
     
-    # ✅ Garantir colunas numéricas para valuation
-    cols_val = ['Preco_Atual', 'LPA', 'VPA', 'DY_Atual', 'CAGR_Lucros_5a']
+    cols_val = ['Preco_Atual', 'LPA', 'VPA', 'DY_Atual', 'CAGR_Lucros_5a',
+                'Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A']
     for col in cols_val:
         df = ensure_column(df, col, 0.0)
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -421,44 +452,47 @@ def calcular_valuation(df):
     # Graham BR conservador: √(15 × LPA × VPA)
     df['GrahamBR'] = np.sqrt(15 * df['LPA'] * df['VPA'])
     
-    # Bazin: Preço × DY / 6
+    # Bazin: Preço × DY / 6 (yield alvo 6%)
     df['Bazin'] = df['Preco_Atual'] * df['DY_Atual'] / 6.0
     
-    # Lynch: LPA × (1 + CAGR/100)
+    # Lynch: LPA × (1 + CAGR_Lucros_5a/100)
     df['Lynch'] = df['LPA'] * (1 + df['CAGR_Lucros_5a'] / 100.0)
     
-    # AGF: média ponderada
-    df['Agf'] = (df['Graham'] + df['GrahamBR'] + df['Bazin'] + df['Lynch'] + (df['Preco_Atual'] * 0.8)) / 5.0
+    # ✅ AGF CORRETO - Método Ações Garantem o Futuro (Luiz Barsi)
+    # Preço Teto = Média dos últimos 6 dividendos ÷ 0.06 (yield alvo 6%)
+    cols_div = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A']
+    df['Media_Div_6A'] = df[cols_div].mean(axis=1)
+    df['Agf'] = df['Media_Div_6A'] / 0.06  # Yield alvo de 6%
     
-    # Diferenças percentuais
+    # Diferenças percentuais (Upside/Downside)
     for metodo in ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf']:
         df[f'{metodo}_dif'] = (safe_div(df[metodo], df['Preco_Atual']) - 1) * 100
     
     # Arredondar e limpar
-    for col in ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf'] + [f'{m}_dif' for m in ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf']]:
+    for col in ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf', 
+                'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif']:
         if col in df.columns:
             df[col] = df[col].round(2).replace([np.inf, -np.inf], 0).fillna(0)
     
-    logger.info("✓ Valuation calculado.")
+    # Remover coluna auxiliar
+    if 'Media_Div_6A' in df.columns:
+        df.drop(columns=['Media_Div_6A'], inplace=True)
+    
+    logger.info("✓ Valuation calculado com fórmulas corretas.")
     return df
 
 def etapa_6_exportacao(df):
-    """Calcula Score_CS, aplica mapeamento e salva arquivos finais."""
     logger.info("🟪 ETAPA 6: Calculando Score_CS e exportando...")
     
-    # Calcular Score_CS
     df['Score_CS'] = df.apply(update_score, axis=1)
     df['Classificacao_CS'] = df['Score_CS'].apply(get_class)
     
-    # Renomear colunas
     df.rename(columns=COLUNAS_MAPEAMENTO, inplace=True)
     
-    # Ordenar colunas
     existentes = [c for c in ORDEM_FINAL if c in df.columns]
     extras = [c for c in df.columns if c not in existentes]
     df = df[existentes + extras]
     
-    # Converter numérico para colunas críticas
     numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 
                        'Consistencia_5A', 'Anos_Listagem', 'Lucro_Liquido', 'EBIT', 
                        'Receita_Liquida', 'P_Receita', 'Graham', 'GrahamBR', 'Bazin', 
@@ -468,7 +502,6 @@ def etapa_6_exportacao(df):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    # Salvar com tratamento de erro robusto
     try:
         ATIVOS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer:
@@ -480,25 +513,23 @@ def etapa_6_exportacao(df):
         import traceback
         logger.error(f"✗ Erro ao salvar: {e}")
         logger.error(traceback.format_exc())
-        # Tentar salvar apenas CSV como fallback
         try:
             df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
             logger.info("✓ CSV salvo como fallback")
             return df
         except:
-            logger.error("✗ Falha total ao salvar arquivos")
+            logger.error("✗ Falha total ao salvar")
             return df
 
 # ---------------------------------------------------------------------------
-# ETAPA 7: LISTAGEM YF (COM CACHE RESILIENTE + FLAG USE_YFINANCE)
+# ETAPA 7: LISTAGEM YF (COM FLAG)
 # ---------------------------------------------------------------------------
 def carregar_cache_listagem():
     if CACHE_LISTAGEM_FILE.exists():
         try:
             with open(CACHE_LISTAGEM_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception as e:
-            logger.warning(f"Erro ao carregar cache de listagem: {e}")
+        except: pass
     return {}
 
 def salvar_cache_listagem(cache):
@@ -506,144 +537,117 @@ def salvar_cache_listagem(cache):
         CACHE_LISTAGEM_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(CACHE_LISTAGEM_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
-        logger.info("✓ Cache de listagem salvo")
-    except Exception as e:
-        logger.error(f"Erro ao salvar cache: {e}")
+    except: pass
 
 def get_listing_date_yf(ticker, cache):
-    """
-    Busca data de listagem via yfinance.
-    
-    🎛️ Se USE_YFINANCE = False, pula completamente a chamada ao yfinance
-    e retorna 0.0 ou valor do cache existente.
-    
-    REGRA DE OURO: Se já tem no cache e falhar, NÃO faz nada, segue a vida.
-    """
-    # 1. Tenta ler do cache primeiro (sempre)
     if ticker in cache:
         cached_val = cache[ticker]
-        if cached_val == "N/A":
-            return 0.0
+        if cached_val == "N/A": return 0.0
         try:
             first_date = datetime.strptime(cached_val, "%Y-%m-%d").date()
             anos = (datetime.now().date() - first_date).days / 365.25
             return round(anos, 2)
-        except Exception as e:
-            logger.warning(f"Erro ao converter data do cache para {ticker}: {e}")
-            return 0.0
+        except: return 0.0
     
-    # 2. Se USE_YFINANCE estiver desativado, NÃO tenta yfinance
     if not USE_YFINANCE:
-        logger.debug(f"yfinance desativado: retornando 0.0 para {ticker}")
         return 0.0
     
-    # 3. Se não tem no cache e USE_YFINANCE=True, tenta yfinance
     try:
-        logger.info(f"yfinance: buscando data de listagem para {ticker}...")
         yf_ticker = yf.Ticker(f"{ticker}.SA")
         hist = yf_ticker.history(period="max")
-        
         if not hist.empty:
             first_date = hist.index[0].date()
             cache[ticker] = first_date.strftime("%Y-%m-%d")
             anos = (datetime.now().date() - first_date).days / 365.25
-            time.sleep(0.5)  # Rate limit
+            time.sleep(0.5)
             return round(anos, 2)
         else:
             cache[ticker] = "N/A"
     except Exception as e:
-        # ⚠️ REGRA CRÍTICA: Se der erro no yfinance, NÃO quebra, apenas loga e segue
-        logger.warning(f"yfinance falhou para {ticker} (seguindo com cache): {e}")
-    
+        logger.warning(f"yfinance falhou para {ticker}: {e}")
     return 0.0
 
 def etapa_7_listagem_yf(df):
-    """Calcula Anos_Listagem via yfinance com cache resiliente."""
-    logger.info("🟩 ETAPA 7: Calculando Anos_Listagem (yfinance + cache)...")
+    logger.info("🟩 ETAPA 7: Calculando Anos_Listagem...")
     
-    # Se yfinance estiver desativado, pula a etapa e retorna df original
     if not USE_YFINANCE:
-        logger.info("⏭️ yfinance desativado: pulando cálculo de Anos_Listagem")
+        logger.info("⏭️ yfinance desativado: pulando")
         return df
     
     cache = carregar_cache_listagem()
     cache_modificado = False
-    
-    # Coluna para Ticker (pode ser 'symbol' ou 'Ticker' após mapeamento)
     col_ticker = 'Ticker' if 'Ticker' in df.columns else 'symbol'
     
     for i, ticker in enumerate(df[col_ticker].dropna().unique()):
         if i % 50 == 0 and i > 0:
-            logger.info(f"Listagem: processados {i} tickers...")
+            logger.info(f"Listagem: {i} tickers...")
         
         anos = get_listing_date_yf(ticker, cache)
         mask = df[col_ticker] == ticker
         df.loc[mask, 'Anos_Listagem'] = anos
         
-        if ticker not in cache or cache[ticker] != ("N/A" if anos == 0.0 else None):
+        if ticker not in cache:
             cache_modificado = True
-        
-        # Salvar cache periodicamente
         if cache_modificado and i > 0 and i % 20 == 0:
             salvar_cache_listagem(cache)
     
-    # Salvar cache final se houve mudanças
     if cache_modificado:
         salvar_cache_listagem(cache)
     
-    logger.info("✓ Anos_Listagem calculado (cache preservado em caso de erro).")
+    logger.info("✓ Anos_Listagem calculado.")
     return df
 
 # ---------------------------------------------------------------------------
-# MAIN - ORQUESTRAÇÃO DO PIPELINE
+# MAIN
 # ---------------------------------------------------------------------------
 def main():
     logger.info("=" * 70)
     logger.info("🚀 INICIANDO PIPELINE SOBRAL INVEST")
     logger.info(f"🎛️ USE_YFINANCE = {USE_YFINANCE}")
+    logger.info(f"📁 Diretório: {SCRIPT_DIR}")
     logger.info("=" * 70)
     
-    # Inicializar cliente
     mf = MFinanceClient()
     
-    # ETAPA 0: SELIC
+    # ETAPA 0
     selic_novos = etapa_0_selic()
     salvar_selic_json(selic_novos)
     
-    # ETAPA 1: STOCKS
+    # ETAPA 1
     df = etapa_1_stocks(mf)
     if df is None:
-        logger.error("✗ Pipeline interrompido: falha na etapa 1.")
+        logger.error("✗ Pipeline interrompido: etapa 1.")
         return
     
-    # ETAPA 2: INDICATORS
+    # ETAPA 2 (CORRIGIDA)
     df = etapa_2_indicators(mf, df)
     
-    # ETAPA 3: FILTRO DE LIMPEZA
+    # ETAPA 3
     df = etapa_3_filtro_limpeza(df)
     
-    # ETAPA 4: DIVIDENDOS (com lista menor)
+    # ETAPA 4
     df = etapa_4_dividendos(mf, df)
     
-    # ETAPA 5: MATEMÁTICA REVERSA (CORRIGIDA)
+    # ETAPA 5
     df = etapa_5_matematica_reversa(df)
     
-    # ETAPA 6: SCORE + EXPORTAÇÃO
+    # ETAPA 6
+    df = calcular_valuation(df)
     df = etapa_6_exportacao(df)
     
-    # ETAPA 7: LISTAGEM YF (última, com cache resiliente)
+    # ETAPA 7
     df = etapa_7_listagem_yf(df)
     
-    # Re-exportar com Anos_Listagem atualizado
+    # Exportação final
     try:
         with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='DADOS!', index=False)
         df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
-        logger.info("✓ Arquivos finais atualizados com Anos_Listagem")
+        logger.info("✓ Arquivos finais atualizados")
     except Exception as e:
         logger.error(f"✗ Erro na exportação final: {e}")
     
-    logger.info("✅ PIPELINE CONCLUÍDO COM SUCESSO!")
+    logger.info("✅ PIPELINE CONCLUÍDO!")
 
 if __name__ == "__main__":
     main()
