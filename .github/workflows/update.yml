@@ -46,7 +46,7 @@ jobs:
           USEBOLSAI_TOKEN: ${{ secrets.USEBOLSAI_TOKEN }}
           USE_YFINANCE: "false"
 
-      - name: Debug: Verificar estrutura de arquivos
+      - name: Verificar estrutura de arquivos
         run: |
           echo "🔍 Debug: Estrutura de diretórios"
           pwd
