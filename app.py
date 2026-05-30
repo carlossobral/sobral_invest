@@ -1,6 +1,6 @@
 """
 Sobral Invest - Coletor de Dados de Ativos B3 (Pipeline Modular)
-Correções: Extração correta de valores da API + AGF Barsi + Merge sem duplicatas
+Correções: Eliminação de duplicatas + Extração correta de valores + AGF Barsi
 """
 
 import os
@@ -121,13 +121,10 @@ class MFinanceClient:
         return self._get(f"{MF_BASE}/stocks/dividends/{symbol}", retries=3, delay=1)
 
 # ---------------------------------------------------------------------------
-# FUNÇÕES AUXILIARES - LIMPEZA CRÍTICA DA API
+# FUNÇÕES AUXILIARES - LIMPEZA CRÍTICA
 # ---------------------------------------------------------------------------
 def extrair_valor_api(item):
-    """
-    A API MFinance retorna: {'name': 'P/VP', 'value': 2.85, 'description': '...'}
-    Esta função extrai APENAS o número do campo 'value'.
-    """
+    """Extrai apenas o número do campo 'value' ou retorna o item se já for número."""
     if item is None:
         return None
     if isinstance(item, dict):
@@ -143,10 +140,7 @@ def extrair_valor_api(item):
         return None
 
 def limpar_dataframe_api(df_raw, colunas_texto=None):
-    """
-    Converte todas as colunas numéricas de um DataFrame vindo da API,
-    extraindo o 'value' de dicionários aninhados.
-    """
+    """Converte colunas numéricas extraindo o 'value' de dicts aninhados."""
     if colunas_texto is None:
         colunas_texto = ['symbol', 'name', 'sector', 'subSector', 'segment', 'type']
     
@@ -219,7 +213,7 @@ def salvar_selic_json(novos_dados=None):
         except Exception as e:
             logger.error(f"✗ Erro ao salvar selic.json: {e}")
     else:
-        logger.warning("⚠ SELIC: coleta falhou. Arquivo anterior mantido.")
+        logger.warning(" SELIC: coleta falhou. Arquivo anterior mantido.")
         try:
             if SELIC_FILE.exists():
                 with open(SELIC_FILE, "r", encoding="utf-8") as f: existente = json.load(f)
@@ -228,10 +222,10 @@ def salvar_selic_json(novos_dados=None):
         except: pass
 
 # ---------------------------------------------------------------------------
-# ETAPA 1: STOCKS (MFinance) - COM LIMPEZA
+# ETAPA 1: STOCKS (MFinance)
 # ---------------------------------------------------------------------------
 def etapa_1_stocks(mf_client):
-    logger.info("🟦 ETAPA 1: Buscando lista de ativos (MFinance)...")
+    logger.info(" ETAPA 1: Buscando lista de ativos (MFinance)...")
     stocks = mf_client.get_stocks()
     if not stocks:
         logger.error("✗ Falha ao obter lista de ativos.")
@@ -250,13 +244,10 @@ def etapa_1_stocks(mf_client):
     return df
 
 # ---------------------------------------------------------------------------
-# ETAPA 2: INDICATORS (MFinance) - CORREÇÃO CRÍTICA
+# ETAPA 2: INDICATORS (MFinance)
 # ---------------------------------------------------------------------------
 def etapa_2_indicators(mf_client, df_stocks):
-    """
-    CORREÇÃO: Extrai apenas o campo 'value' dos dicionários da API,
-    converte para numérico e faz merge SEM criar colunas duplicadas.
-    """
+    """Busca indicadores, limpa dados aninhados e mescla SEM duplicatas."""
     logger.info("🟨 ETAPA 2: Buscando e limpando indicadores fundamentais...")
     
     indicators = mf_client.get_indicators()
@@ -401,7 +392,7 @@ def etapa_5_matematica_reversa(df):
     return df
 
 # ---------------------------------------------------------------------------
-# ETAPA 6: SCORE + VALUATION + EXPORTAÇÃO
+# ETAPA 6: SCORE + VALUATION + EXPORTAÇÃO (CORRIGIDA)
 # ---------------------------------------------------------------------------
 def update_score(row):
     s = 0
@@ -433,11 +424,7 @@ def get_class(s):
     return "Pessimo"
 
 def calcular_valuation(df):
-    """
-    Calcula valuation com fórmulas corretas.
-    AGF = Método Ações Garantem o Futuro (Luiz Barsi):
-          Preço Teto = Média dos últimos 6 dividendos ÷ 0.06
-    """
+    """Calcula valuation com fórmulas corretas (AGF Barsi)."""
     logger.info("🟪 ETAPA 6b: Calculando valuation...")
     
     cols_val = ['Preco_Atual', 'LPA', 'VPA', 'DY_Atual', 'CAGR_Lucros_5a',
@@ -446,25 +433,21 @@ def calcular_valuation(df):
         df = ensure_column(df, col, 0.0)
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    # Graham clássico: √(22.5 × LPA × VPA)
+    # Graham clássico
     df['Graham'] = np.sqrt(22.5 * df['LPA'] * df['VPA'])
-    
-    # Graham BR conservador: √(15 × LPA × VPA)
+    # Graham BR
     df['GrahamBR'] = np.sqrt(15 * df['LPA'] * df['VPA'])
-    
-    # Bazin: Preço × DY / 6 (yield alvo 6%)
+    # Bazin
     df['Bazin'] = df['Preco_Atual'] * df['DY_Atual'] / 6.0
-    
-    # Lynch: LPA × (1 + CAGR_Lucros_5a/100)
+    # Lynch
     df['Lynch'] = df['LPA'] * (1 + df['CAGR_Lucros_5a'] / 100.0)
     
     # ✅ AGF CORRETO - Método Ações Garantem o Futuro (Luiz Barsi)
-    # Preço Teto = Média dos últimos 6 dividendos ÷ 0.06 (yield alvo 6%)
     cols_div = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A']
     df['Media_Div_6A'] = df[cols_div].mean(axis=1)
-    df['Agf'] = df['Media_Div_6A'] / 0.06  # Yield alvo de 6%
+    df['Agf'] = df['Media_Div_6A'] / 0.06
     
-    # Diferenças percentuais (Upside/Downside)
+    # Diferenças percentuais
     for metodo in ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf']:
         df[f'{metodo}_dif'] = (safe_div(df[metodo], df['Preco_Atual']) - 1) * 100
     
@@ -474,7 +457,6 @@ def calcular_valuation(df):
         if col in df.columns:
             df[col] = df[col].round(2).replace([np.inf, -np.inf], 0).fillna(0)
     
-    # Remover coluna auxiliar
     if 'Media_Div_6A' in df.columns:
         df.drop(columns=['Media_Div_6A'], inplace=True)
     
@@ -492,12 +474,17 @@ def etapa_6_exportacao(df):
     # Renomear colunas
     df.rename(columns=COLUNAS_MAPEAMENTO, inplace=True)
     
+    # ️ CORREÇÃO CRÍTICA: Remover colunas duplicadas ANTES de processar
+    # Isso evita que df[col] retorne um DataFrame (2D) em vez de Series (1D)
+    df = df.loc[:, ~df.columns.duplicated()]
+    logger.info(f"✓ Duplicatas removidas. Colunas finais: {len(df.columns)}")
+    
     # Ordenar colunas
     existentes = [c for c in ORDEM_FINAL if c in df.columns]
     extras = [c for c in df.columns if c not in existentes]
     df = df[existentes + extras]
     
-    # Converter numérico para colunas críticas (COM VERIFICAÇÃO)
+    # Converter numérico para colunas críticas
     numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 
                        'Consistencia_5A', 'Anos_Listagem', 'Lucro_Liquido', 'EBIT', 
                        'Receita_Liquida', 'P_Receita', 'Graham', 'GrahamBR', 'Bazin', 
@@ -506,13 +493,12 @@ def etapa_6_exportacao(df):
     
     for col in numeric_targets:
         if col in df.columns:
-            # Garantir que é uma Series válida antes de converter
-            if isinstance(df[col], pd.Series):
+            # Conversão segura
+            try:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-            else:
-                # Se não for Series, forçar conversão
-                df[col] = pd.to_numeric(df[col].values, errors='coerce')
-                df[col] = pd.Series(df[col], index=df.index).fillna(0)
+            except Exception as e:
+                logger.warning(f"⚠️ Falha ao converter coluna {col}: {e}")
+                df[col] = 0.0
     
     # Salvar com tratamento de erro robusto
     try:
@@ -526,13 +512,12 @@ def etapa_6_exportacao(df):
         import traceback
         logger.error(f"✗ Erro ao salvar: {e}")
         logger.error(traceback.format_exc())
-        # Tentar salvar apenas CSV como fallback
         try:
             df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
             logger.info("✓ CSV salvo como fallback")
             return df
         except:
-            logger.error("✗ Falha total ao salvar arquivos")
+            logger.error("✗ Falha total ao salvar")
             return df
 
 # ---------------------------------------------------------------------------
@@ -633,7 +618,7 @@ def main():
         logger.error("✗ Pipeline interrompido: etapa 1.")
         return
     
-    # ETAPA 2 (CORRIGIDA)
+    # ETAPA 2
     df = etapa_2_indicators(mf, df)
     
     # ETAPA 3
@@ -659,7 +644,7 @@ def main():
         df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
         logger.info("✓ Arquivos finais atualizados")
     except Exception as e:
-        logger.error(f"✗ Erro na exportação final: {e}")
+        logger.error(f" Erro na exportação final: {e}")
     
     logger.info("✅ PIPELINE CONCLUÍDO!")
 
