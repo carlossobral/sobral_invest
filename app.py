@@ -313,6 +313,15 @@ def etapa_5_matematica_reversa(df):
     df['P_Receita'] = safe_div(df['Valor_Mercado'], df['Receita_Liquida'])
     for col in ['Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']:
         df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
+    
+    # ← ALTERAÇÃO SOLICITADA: Calcular Div_Liq_PL via reversão matemática se estiver vazio
+    if 'Div_Liq_PL' in df.columns and df['Div_Liq_PL'].isna().all():
+        logger.info("🔍 Calculando Div_Liq_PL via reversão: Div_Liq_Ativos / PL_Ativos")
+        mask_valid = (df['PL_Ativos'] > 0) & (df['Div_Liq_Ativos'].notna())
+        df.loc[mask_valid, 'Div_Liq_PL'] = df.loc[mask_valid, 'Div_Liq_Ativos'] / df.loc[mask_valid, 'PL_Ativos']
+        df['Div_Liq_PL'] = df['Div_Liq_PL'].fillna(0)
+        logger.info("✓ Div_Liq_PL calculado via reversão matemática.")
+    
     logger.info("✓ Matemática reversa concluída.")
     return df
 
