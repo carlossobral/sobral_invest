@@ -5,49 +5,76 @@ from datetime import datetime
 from data import load_data
 
 TOOLTIPS = {
-    "P_L": "Preço / Lucro. Quanto menor, mais barata.",
-    "P_VP": "Preço / Valor Patrimonial. < 1 = abaixo do patrimônio.",
-    "P_E": "Price / Earnings. Versão americana do P/L.",
-    "LPA": "Lucro Por Ação.",
-    "P_Receita": "Preço / Receita. < 1 atrativo.",
-    "P_Ativo": "Preço / Ativo Total.",
-    "P_Cap_Giro": "Preço / Capital de Giro.",
-    "P_Ativo_Circ_Liq": "Preço / Ativo Circulante Líquido.",
-    "P_EBIT": "Preço / EBIT.",
-    "P_EBITDA": "Preço / EBITDA.",
-    "EV_EBIT": "Enterprise Value / EBIT.",
-    "EV_EBITDA": "EV / EBITDA.",
-    "ROE": "Return on Equity. > 15% excelente.",
-    "ROA": "Return on Assets.",
-    "ROIC": "Return on Invested Capital. > 10% bom.",
-    "Giro_Ativos": "Receita / Ativos.",
-    "Margem_Bruta": "Lucro antes de despesas operacionais.",
-    "Margem_EBITDA": "EBITDA / Receita.",
-    "Margem_EBIT": "EBIT / Receita.",
-    "Margem_Liquida": "Lucro Líquido / Receita. > 5% saudável.",
-    "Div_Liq_Ativos": "Dívida Líq / Ativos. < 0.5 bom.",
-    "Div_Liq_PL": "Dívida Líq / PL. < 1 ideal.",
-    "Div_Liq_EBIT": "Dívida Líq / EBIT. < 3 bom.",
-    "Div_Liq_EBITDA": "Dívida Líq / EBITDA. < 2.5 saudável.",
-    "Liquidez_Corrente": "Ativo Circ / Passivo Circ. > 1 capacidade.",
-    "Passivos_Ativos": "Passivo / Ativo. < 0.7 conservador.",
-    "PL_Ativos": "Patrimônio / Ativos.",
-    "CAGR_Receitas_5a": "Crescimento médio anual de receitas.",
-    "CAGR_Lucros_5a": "Crescimento médio anual de lucros.",
-    "Qtd_Acoes": "Total de ações emitidas.",
-    "💸 DY 12m": "Dividend Yield dos últimos 12 meses. > 6% atrativo.",
+    # Valuation
+    "P/L": "Preço sobre o Lucro. Demonstra quanto o mercado está disposto a pagar pelos lucros da empresa.",
+    "P/VP": "Preço sobre o Valor Patrimonial. Indica quanto o mercado está disposto a pagar pelo patrimônio da empresa. Abaixo de 1, indica que a empresa está sendo vendida por menos que seu valor real.",
+    "LPA": "Lucro por Ação. Indicador que mostra se a empresa é lucrativa. Quando o número é negativo, indica que a empresa está operando com geração de prejuízo ao invés de lucro.",
+    "P/Receita": "Price to Sales Ratio (PSR). Compara o preço da ação com as vendas. Um PSR abaixo de 1 significa que a empresa pode estar sendo negociada a um preço baixo em comparação com suas vendas.",
+    "P/Ativo": "Preço sobre Total de Ativos. Medida para avaliar o valor de uma empresa em relação ao seu patrimônio líquido total. Um P/Ativo inferior a 1, quer dizer que o preço da ação está menor que os seus próprios ativos.",
+    "P/Cap. Giro": "Mede se a empresa está sendo negociada a um preço justo em comparação com sua capacidade de cobrir suas obrigações de curto prazo.",
+    "P/Ativo Circ. Líq.": "Compara o preço da ação com os ativos circulantes líquidos da empresa. Quanto menor, mais descontada a ação pode estar em relação a seus ativos circulantes líquidos.",
+    "P/EBIT": "Preço sobre EBIT. Medida da lucratividade que exclui juros e impostos. Quanto maior, mais caro o investidor está pagando pela empresa em relação ao seu EBIT.",
+    "P/EBITDA": "Preço sobre EBITDA. Medida da lucratividade que exclui juros, impostos, depreciação e amortização.",
+    "EV/EBIT": "Valor da empresa sobre EBIT. Demonstra a capacidade produtiva da empresa com a estrutura atual, tomando por base seu valor de mercado e seu lucro operacional.",
+    "EV/EBITDA": "Ele indica quantos anos seriam necessários para que a empresa pagasse o seu próprio valor de mercado utilizando apenas o seu lucro operacional.",
+
+    # Rentabilidade
+    "ROE": "Return on Equity, ou Retorno sobre o Patrimônio Líquido mede a eficiência de uma empresa em gerar lucro a partir do capital investido pelos próprios sócios.",
+    "ROA": "Retorno sobre o Ativo. Mede a eficiência com que uma empresa utiliza seus ativos para gerar lucro. Quanto maior este indicador, melhor é a eficiência em gerar lucro a partir dos ativos. Valores acima de 10% geralmente são considerados bons.",
+    "ROIC": "Retorno sobre o Capital Investido. Mede o retorno sobre o capital investido em uma empresa. Quanto maior este indicador, melhor é o retorno que os investidores estão recebendo sobre o investimento. Valores acima de 10% geralmente são considerados bons.",
+    "Giro Ativos": "Mede a capacidade da empresa em gerar receita com seus ativos e a eficiência de seu modelo de negócio.",
+    "Margem Bruta": "Indica a eficiência da empresa em transformar suas vendas em lucro, excluindo os custos variáveis.",
+    "Margem EBITDA": "É um indicador financeiro que mede a eficiência operacional de uma empresa, revelando qual porcentagem da sua receita se transforma em lucro antes de juros, impostos, depreciação e amortização. Em termos simples, ela mostra quanto dinheiro a empresa gera apenas com sua atividade principal para cada real faturado.",
+    "Margem EBIT": "Mede a produtividade e serve como comparação de lucratividade operacional entre empresas do mesmo segmento. É um indicador de margem considerando depreciação e amortização.",
+    "Margem Líquida": "Indica quanto da receita é convertida em lucro.",
+
+    # Endividamento
+    "Dív. Líq/Ativos": "Dívida Líq / Ativos. < 0.5 bom.",
+    "Dív. Líq/PL": "Mede o nível de endividamento de uma empresa em relação ao seu capital próprio. Ele mostra quanto a companhia depende de recursos de terceiros (dívidas) comparado ao que efetivamente pertence aos seus acionistas. < 1 ideal.",
+    "Dív. Líq/EBIT": "Mede o grau de endividamento e a alavancagem de uma empresa. Ele mostra, em anos, quanto tempo a companhia levaria para pagar suas dívidas utilizando exclusivamente o seu lucro operacional, caso o endividamento e os ganhos se mantivessem constantes. < 3 bom.",
+    "Dív. Líq/EBITDA": "É o principal indicador de alavancagem e saúde financeira de uma empresa. Ele calcula quantos anos a empresa levaria para pagar todas as suas dívidas usando apenas o seu lucro operacional (EBITDA), caso ele se mantivesse constante. < 2.5 saudável.",
+    "Liq. Corrente": "Mede a capacidade de uma empresa de pagar suas dívidas correntes (a vencer em um ano ou menos) usando apenas seus ativos correntes (disponíveis em um ano ou menos). Indica se há recursos suficientes para cobrir obrigações de curto prazo.",
+    "Passivo/Ativos": "Indica o quanto a empresa está endividada em relação a seus ativos. Quanto menor este número, melhor é a situação financeira da empresa.",
+    "Patrimonio/Ativos": "Indica quanto a empresa possui em ativos em comparação com suas obrigações. Quanto maior este número, melhor é a situação financeira da empresa.",
+
+    # Resultado
+    "VPA": "Valor Patrimonial por Ação. Representa quanto vale uma ação da empresa em relação a todo seu patrimônio.",
+    "Patrim. Líq.": "Patrimônio Líquido da empresa. Ativos menos passivos.",
+    "Lucro Líquido": "Lucro após impostos e despesas. Base para dividendos.",
+    "EBIT": "Lucro antes de juros e impostos. Mede eficiência operacional.",
+    "Receita Líq.": "Receita total da empresa após deduções.",
+
+    # Crescimento & Dividendos
+    "CAGR Receitas 5a": "Compound Annual Growth Rate (crescimento anual composto). Mede o crescimento da receita de uma empresa considerando os quatro últimos trimestres em comparação ao período de cinco anos atrás.",
+    "CAGR Lucros 5a": "Compound Annual Growth Rate (crescimento anual composto). Mede o crescimento do lucro da empresa considerando os quatro últimos trimestres em comparação ao período equivalente de cinco anos atrás.",
     "📊 Volume (1D)": "Volume financeiro negociado no último dia.",
-    "Div_1A": "Dividendos pagos no ano civil de 1 ano atrás.",
-    "Div_2A": "Dividendos pagos no ano civil de 2 anos atrás.",
-    "Div_3A": "Dividendos pagos no ano civil de 3 anos atrás.",
-    "Div_4A": "Dividendos pagos no ano civil de 4 anos atrás.",
-    "Div_5A": "Dividendos pagos no ano civil de 5 anos atrás.",
-    "Consistencia_5A": "Quantos anos (0-5) o ativo pagou dividendos nos últimos 5 anos completos.",
+    " DY 12m": "Dividend Yield. Mostra o rendimento obtido por uma ação através dos proventos distribuídos pela empresa nos últimos 12 meses.",
+    "Div 1A": "Dividendos pagos no ano civil de 1 ano atrás.",
+    "Div 2A": "Dividendos pagos no ano civil de 2 anos atrás.",
+    "Div 3A": "Dividendos pagos no ano civil de 3 anos atrás.",
+    "Div 4A": "Dividendos pagos no ano civil de 4 anos atrás.",
+    "Div 5A": "Dividendos pagos no ano civil de 5 anos atrás.",
+    "Consistência": "Quantos anos (0-5) o ativo pagou dividendos nos últimos 5 anos completos.",
+
+    # Preço Justo
     "Graham": "Preço justo pelo método clássico de Benjamin Graham: √(22.5 × LPA × VPA).",
     "Graham BR": "Preço justo pelo método conservador de Graham para o Brasil: √(15 × LPA × VPA).",
     "Bazin": "Preço teto pelo método de Décio Bazin: foco em dividendos com yield alvo de 6%.",
     "Lynch": "Preço justo pelo método de Peter Lynch: considera crescimento de lucros.",
-    "AGF Medio": "Média ponderada dos métodos Graham, Bazin, Lynch e preço atual.",
+    "AGF Medio": "Método AGF, utilizado pelo maior investidor PF da B3, Luiz Barsi Filho",
+
+    # SCORE CS
+    "ROE > 10%": "Return on Equity. > 10% indica boa rentabilidade sobre o patrimônio.",
+    "💸 DY 12m > 6%": "Dividend Yield dos últimos 12 meses. > 6% considerado atrativo.",
+    "Dív.Líq/EBITDA < 2.5": "Dívida Líquida sobre EBITDA. < 2.5 indica endividamento controlado.",
+    "P/L < 15": "Preço / Lucro. Quanto menor, mais barata. < 15",
+    "P/VP < 2": "Preço / Valor Patrimonial. Abaixo de 2 indica proximidade do valor contábil.",
+    "Margem > 10%": "Margem Líquida. Indica quanto da receita é convertida em lucro.",
+    "Liq.Corrente > 1": "Liquidez Corrente. Indica capacidade de pagamento de curto prazo.",
+    "CAGR > 5%": "Crescimento anual composto dos lucros nos últimos 5 anos.",
+    "ROIC > 10%": "Retorno sobre o Capital Investido. Mede eficiência do capital.",
+    "Volume > 1M": "Volume financeiro diário. Indica liquidez da ação.",
+    "Consistência 5A": "Pagou dividendos em pelo menos 3 dos últimos 5 anos completos."
 }
 
 def safe(v, d=0.0):
@@ -58,7 +85,7 @@ def sem_color(label, val_str):
     try: val = float(val_str.replace('R$','').replace('x','').replace('%','').strip())
     except: return "#94a3b8"
     l = label.lower()
-    if any(k in l for k in ["p_l", "p_vp", "ev_", "div_liq", "passivos", "psr"]):
+    if any(k in l for k in ["p/l", "p/vp", "ev_", "div_liq", "passivos", "psr"]):
         return "#10b981" if val < 10 else ("#f59e0b" if val < 20 else "#ef4444")
     if any(k in l for k in ["roe", "roic", "margem", "dy ", "cagr", "upside", "score", "roa"]):
         return "#10b981" if val > 15 else ("#f59e0b" if val > 5 else "#ef4444")
@@ -146,17 +173,62 @@ def pagina_analise():
                     cl = sem_color(lbl, val)
                     cs[c].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{lbl}{tooltip(lbl)}</div><div class="mv" style="color: {cl};">{val}</div></div>""", unsafe_allow_html=True)
 
-    sec("Valuation", [("P/L", f"{safe(ativo.get('P_L')):.2f}x"), ("P/VP", f"{safe(ativo.get('P_VP')):.2f}x"), ("P/E", f"{safe(ativo.get('P_L')):.2f}x"), ("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), ("P/Receita", f"{safe(ativo.get('P_Receita')):.2f}x"), ("P/Ativo", f"{safe(ativo.get('P_Ativo')):.2f}x"), ("P/Cap. Giro", f"{safe(ativo.get('P_Cap_Giro')):.2f}x"), ("P/Ativo Circ. Líq.", f"{safe(ativo.get('P_Ativo_Circ_Liq')):.2f}x"), ("P/EBIT", f"{safe(ativo.get('P_EBIT')):.2f}x"), ("P/EBITDA", f"{safe(ativo.get('P_EBITDA')):.2f}x"), ("EV/EBIT", f"{safe(ativo.get('EV_EBIT')):.2f}x"), ("EV/EBITDA", f"{safe(ativo.get('EV_EBITDA')):.2f}x")], 6)
-    sec("Rentabilidade", [("ROE", f"{safe(ativo.get('ROE')):.2f}%"), ("ROA", f"{safe(ativo.get('ROA')):.2f}%"), ("ROIC", f"{safe(ativo.get('ROIC')):.2f}%"), ("Giro Ativos", f"{safe(ativo.get('Giro_Ativos')):.2f}x"), ("Margem Bruta", f"{safe(ativo.get('Margem_Bruta')):.2f}%"), ("Margem EBITDA", f"{safe(ativo.get('Margem_EBITDA')):.2f}%"), ("Margem EBIT", f"{safe(ativo.get('Margem_EBIT')):.2f}%"), ("Margem Líquida", f"{safe(ativo.get('Margem_Liquida')):.2f}%")], 4)
-    sec("Endividamento", [("Dív. Líq/Ativos", f"{safe(ativo.get('Div_Liq_Ativos')):.2f}x"), ("Dív. Líq/PL", f"{safe(ativo.get('Div_Liq_PL')):.2f}x"), ("Dív. Líq/EBIT", f"{safe(ativo.get('Div_Liq_EBIT')):.2f}x"), ("Dív. Líq/EBITDA", f"{safe(ativo.get('Div_Liq_EBITDA')):.2f}x"), ("Liq. Corrente", f"{safe(ativo.get('Liquidez_Corrente')):.2f}x"), ("Passivos/Ativos", f"{safe(ativo.get('Passivos_Ativos')):.2f}x"), ("PL/Ativos", f"{safe(ativo.get('PL_Ativos')):.2f}x")], 4)
-    sec("Resultado", [("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), ("VPA", f"R$ {safe(ativo.get('VPA')):.2f}"), ("Patrim. Líq.", f"R$ {safe(ativo.get('Valor_Mercado'))/1e9:.2f}B"), ("Lucro Líquido", f"R$ {safe(ativo.get('Lucro_Liquido'))/1e9:.2f}B"), ("EBIT", f"R$ {safe(ativo.get('EBIT'))/1e9:.2f}B"), ("Receita Líq.", f"R$ {safe(ativo.get('Receita_Liquida'))/1e9:.2f}B")], 6)
-    sec("Crescimento", [("CAGR Receitas 5a", f"{safe(ativo.get('CAGR_Receitas_5a')):.2f}%"), ("CAGR Lucros 5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%"), ("📊 Volume (1D)", f"R$ {safe(ativo.get('Volume'))/1e6:.2f}M")], 3)
+    # ✅ P/E removido conforme solicitado
+    sec("Valuation", [
+        ("P/L", f"{safe(ativo.get('P_L')):.2f}x"), 
+        ("P/VP", f"{safe(ativo.get('P_VP')):.2f}x"), 
+        ("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), 
+        ("P/Receita", f"{safe(ativo.get('P_Receita')):.2f}x"), 
+        ("P/Ativo", f"{safe(ativo.get('P_Ativo')):.2f}x"), 
+        ("P/Cap. Giro", f"{safe(ativo.get('P_Cap_Giro')):.2f}x"), 
+        ("P/Ativo Circ. Líq.", f"{safe(ativo.get('P_Ativo_Circ_Liq')):.2f}x"), 
+        ("P/EBIT", f"{safe(ativo.get('P_EBIT')):.2f}x"), 
+        ("P/EBITDA", f"{safe(ativo.get('P_EBITDA')):.2f}x"), 
+        ("EV/EBIT", f"{safe(ativo.get('EV_EBIT')):.2f}x"), 
+        ("EV/EBITDA", f"{safe(ativo.get('EV_EBITDA')):.2f}x")
+    ], 6)
+    
+    sec("Rentabilidade", [
+        ("ROE", f"{safe(ativo.get('ROE')):.2f}%"), 
+        ("ROA", f"{safe(ativo.get('ROA')):.2f}%"), 
+        ("ROIC", f"{safe(ativo.get('ROIC')):.2f}%"), 
+        ("Giro Ativos", f"{safe(ativo.get('Giro_Ativos')):.2f}x"), 
+        ("Margem Bruta", f"{safe(ativo.get('Margem_Bruta')):.2f}%"), 
+        ("Margem EBITDA", f"{safe(ativo.get('Margem_EBITDA')):.2f}%"), 
+        ("Margem EBIT", f"{safe(ativo.get('Margem_EBIT')):.2f}%"), 
+        ("Margem Líquida", f"{safe(ativo.get('Margem_Liquida')):.2f}%")
+    ], 4)
+    
+    sec("Endividamento", [
+        ("Dív. Líq/Ativos", f"{safe(ativo.get('Div_Liq_Ativos')):.2f}x"), 
+        ("Dív. Líq/PL", f"{safe(ativo.get('Div_Liq_PL')):.2f}x"), 
+        ("Dív. Líq/EBIT", f"{safe(ativo.get('Div_Liq_EBIT')):.2f}x"), 
+        ("Dív. Líq/EBITDA", f"{safe(ativo.get('Div_Liq_EBITDA')):.2f}x"), 
+        ("Liq. Corrente", f"{safe(ativo.get('Liquidez_Corrente')):.2f}x"), 
+        ("Passivo/Ativos", f"{safe(ativo.get('Passivos_Ativos')):.2f}x"), 
+        ("Patrimonio/Ativos", f"{safe(ativo.get('PL_Ativos')):.2f}x")
+    ], 4)
+    
+    sec("Resultado", [
+        ("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), 
+        ("VPA", f"R$ {safe(ativo.get('VPA')):.2f}"), 
+        ("Patrim. Líq.", f"R$ {safe(ativo.get('Valor_Mercado'))/1e9:.2f}B"), 
+        ("Lucro Líquido", f"R$ {safe(ativo.get('Lucro_Liquido'))/1e9:.2f}B"), 
+        ("EBIT", f"R$ {safe(ativo.get('EBIT'))/1e9:.2f}B"), 
+        ("Receita Líq.", f"R$ {safe(ativo.get('Receita_Liquida'))/1e9:.2f}B")
+    ], 6)
+    
+    sec("Crescimento", [
+        ("CAGR Receitas 5a", f"{safe(ativo.get('CAGR_Receitas_5a')):.2f}%"), 
+        ("CAGR Lucros 5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%"), 
+        ("📊 Volume (1D)", f"R$ {safe(ativo.get('Volume'))/1e6:.2f}M")
+    ], 3)
 
     st.markdown('<div class="st">Dividendos</div>', unsafe_allow_html=True)
     cy = datetime.now().year
     cards = [(f"Div {i}A", f"R$ {safe(ativo.get(f'Div_{i}A')):.4f}", str(safe(ativo.get(f'Div_{i}A')) > 0), cy-i) for i in range(1,6)]
     cons = int(safe(ativo.get('Consistencia_5A'), 0))
-    cb, cc = (f"✅ {cons}/5", "#10b981") if cons >= 3 else (f"⚠️ {cons}/5", "#f59e0b")
+    cb, cc = (f"✅ {cons}/5", "#10b981") if cons >= 3 else (f"️ {cons}/5", "#f59e0b")
     cards.append(("Consistência", cb, "True", None))
     cs = st.columns(6)
     for i, (l, v, p, y) in enumerate(cards):
@@ -167,12 +239,12 @@ def pagina_analise():
     st.markdown('<div class="st">Preço Justo</div>', unsafe_allow_html=True)
     vpa, lpa, dy, pr = safe(ativo.get('VPA')), safe(ativo.get('LPA')), safe(ativo.get('DY_Atual'))/100, safe(ativo.get('Preco_Atual'))
     graham = (22.5 * vpa * lpa)**0.5 if vpa > 0 and lpa > 0 else 0
-    graham_br = (15 * vpa * lpa)**0.5 if vpa > 0 and lpa > 0 else 0  # Graham BR conservador
+    graham_br = (15 * vpa * lpa)**0.5 if vpa > 0 and lpa > 0 else 0
     bazin = (dy / 0.06) * pr if dy > 0 else 0
     lynch = lpa * (1 + safe(ativo.get('CAGR_Lucros_5a'))/100) if lpa > 0 else 0
     agf = (graham + graham_br + bazin + lynch + pr*0.8) / 5
     ups = lambda j: ((j/pr)-1)*100 if pr > 0 else 0
-    pj = [("Graham", graham, ups(graham)), ("Graham BR", graham_br, ups(graham_br)), ("Bazin", bazin, ups(bazin)), ("Lynch", lynch, ups(lynch)), ("AGF Médio", agf, ups(agf))]
+    pj = [("Graham", graham, ups(graham)), ("Graham BR", graham_br, ups(graham_br)), ("Bazin", bazin, ups(bazin)), ("Lynch", lynch, ups(lynch)), ("AGF Medio", agf, ups(agf))]
     cps = st.columns(5)
     for i, (t, p, u) in enumerate(pj):
         c, b = ("#10b981", "#065f46") if u > 0 else (("#ef4444", "#991b1b") if u < 0 else ("#94a3b8", "#475569"))
@@ -182,7 +254,7 @@ def pagina_analise():
     st.markdown('<div class="st">SCORE CS</div>', unsafe_allow_html=True)
     items = [
         ("ROE > 10%", 1 if safe(ativo.get('ROE')) > 10 else 0, "Rentabilidade do patrimônio"),
-        ("💸 DY 12m > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),
+        (" DY 12m > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),
         ("Dív.Líq/EBITDA < 2.5", 1 if 0 < safe(ativo.get('Div_Liq_EBITDA')) < 2.5 else 0, "Endividamento controlado"),
         ("P/L < 15", 1 if 0 < safe(ativo.get('P_L')) < 15 else 0, "Preço não está caro"),
         ("P/VP < 2", 1 if 0 < safe(ativo.get('P_VP')) < 2 else 0, "Próximo do valor patrimonial"),
