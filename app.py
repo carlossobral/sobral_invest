@@ -138,6 +138,12 @@ def safe_div(a, b):
         result = np.where(b != 0, a / b, 0)
         return np.where(np.isfinite(result), result, 0)
 
+def ensure_column(df, col_name, default=0.0):
+    """Garante que uma coluna exista no DataFrame, criando com valor default se necessário."""
+    if col_name not in df.columns:
+        df[col_name] = default
+    return df
+
 # ---------------------------------------------------------------------------
 # ETAPA 0: SELIC
 # ---------------------------------------------------------------------------
@@ -312,40 +318,57 @@ def etapa_4_dividendos(mf_client, df):
     return df
 
 # ---------------------------------------------------------------------------
-# ETAPA 5: MATEMÁTICA REVERSA
+# ETAPA 5: MATEMÁTICA REVERSA (CORRIGIDA)
 # ---------------------------------------------------------------------------
 def etapa_5_matematica_reversa(df):
     """Calcula indicadores ausentes via fórmulas reversas."""
     logger.info("🟪 ETAPA 5: Calculando matemática reversa...")
     
-    # Garantir colunas numéricas
-    for col in ['LPA', 'Qtd_Acoes', 'Valor_Mercado', 'P_EBIT', 'P_EBITDA', 
-                'Margem_Liquida', 'Margem_EBITDA', 'P_L', 'P_Receita']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+    # ✅ GARANTIR que todas as colunas necessárias existam
+    cols_essenciais = {
+        'LPA': 0.0, 'Qtd_Acoes': 0.0, 'Valor_Mercado': 0.0,
+        'P_EBIT': 0.0, 'P_EBITDA': 0.0, 'Margem_Liquida': 0.0,
+        'Margem_EBITDA': 0.0, 'P_L': 0.0, 'P_Receita': 0.0
+    }
+    for col, default in cols_essenciais.items():
+        df = ensure_column(df, col, default)
     
-    # 1. Lucro Líquido
+    # Converter para numérico (evita erros de tipo)
+    for col in cols_essenciais.keys():
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    # 1. Lucro Líquido: LPA × Qtd_Acoes (fallback: Valor_Mercado / P_L)
     df['Lucro_Liquido'] = df['LPA'] * df['Qtd_Acoes']
-    mask = df['Lucro_Liquido'].isna() | (df['Lucro_Liquido'] == 0)
-    df.loc[mask, 'Lucro_Liquido'] = safe_div(df['Valor_Mercado'], df['P_L'])
+    mask_lucro = (df['Lucro_Liquido'] <= 0) | (df['Lucro_Liquido'].isna())
+    df.loc[mask_lucro, 'Lucro_Liquido'] = safe_div(df.loc[mask_lucro, 'Valor_Mercado'], df.loc[mask_lucro, 'P_L'])
     
-    # 2. EBIT
+    # 2. EBIT: Valor_Mercado / P_EBIT
     df['EBIT'] = safe_div(df['Valor_Mercado'], df['P_EBIT'])
     
-    # 3. Receita Líquida (fallback em cascata)
+    # 3. Receita Líquida: Valor_Mercado / P_Receita (fallback em cascata)
     df['Receita_Liquida'] = safe_div(df['Valor_Mercado'], df['P_Receita'])
-    mask_rec = df['Receita_Liquida'].isna() | (df['Receita_Liquida'] == 0)
-    df.loc[mask_rec, 'Receita_Liquida'] = safe_div(df['Lucro_Liquido'], df['Margem_Liquida'] / 100)
-    ebitda_est = safe_div(df['Valor_Mercado'], df['P_EBITDA'])
-    df.loc[mask_rec & df['Receita_Liquida'].isna(), 'Receita_Liquida'] = safe_div(ebitda_est, df['Margem_EBITDA'] / 100)
+    mask_rec = (df['Receita_Liquida'] <= 0) | (df['Receita_Liquida'].isna())
     
-    # 4. P/Receita (recalcular para consistência)
+    # Fallback 1: Lucro / Margem Líquida
+    df.loc[mask_rec, 'Receita_Liquida'] = safe_div(
+        df.loc[mask_rec, 'Lucro_Liquido'], 
+        df.loc[mask_rec, 'Margem_Liquida'] / 100
+    )
+    
+    # Fallback 2: EBITDA / Margem EBITDA
+    ebitda_est = safe_div(df['Valor_Mercado'], df['P_EBITDA'])
+    mask_rec2 = mask_rec & (df['Receita_Liquida'] <= 0)
+    df.loc[mask_rec2, 'Receita_Liquida'] = safe_div(
+        ebitda_est.loc[mask_rec2], 
+        df.loc[mask_rec2, 'Margem_EBITDA'] / 100
+    )
+    
+    # 4. P/Receita: recalcular para consistência
     df['P_Receita'] = safe_div(df['Valor_Mercado'], df['Receita_Liquida'])
     
-    # Limpar infinitos/nulos
+    # ✅ Limpar infinitos/nulos finais
     for col in ['Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita']:
-        if col in df.columns:
-            df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
+        df[col] = df[col].replace([np.inf, -np.inf], 0).fillna(0)
     
     logger.info("✓ Matemática reversa concluída.")
     return df
@@ -387,30 +410,35 @@ def calcular_valuation(df):
     """Calcula as 10 colunas de valuation."""
     logger.info("🟪 ETAPA 6b: Calculando valuation (Graham, Bazin, Lynch, AGF)...")
     
-    cols_numericas = ['Preco_Atual', 'LPA', 'VPA', 'DY_Atual', 'CAGR_Lucros_5a']
-    for col in cols_numericas:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    # ✅ Garantir colunas numéricas para valuation
+    cols_val = ['Preco_Atual', 'LPA', 'VPA', 'DY_Atual', 'CAGR_Lucros_5a']
+    for col in cols_val:
+        df = ensure_column(df, col, 0.0)
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    # Graham clássico
+    # Graham clássico: √(22.5 × LPA × VPA)
     df['Graham'] = np.sqrt(22.5 * df['LPA'] * df['VPA'])
-    # Graham BR conservador
+    
+    # Graham BR conservador: √(15 × LPA × VPA)
     df['GrahamBR'] = np.sqrt(15 * df['LPA'] * df['VPA'])
-    # Bazin
+    
+    # Bazin: Preço × DY / 6
     df['Bazin'] = df['Preco_Atual'] * df['DY_Atual'] / 6.0
-    # Lynch
+    
+    # Lynch: LPA × (1 + CAGR/100)
     df['Lynch'] = df['LPA'] * (1 + df['CAGR_Lucros_5a'] / 100.0)
-    # AGF (média ponderada)
+    
+    # AGF: média ponderada
     df['Agf'] = (df['Graham'] + df['GrahamBR'] + df['Bazin'] + df['Lynch'] + (df['Preco_Atual'] * 0.8)) / 5.0
     
     # Diferenças percentuais
     for metodo in ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf']:
         df[f'{metodo}_dif'] = (safe_div(df[metodo], df['Preco_Atual']) - 1) * 100
     
-    # Arredondar
+    # Arredondar e limpar
     for col in ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf'] + [f'{m}_dif' for m in ['Graham', 'GrahamBR', 'Bazin', 'Lynch', 'Agf']]:
         if col in df.columns:
-            df[col] = df[col].round(2)
+            df[col] = df[col].round(2).replace([np.inf, -np.inf], 0).fillna(0)
     
     logger.info("✓ Valuation calculado.")
     return df
@@ -431,7 +459,7 @@ def etapa_6_exportacao(df):
     extras = [c for c in df.columns if c not in existentes]
     df = df[existentes + extras]
     
-    # Converter numérico
+    # Converter numérico para colunas críticas
     numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 
                        'Consistencia_5A', 'Anos_Listagem', 'Lucro_Liquido', 'EBIT', 
                        'Receita_Liquida', 'P_Receita', 'Graham', 'GrahamBR', 'Bazin', 
@@ -441,16 +469,26 @@ def etapa_6_exportacao(df):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-    # Salvar
+    # Salvar com tratamento de erro robusto
     try:
+        ATIVOS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='DADOS!', index=False)
         df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
         logger.info(f"✓ Arquivos salvos: {len(df)} ativos, {len(df.columns)} colunas")
+        return df
     except Exception as e:
+        import traceback
         logger.error(f"✗ Erro ao salvar: {e}")
-    
-    return df
+        logger.error(traceback.format_exc())
+        # Tentar salvar apenas CSV como fallback
+        try:
+            df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
+            logger.info("✓ CSV salvo como fallback")
+            return df
+        except:
+            logger.error("✗ Falha total ao salvar arquivos")
+            return df
 
 # ---------------------------------------------------------------------------
 # ETAPA 7: LISTAGEM YF (COM CACHE RESILIENTE + FLAG USE_YFINANCE)
@@ -466,6 +504,7 @@ def carregar_cache_listagem():
 
 def salvar_cache_listagem(cache):
     try:
+        CACHE_LISTAGEM_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(CACHE_LISTAGEM_FILE, "w", encoding="utf-8") as f:
             json.dump(cache, f, ensure_ascii=False, indent=2)
         logger.info("✓ Cache de listagem salvo")
@@ -492,7 +531,6 @@ def get_listing_date_yf(ticker, cache):
             return round(anos, 2)
         except Exception as e:
             logger.warning(f"Erro ao converter data do cache para {ticker}: {e}")
-            # Se falhar na conversão do cache, retorna 0 mas NÃO tenta yfinance
             return 0.0
     
     # 2. Se USE_YFINANCE estiver desativado, NÃO tenta yfinance
@@ -517,7 +555,6 @@ def get_listing_date_yf(ticker, cache):
     except Exception as e:
         # ⚠️ REGRA CRÍTICA: Se der erro no yfinance, NÃO quebra, apenas loga e segue
         logger.warning(f"yfinance falhou para {ticker} (seguindo com cache): {e}")
-        # Não atualiza cache com erro, mantém como estava
     
     return 0.0
 
@@ -589,7 +626,7 @@ def main():
     # ETAPA 4: DIVIDENDOS (com lista menor)
     df = etapa_4_dividendos(mf, df)
     
-    # ETAPA 5: MATEMÁTICA REVERSA
+    # ETAPA 5: MATEMÁTICA REVERSA (CORRIGIDA)
     df = etapa_5_matematica_reversa(df)
     
     # ETAPA 6: SCORE + EXPORTAÇÃO
