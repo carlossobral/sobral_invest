@@ -386,7 +386,7 @@ def etapa_6_exportacao(df):
     
     numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 'Consistencia_5A', 'Anos_Listagem', 
                        'Lucro_Liquido', 'EBIT', 'Receita_Liquida', 'P_Receita', 'Graham', 'GrahamBR', 'Bazin', 
-                       'Lynch', 'Agf', 'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif']
+                       'Lynch', 'Agf', 'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 'Lynch_dif', 'Agf_dif', 'Div_Liq_PL']  # ← CORREÇÃO: Adicionado Div_Liq_PL
     for col in numeric_targets:
         if col in df.columns:
             try: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
