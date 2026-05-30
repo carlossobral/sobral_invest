@@ -12,6 +12,7 @@ TOOLTIPS = {
     "P/Receita": "Price to Sales Ratio (PSR). Compara o preço da ação com as vendas. Um PSR abaixo de 1 significa que a empresa pode estar sendo negociada a um preço baixo em comparação com suas vendas.",
     "P/Ativo": "Preço sobre Total de Ativos. Medida para avaliar o valor de uma empresa em relação ao seu patrimônio líquido total. Um P/Ativo inferior a 1, quer dizer que o preço da ação está menor que os seus próprios ativos.",
     "P/Cap. Giro": "Mede se a empresa está sendo negociada a um preço justo em comparação com sua capacidade de cobrir suas obrigações de curto prazo.",
+    "DY 12m": "Dividend Yield. Mostra o rendimento obtido por uma ação através dos proventos distribuídos pela empresa nos últimos 12 meses.",
     "P/Ativo Circ. Líq.": "Compara o preço da ação com os ativos circulantes líquidos da empresa. Quanto menor, mais descontada a ação pode estar em relação a seus ativos circulantes líquidos.",
     "P/EBIT": "Preço sobre EBIT. Medida da lucratividade que exclui juros e impostos. Quanto maior, mais caro o investidor está pagando pela empresa em relação ao seu EBIT.",
     "P/EBITDA": "Preço sobre EBITDA. Medida da lucratividade que exclui juros, impostos, depreciação e amortização.",
@@ -48,13 +49,12 @@ TOOLTIPS = {
     "CAGR Receitas 5a": "Compound Annual Growth Rate (crescimento anual composto). Mede o crescimento da receita de uma empresa considerando os quatro últimos trimestres em comparação ao período de cinco anos atrás.",
     "CAGR Lucros 5a": "Compound Annual Growth Rate (crescimento anual composto). Mede o crescimento do lucro da empresa considerando os quatro últimos trimestres em comparação ao período equivalente de cinco anos atrás.",
     "📊 Volume (1D)": "Volume financeiro negociado no último dia.",
-    "DY 12m": "Dividend Yield. Mostra o rendimento obtido por uma ação através dos proventos distribuídos pela empresa nos últimos 12 meses.",  # ← ALTERAÇÃO: sem emoji 💸
     "Div 1A": "Dividendos pagos no ano civil de 1 ano atrás.",
     "Div 2A": "Dividendos pagos no ano civil de 2 anos atrás.",
     "Div 3A": "Dividendos pagos no ano civil de 3 anos atrás.",
     "Div 4A": "Dividendos pagos no ano civil de 4 anos atrás.",
     "Div 5A": "Dividendos pagos no ano civil de 5 anos atrás.",
-    "Div 6A": "Dividendos pagos no ano civil de 6 anos atrás.",  # ← ALTERAÇÃO: novo tooltip
+    "Div 6A": "Dividendos pagos no ano civil de 6 anos atrás.",
     "Consistência": "Quantos anos (0-5) o ativo pagou dividendos nos últimos 5 anos completos.",
 
     # Preço Justo
@@ -66,7 +66,7 @@ TOOLTIPS = {
 
     # SCORE CS
     "ROE > 10%": "Return on Equity. > 10% indica boa rentabilidade sobre o patrimônio.",
-    "DY 12m > 6%": "Dividend Yield dos últimos 12 meses. > 6% considerado atrativo.",  # ← ALTERAÇÃO: sem emoji
+    "DY 12m > 6%": "Dividend Yield dos últimos 12 meses. > 6% considerado atrativo.",
     "Dív.Líq/EBITDA < 2.5": "Dívida Líquida sobre EBITDA. < 2.5 indica endividamento controlado.",
     "P/L < 15": "Preço / Lucro. Quanto menor, mais barata. < 15",
     "P/VP < 2": "Preço / Valor Patrimonial. Abaixo de 2 indica proximidade do valor contábil.",
@@ -174,13 +174,15 @@ def pagina_analise():
                     cl = sem_color(lbl, val)
                     cs[c].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{lbl}{tooltip(lbl)}</div><div class="mv" style="color: {cl};">{val}</div></div>""", unsafe_allow_html=True)
 
+    # ✅ DY 12m movido para Valuation (7º item = 1º da 2ª linha)
     sec("Valuation", [
         ("P/L", f"{safe(ativo.get('P_L')):.2f}x"), 
         ("P/VP", f"{safe(ativo.get('P_VP')):.2f}x"), 
         ("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), 
         ("P/Receita", f"{safe(ativo.get('P_Receita')):.2f}x"), 
         ("P/Ativo", f"{safe(ativo.get('P_Ativo')):.2f}x"), 
-        ("P/Cap. Giro", f"{safe(ativo.get('P_Cap_Giro')):.2f}x"), 
+        ("P/Cap. Giro", f"{safe(ativo.get('P_Cap_Giro')):.2f}x"),
+        ("DY 12m", f"{safe(ativo.get('DY_Atual')):.2f}%"),  # ← 1º card da 2ª linha
         ("P/Ativo Circ. Líq.", f"{safe(ativo.get('P_Ativo_Circ_Liq')):.2f}x"), 
         ("P/EBIT", f"{safe(ativo.get('P_EBIT')):.2f}x"), 
         ("P/EBITDA", f"{safe(ativo.get('P_EBITDA')):.2f}x"), 
@@ -223,18 +225,10 @@ def pagina_analise():
         ("CAGR Lucros 5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%")
     ], 2)
 
-    # ← ALTERAÇÃO: Seção Dividendos com DY 12m primeiro e sem card Consistência
+    # ✅ Seção Dividendos agora contém APENAS os 6 anos (Div 1A a Div 6A)
     st.markdown('<div class="st">Dividendos</div>', unsafe_allow_html=True)
-    
-    # Card DY 12m como PRIMEIRO
-    dy_val = safe(ativo.get('DY_Atual'))
-    dy_str = f"{dy_val:.2f}%"
-    cl_dy = sem_color("DY 12m", dy_str)
-    st.markdown(f"""<div class="mc" style="border-left: 4px solid {cl_dy};"><div class="ml">DY 12m{tooltip("DY 12m")}</div><div class="mv" style="color: {cl_dy};">{dy_str}</div></div>""", unsafe_allow_html=True)
-    
-    # Cards Div_1A a Div_6A (sem Consistência)
     cy = datetime.now().year
-    cards = [(f"Div {i}A", f"R$ {safe(ativo.get(f'Div_{i}A')):.4f}", str(safe(ativo.get(f'Div_{i}A')) > 0), cy-i) for i in range(1,7)]  # ← ALTERAÇÃO: range(1,7) para incluir Div_6A
+    cards = [(f"Div {i}A", f"R$ {safe(ativo.get(f'Div_{i}A')):.4f}", str(safe(ativo.get(f'Div_{i}A')) > 0), cy-i) for i in range(1,7)]
     cs = st.columns(6)
     for i, (l, v, p, y) in enumerate(cards):
         cl = "#10b981" if p=="True" else "#475569"
@@ -259,7 +253,7 @@ def pagina_analise():
     st.markdown('<div class="st">SCORE CS</div>', unsafe_allow_html=True)
     items = [
         ("ROE > 10%", 1 if safe(ativo.get('ROE')) > 10 else 0, "Rentabilidade do patrimônio"),
-        ("DY 12m > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),  # ← ALTERAÇÃO: sem emoji
+        ("DY 12m > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),
         ("Dív.Líq/EBITDA < 2.5", 1 if 0 < safe(ativo.get('Div_Liq_EBITDA')) < 2.5 else 0, "Endividamento controlado"),
         ("P/L < 15", 1 if 0 < safe(ativo.get('P_L')) < 15 else 0, "Preço não está caro"),
         ("P/VP < 2", 1 if 0 < safe(ativo.get('P_VP')) < 2 else 0, "Próximo do valor patrimonial"),
