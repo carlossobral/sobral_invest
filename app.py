@@ -356,12 +356,12 @@ def etapa_5_matematica_reversa(df):
     )
     
     # Fallback 2: EBITDA / Margem EBITDA
-    ebitda_est = safe_div(df['Valor_Mercado'], df['P_EBITDA'])
+    # CORREÇÃO: Usar indexação booleana direta em vez de .loc
     mask_rec2 = mask_rec & (df['Receita_Liquida'] <= 0)
-    df.loc[mask_rec2, 'Receita_Liquida'] = safe_div(
-        ebitda_est.loc[mask_rec2], 
-        df.loc[mask_rec2, 'Margem_EBITDA'] / 100
-    )
+    if mask_rec2.any():
+        ebitda_est_mask = safe_div(df.loc[mask_rec2, 'Valor_Mercado'], df.loc[mask_rec2, 'P_EBITDA'])
+        margem_ebitda_mask = df.loc[mask_rec2, 'Margem_EBITDA'] / 100
+        df.loc[mask_rec2, 'Receita_Liquida'] = safe_div(ebitda_est_mask, margem_ebitda_mask)
     
     # 4. P/Receita: recalcular para consistência
     df['P_Receita'] = safe_div(df['Valor_Mercado'], df['Receita_Liquida'])
@@ -372,7 +372,6 @@ def etapa_5_matematica_reversa(df):
     
     logger.info("✓ Matemática reversa concluída.")
     return df
-
 # ---------------------------------------------------------------------------
 # ETAPA 6: CÁLCULO DE SCORE E EXPORTAÇÃO
 # ---------------------------------------------------------------------------
