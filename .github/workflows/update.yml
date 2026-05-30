@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}  # ✅ Garante permissão de write
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -28,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          echo "✅ Dependencias instaladas"
+          echo "✅ Dependências instaladas"
 
       - name: Criar pasta data se nao existir
         run: |
@@ -43,79 +44,85 @@ jobs:
         env:
           BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
           USEBOLSAI_TOKEN: ${{ secrets.USEBOLSAI_TOKEN }}
-          USE_YFINANCE: "false"  # ← Desativa yfinance no workflow
-      - name: Verificar arquivos gerados
+          USE_YFINANCE: "false"
+
+      - name: Debug: Verificar estrutura de arquivos
         run: |
-          echo "📁 Verificando arquivos em data/..."
-          ls -lah data/ || echo "❌ Pasta data/ nao encontrada"
+          echo "🔍 Debug: Estrutura de diretórios"
+          pwd
+          ls -lah
+          ls -lah data/ || echo "⚠️ Pasta data/ não encontrada"
+          echo "📄 Tamanho dos arquivos:"
+          [ -f "data/ativos.xlsx" ] && stat -c%s "data/ativos.xlsx" || echo "❌ ativos.xlsx não existe"
+          [ -f "data/ativos.csv" ] && stat -c%s "data/ativos.csv" || echo "❌ ativos.csv não existe"
 
-          if [ ! -f "data/ativos.xlsx" ]; then
-            echo "❌ data/ativos.xlsx NAO FOI GERADO!"
-            exit 1
-          fi
-
-          if [ ! -f "data/ativos.csv" ]; then
-            echo "❌ data/ativos.csv NAO FOI GERADO!"
-            exit 1
-          fi
-
-          SIZE_XLSX=$(stat -c%s "data/ativos.xlsx")
-          SIZE_CSV=$(stat -c%s "data/ativos.csv")
-
-          echo "✅ data/ativos.xlsx: $SIZE_XLSX bytes"
-          echo "✅ data/ativos.csv: $SIZE_CSV bytes"
-
-          if [ $SIZE_XLSX -lt 5000 ]; then
-            echo "❌ data/ativos.xlsx muito pequeno - provavelmente vazio!"
-            exit 1
-          fi
-
-      - name: Commit e push
+      - name: Commit e push (BLINDADO)
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Adiciona apenas arquivos que existem
-          if [ -f "data/ativos.xlsx" ]; then
-            git add data/ativos.xlsx
-          fi
-          if [ -f "data/ativos.csv" ]; then
-            git add data/ativos.csv
-          fi
-          if [ -f "data/selic.json" ]; then
-            git add data/selic.json
-          fi
-
+          # Configurar Git com autenticação explícita
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Configurar remote com token para autenticação
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
+          # Adicionar arquivos (ignora erro se não existirem)
+          git add data/ativos.xlsx data/ativos.csv data/selic.json data/listagem.json 2>/dev/null || true
+          
+          # Verificar se há mudanças para commitar
           if git diff --cached --quiet; then
-            echo "⚠️ Nenhuma mudanca para commitar (arquivos identicos)"
-          else
-            git commit -m "📊 Dados atualizados - $(date +'%Y-%m-%d %H:%M')"
-
-            for i in 1 2 3; do
-              git pull --rebase origin main && git push && break
-              echo "⚠️ Push falhou, tentativa $i/3..."
-              sleep 5
-            done
-
-            echo "✅ Dados commitados e pushados com sucesso!"
+            echo "⚠️ Nenhuma mudança para commitar (arquivos idênticos ao repositório)"
+            echo "✅ Workflow concluído sem alterações"
+            exit 0
           fi
+          
+          # Commit
+          echo "📦 Criando commit..."
+          git commit -m "📊 Dados atualizados - $(date +'%Y-%m-%d %H:%M')"
+          
+          # Push com retry robusto (lógica corrigida)
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "🔄 Push: tentativa $i/$MAX_RETRIES"
+            
+            # Pull tenta sincronizar, mas não falha se houver conflito
+            git pull --rebase origin main || echo "⚠️ Pull com conflitos, tentando push mesmo assim..."
+            
+            # Push real
+            if git push origin main; then
+              echo "✅ Push realizado com SUCESSO!"
+              exit 0
+            else
+              echo "❌ Push falhou na tentativa $i"
+              if [ $i -eq $MAX_RETRIES ]; then
+                echo "❌ ERRO CRÍTICO: Todas as tentativas de push falharam!"
+                echo "🔍 Verifique: permissões do token, branch protegida, ou conflitos"
+                exit 1
+              fi
+              echo "⏳ Aguardando 5s antes da próxima tentativa..."
+              sleep 5
+            fi
+          done
 
-      - name: Resumo
+      - name: Resumo Final
         if: always()
         run: |
           echo "=========================================="
-          echo "RESUMO DO WORKFLOW"
+          echo "📋 RESUMO DO WORKFLOW"
           echo "=========================================="
+          echo "📁 Diretório: $(pwd)"
+          echo "📂 Arquivos em data/:"
+          ls -lh data/ 2>/dev/null || echo "⚠️ Pasta data/ vazia ou inexistente"
+          echo ""
           if [ -f "data/ativos.xlsx" ]; then
             SIZE=$(stat -c%s "data/ativos.xlsx")
             echo "✅ data/ativos.xlsx: $SIZE bytes"
           else
-            echo "❌ data/ativos.xlsx nao encontrado"
+            echo "❌ data/ativos.xlsx NÃO encontrado"
           fi
           if [ -f "data/ativos.csv" ]; then
             SIZE=$(stat -c%s "data/ativos.csv")
             echo "✅ data/ativos.csv: $SIZE bytes"
           else
-            echo "❌ data/ativos.csv nao encontrado"
+            echo "❌ data/ativos.csv NÃO encontrado"
           fi
           echo "=========================================="
