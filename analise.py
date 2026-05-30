@@ -48,12 +48,13 @@ TOOLTIPS = {
     "CAGR Receitas 5a": "Compound Annual Growth Rate (crescimento anual composto). Mede o crescimento da receita de uma empresa considerando os quatro últimos trimestres em comparação ao período de cinco anos atrás.",
     "CAGR Lucros 5a": "Compound Annual Growth Rate (crescimento anual composto). Mede o crescimento do lucro da empresa considerando os quatro últimos trimestres em comparação ao período equivalente de cinco anos atrás.",
     "📊 Volume (1D)": "Volume financeiro negociado no último dia.",
-    " DY 12m": "Dividend Yield. Mostra o rendimento obtido por uma ação através dos proventos distribuídos pela empresa nos últimos 12 meses.",
+    "DY 12m": "Dividend Yield. Mostra o rendimento obtido por uma ação através dos proventos distribuídos pela empresa nos últimos 12 meses.",  # ← ALTERAÇÃO: sem emoji 💸
     "Div 1A": "Dividendos pagos no ano civil de 1 ano atrás.",
     "Div 2A": "Dividendos pagos no ano civil de 2 anos atrás.",
     "Div 3A": "Dividendos pagos no ano civil de 3 anos atrás.",
     "Div 4A": "Dividendos pagos no ano civil de 4 anos atrás.",
     "Div 5A": "Dividendos pagos no ano civil de 5 anos atrás.",
+    "Div 6A": "Dividendos pagos no ano civil de 6 anos atrás.",  # ← ALTERAÇÃO: novo tooltip
     "Consistência": "Quantos anos (0-5) o ativo pagou dividendos nos últimos 5 anos completos.",
 
     # Preço Justo
@@ -65,7 +66,7 @@ TOOLTIPS = {
 
     # SCORE CS
     "ROE > 10%": "Return on Equity. > 10% indica boa rentabilidade sobre o patrimônio.",
-    "💸 DY 12m > 6%": "Dividend Yield dos últimos 12 meses. > 6% considerado atrativo.",
+    "DY 12m > 6%": "Dividend Yield dos últimos 12 meses. > 6% considerado atrativo.",  # ← ALTERAÇÃO: sem emoji
     "Dív.Líq/EBITDA < 2.5": "Dívida Líquida sobre EBITDA. < 2.5 indica endividamento controlado.",
     "P/L < 15": "Preço / Lucro. Quanto menor, mais barata. < 15",
     "P/VP < 2": "Preço / Valor Patrimonial. Abaixo de 2 indica proximidade do valor contábil.",
@@ -173,7 +174,6 @@ def pagina_analise():
                     cl = sem_color(lbl, val)
                     cs[c].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{lbl}{tooltip(lbl)}</div><div class="mv" style="color: {cl};">{val}</div></div>""", unsafe_allow_html=True)
 
-    # ✅ P/E removido conforme solicitado
     sec("Valuation", [
         ("P/L", f"{safe(ativo.get('P_L')):.2f}x"), 
         ("P/VP", f"{safe(ativo.get('P_VP')):.2f}x"), 
@@ -223,17 +223,23 @@ def pagina_analise():
         ("CAGR Lucros 5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%")
     ], 2)
 
+    # ← ALTERAÇÃO: Seção Dividendos com DY 12m primeiro e sem card Consistência
     st.markdown('<div class="st">Dividendos</div>', unsafe_allow_html=True)
+    
+    # Card DY 12m como PRIMEIRO
+    dy_val = safe(ativo.get('DY_Atual'))
+    dy_str = f"{dy_val:.2f}%"
+    cl_dy = sem_color("DY 12m", dy_str)
+    st.markdown(f"""<div class="mc" style="border-left: 4px solid {cl_dy};"><div class="ml">DY 12m{tooltip("DY 12m")}</div><div class="mv" style="color: {cl_dy};">{dy_str}</div></div>""", unsafe_allow_html=True)
+    
+    # Cards Div_1A a Div_6A (sem Consistência)
     cy = datetime.now().year
-    cards = [(f"Div {i}A", f"R$ {safe(ativo.get(f'Div_{i}A')):.4f}", str(safe(ativo.get(f'Div_{i}A')) > 0), cy-i) for i in range(1,6)]
-    cons = int(safe(ativo.get('Consistencia_5A'), 0))
-    cb, cc = (f"✅ {cons}/5", "#10b981") if cons >= 3 else (f"️ {cons}/5", "#f59e0b")
-    cards.append(("Consistência", cb, "True", None))
+    cards = [(f"Div {i}A", f"R$ {safe(ativo.get(f'Div_{i}A')):.4f}", str(safe(ativo.get(f'Div_{i}A')) > 0), cy-i) for i in range(1,7)]  # ← ALTERAÇÃO: range(1,7) para incluir Div_6A
     cs = st.columns(6)
     for i, (l, v, p, y) in enumerate(cards):
-        cl = cc if i==5 else ("#10b981" if p=="True" else "#475569")
+        cl = "#10b981" if p=="True" else "#475569"
         yt = f"<div style='font-size: 0.65rem; color: #64748b; margin-top: 4px;'>Ano: {y}</div>" if y else ""
-        cs[i].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{l}</div><div class="mv" style="color: {cl};">{v}</div>{yt}</div>""", unsafe_allow_html=True)
+        cs[i].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{l}{tooltip(l)}</div><div class="mv" style="color: {cl};">{v}</div>{yt}</div>""", unsafe_allow_html=True)
 
     st.markdown('<div class="st">Preço Justo</div>', unsafe_allow_html=True)
     vpa, lpa, dy, pr = safe(ativo.get('VPA')), safe(ativo.get('LPA')), safe(ativo.get('DY_Atual'))/100, safe(ativo.get('Preco_Atual'))
@@ -253,7 +259,7 @@ def pagina_analise():
     st.markdown('<div class="st">SCORE CS</div>', unsafe_allow_html=True)
     items = [
         ("ROE > 10%", 1 if safe(ativo.get('ROE')) > 10 else 0, "Rentabilidade do patrimônio"),
-        (" DY 12m > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),
+        ("DY 12m > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),  # ← ALTERAÇÃO: sem emoji
         ("Dív.Líq/EBITDA < 2.5", 1 if 0 < safe(ativo.get('Div_Liq_EBITDA')) < 2.5 else 0, "Endividamento controlado"),
         ("P/L < 15", 1 if 0 < safe(ativo.get('P_L')) < 15 else 0, "Preço não está caro"),
         ("P/VP < 2", 1 if 0 < safe(ativo.get('P_VP')) < 2 else 0, "Próximo do valor patrimonial"),
@@ -262,7 +268,7 @@ def pagina_analise():
         ("CAGR > 5%", 1 if safe(ativo.get('CAGR_Lucros_5a')) > 5 else 0, "Crescimento consistente"),
         ("ROIC > 10%", 1 if safe(ativo.get('ROIC')) > 10 else 0, "Retorno sobre capital"),
         ("Volume > 1M", 1 if safe(ativo.get('Volume')) > 1000000 else 0, "Liquidez diária"),
-        ("Consistência 5A", 1 if cons >= 3 else 0, "Pagou em pelo menos 3 dos últimos 5 anos completos"),
+        ("Consistência 5A", 1 if int(safe(ativo.get('Consistencia_5A'), 0)) >= 3 else 0, "Pagou em pelo menos 3 dos últimos 5 anos completos"),
     ]
     score = sum(x[1] for x in items)
     col, bg, lbl = ("#10b981", "#065f46", "Excelente") if score >= 9 else (("#84cc16", "#3f6212", "Bom") if score >= 7 else (("#f59e0b", "#92400e", "Regular") if score >= 5 else (("#f97316", "#7c2d12", "Fraco") if score >= 3 else ("#dc2626", "#7f1d1d", "Péssimo"))))
