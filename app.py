@@ -482,26 +482,39 @@ def calcular_valuation(df):
     return df
 
 def etapa_6_exportacao(df):
+    """Calcula Score_CS, aplica mapeamento e salva arquivos finais."""
     logger.info("🟪 ETAPA 6: Calculando Score_CS e exportando...")
     
+    # Calcular Score_CS
     df['Score_CS'] = df.apply(update_score, axis=1)
     df['Classificacao_CS'] = df['Score_CS'].apply(get_class)
     
+    # Renomear colunas
     df.rename(columns=COLUNAS_MAPEAMENTO, inplace=True)
     
+    # Ordenar colunas
     existentes = [c for c in ORDEM_FINAL if c in df.columns]
     extras = [c for c in df.columns if c not in existentes]
     df = df[existentes + extras]
     
+    # Converter numérico para colunas críticas (COM VERIFICAÇÃO)
     numeric_targets = ['Div_0A', 'Div_1A', 'Div_2A', 'Div_3A', 'Div_4A', 'Div_5A', 
                        'Consistencia_5A', 'Anos_Listagem', 'Lucro_Liquido', 'EBIT', 
                        'Receita_Liquida', 'P_Receita', 'Graham', 'GrahamBR', 'Bazin', 
                        'Lynch', 'Agf', 'Graham_dif', 'GrahamBR_dif', 'Bazin_dif', 
                        'Lynch_dif', 'Agf_dif']
+    
     for col in numeric_targets:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            # Garantir que é uma Series válida antes de converter
+            if isinstance(df[col], pd.Series):
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            else:
+                # Se não for Series, forçar conversão
+                df[col] = pd.to_numeric(df[col].values, errors='coerce')
+                df[col] = pd.Series(df[col], index=df.index).fillna(0)
     
+    # Salvar com tratamento de erro robusto
     try:
         ATIVOS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer:
@@ -513,12 +526,13 @@ def etapa_6_exportacao(df):
         import traceback
         logger.error(f"✗ Erro ao salvar: {e}")
         logger.error(traceback.format_exc())
+        # Tentar salvar apenas CSV como fallback
         try:
             df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
             logger.info("✓ CSV salvo como fallback")
             return df
         except:
-            logger.error("✗ Falha total ao salvar")
+            logger.error("✗ Falha total ao salvar arquivos")
             return df
 
 # ---------------------------------------------------------------------------
