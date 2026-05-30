@@ -35,13 +35,19 @@ TOOLTIPS = {
     "CAGR_Receitas_5a": "Crescimento médio anual de receitas.",
     "CAGR_Lucros_5a": "Crescimento médio anual de lucros.",
     "Qtd_Acoes": "Total de ações emitidas.",
-    "DY_Atual": "Dividend Yield 12 meses. > 6% atrativo.",
+    "💸 DY 12m": "Dividend Yield dos últimos 12 meses. > 6% atrativo.",
+    "📊 Volume (1D)": "Volume financeiro negociado no último dia.",
     "Div_1A": "Dividendos pagos no ano civil de 1 ano atrás.",
     "Div_2A": "Dividendos pagos no ano civil de 2 anos atrás.",
     "Div_3A": "Dividendos pagos no ano civil de 3 anos atrás.",
     "Div_4A": "Dividendos pagos no ano civil de 4 anos atrás.",
     "Div_5A": "Dividendos pagos no ano civil de 5 anos atrás.",
     "Consistencia_5A": "Quantos anos (0-5) o ativo pagou dividendos nos últimos 5 anos completos.",
+    "Graham": "Preço justo pelo método clássico de Benjamin Graham: √(22.5 × LPA × VPA).",
+    "Graham BR": "Preço justo pelo método conservador de Graham para o Brasil: √(15 × LPA × VPA).",
+    "Bazin": "Preço teto pelo método de Décio Bazin: foco em dividendos com yield alvo de 6%.",
+    "Lynch": "Preço justo pelo método de Peter Lynch: considera crescimento de lucros.",
+    "AGF Medio": "Média ponderada dos métodos Graham, Bazin, Lynch e preço atual.",
 }
 
 def safe(v, d=0.0):
@@ -140,11 +146,11 @@ def pagina_analise():
                     cl = sem_color(lbl, val)
                     cs[c].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{lbl}{tooltip(lbl)}</div><div class="mv" style="color: {cl};">{val}</div></div>""", unsafe_allow_html=True)
 
-    sec("Valuation", [("P_L", f"{safe(ativo.get('P_L')):.2f}x"), ("P_VP", f"{safe(ativo.get('P_VP')):.2f}x"), ("P_E", f"{safe(ativo.get('P_L')):.2f}x"), ("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), ("P_Receita", f"{safe(ativo.get('P_Receita')):.2f}x"), ("P_Ativo", f"{safe(ativo.get('P_Ativo')):.2f}x"), ("P_Cap_Giro", f"{safe(ativo.get('P_Cap_Giro')):.2f}x"), ("P_Ativo_Circ_Liq", f"{safe(ativo.get('P_Ativo_Circ_Liq')):.2f}x"), ("P_EBIT", f"{safe(ativo.get('P_EBIT')):.2f}x"), ("P_EBITDA", f"{safe(ativo.get('P_EBITDA')):.2f}x"), ("EV_EBIT", f"{safe(ativo.get('EV_EBIT')):.2f}x"), ("EV_EBITDA", f"{safe(ativo.get('EV_EBITDA')):.2f}x")], 6)
-    sec("Rentabilidade", [("ROE", f"{safe(ativo.get('ROE')):.2f}%"), ("ROA", f"{safe(ativo.get('ROA')):.2f}%"), ("ROIC", f"{safe(ativo.get('ROIC')):.2f}%"), ("Giro_Ativos", f"{safe(ativo.get('Giro_Ativos')):.2f}x"), ("Margem_Bruta", f"{safe(ativo.get('Margem_Bruta')):.2f}%"), ("Margem_EBITDA", f"{safe(ativo.get('Margem_EBITDA')):.2f}%"), ("Margem_EBIT", f"{safe(ativo.get('Margem_EBIT')):.2f}%"), ("Margem_Liquida", f"{safe(ativo.get('Margem_Liquida')):.2f}%")], 4)
-    sec("Endividamento", [("Div_Liq_Ativos", f"{safe(ativo.get('Div_Liq_Ativos')):.2f}x"), ("Div_Liq_PL", f"{safe(ativo.get('Div_Liq_PL')):.2f}x"), ("Div_Liq_EBIT", f"{safe(ativo.get('Div_Liq_EBIT')):.2f}x"), ("Div_Liq_EBITDA", f"{safe(ativo.get('Div_Liq_EBITDA')):.2f}x"), ("Liquidez_Corrente", f"{safe(ativo.get('Liquidez_Corrente')):.2f}x"), ("Passivos_Ativos", f"{safe(ativo.get('Passivos_Ativos')):.2f}x"), ("PL_Ativos", f"{safe(ativo.get('PL_Ativos')):.2f}x")], 4)
-    sec("Resultado", [("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), ("VPA", f"R$ {safe(ativo.get('VPA')):.2f}"), ("Patrimonio Liq.", f"R$ {safe(ativo.get('Valor_Mercado'))/1e9:.2f}B"), ("Lucro Liquido", f"R$ {safe(ativo.get('Lucro_Liquido'))/1e9:.2f}B"), ("EBIT", f"R$ {safe(ativo.get('EBIT'))/1e9:.2f}B"), ("Receita Liq.", f"R$ {safe(ativo.get('Receita_Liquida'))/1e9:.2f}B")], 6)
-    sec("Crescimento", [("CAGR_Receitas_5a", f"{safe(ativo.get('CAGR_Receitas_5a')):.2f}%"), ("CAGR_Lucros_5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%"), ("Qtd_Acoes", f"{safe(ativo.get('Qtd_Acoes'))/1e9:.2f}B")], 3)
+    sec("Valuation", [("P/L", f"{safe(ativo.get('P_L')):.2f}x"), ("P/VP", f"{safe(ativo.get('P_VP')):.2f}x"), ("P/E", f"{safe(ativo.get('P_L')):.2f}x"), ("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), ("P/Receita", f"{safe(ativo.get('P_Receita')):.2f}x"), ("P/Ativo", f"{safe(ativo.get('P_Ativo')):.2f}x"), ("P/Cap. Giro", f"{safe(ativo.get('P_Cap_Giro')):.2f}x"), ("P/Ativo Circ. Líq.", f"{safe(ativo.get('P_Ativo_Circ_Liq')):.2f}x"), ("P/EBIT", f"{safe(ativo.get('P_EBIT')):.2f}x"), ("P/EBITDA", f"{safe(ativo.get('P_EBITDA')):.2f}x"), ("EV/EBIT", f"{safe(ativo.get('EV_EBIT')):.2f}x"), ("EV/EBITDA", f"{safe(ativo.get('EV_EBITDA')):.2f}x")], 6)
+    sec("Rentabilidade", [("ROE", f"{safe(ativo.get('ROE')):.2f}%"), ("ROA", f"{safe(ativo.get('ROA')):.2f}%"), ("ROIC", f"{safe(ativo.get('ROIC')):.2f}%"), ("Giro Ativos", f"{safe(ativo.get('Giro_Ativos')):.2f}x"), ("Margem Bruta", f"{safe(ativo.get('Margem_Bruta')):.2f}%"), ("Margem EBITDA", f"{safe(ativo.get('Margem_EBITDA')):.2f}%"), ("Margem EBIT", f"{safe(ativo.get('Margem_EBIT')):.2f}%"), ("Margem Líquida", f"{safe(ativo.get('Margem_Liquida')):.2f}%")], 4)
+    sec("Endividamento", [("Dív. Líq/Ativos", f"{safe(ativo.get('Div_Liq_Ativos')):.2f}x"), ("Dív. Líq/PL", f"{safe(ativo.get('Div_Liq_PL')):.2f}x"), ("Dív. Líq/EBIT", f"{safe(ativo.get('Div_Liq_EBIT')):.2f}x"), ("Dív. Líq/EBITDA", f"{safe(ativo.get('Div_Liq_EBITDA')):.2f}x"), ("Liq. Corrente", f"{safe(ativo.get('Liquidez_Corrente')):.2f}x"), ("Passivos/Ativos", f"{safe(ativo.get('Passivos_Ativos')):.2f}x"), ("PL/Ativos", f"{safe(ativo.get('PL_Ativos')):.2f}x")], 4)
+    sec("Resultado", [("LPA", f"R$ {safe(ativo.get('LPA')):.2f}"), ("VPA", f"R$ {safe(ativo.get('VPA')):.2f}"), ("Patrim. Líq.", f"R$ {safe(ativo.get('Valor_Mercado'))/1e9:.2f}B"), ("Lucro Líquido", f"R$ {safe(ativo.get('Lucro_Liquido'))/1e9:.2f}B"), ("EBIT", f"R$ {safe(ativo.get('EBIT'))/1e9:.2f}B"), ("Receita Líq.", f"R$ {safe(ativo.get('Receita_Liquida'))/1e9:.2f}B")], 6)
+    sec("Crescimento", [("CAGR Receitas 5a", f"{safe(ativo.get('CAGR_Receitas_5a')):.2f}%"), ("CAGR Lucros 5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%"), ("📊 Volume (1D)", f"R$ {safe(ativo.get('Volume'))/1e6:.2f}M")], 3)
 
     st.markdown('<div class="st">Dividendos</div>', unsafe_allow_html=True)
     cy = datetime.now().year
@@ -158,36 +164,37 @@ def pagina_analise():
         yt = f"<div style='font-size: 0.65rem; color: #64748b; margin-top: 4px;'>Ano: {y}</div>" if y else ""
         cs[i].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{l}</div><div class="mv" style="color: {cl};">{v}</div>{yt}</div>""", unsafe_allow_html=True)
 
-    st.markdown('<div class="st">Preco Justo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="st">Preço Justo</div>', unsafe_allow_html=True)
     vpa, lpa, dy, pr = safe(ativo.get('VPA')), safe(ativo.get('LPA')), safe(ativo.get('DY_Atual'))/100, safe(ativo.get('Preco_Atual'))
     graham = (22.5 * vpa * lpa)**0.5 if vpa > 0 and lpa > 0 else 0
+    graham_br = (15 * vpa * lpa)**0.5 if vpa > 0 and lpa > 0 else 0  # Graham BR conservador
     bazin = (dy / 0.06) * pr if dy > 0 else 0
     lynch = lpa * (1 + safe(ativo.get('CAGR_Lucros_5a'))/100) if lpa > 0 else 0
-    agf = (graham + bazin + lynch + pr*0.8) / 4
+    agf = (graham + graham_br + bazin + lynch + pr*0.8) / 5
     ups = lambda j: ((j/pr)-1)*100 if pr > 0 else 0
-    pj = [("Graham", graham, ups(graham)), ("Bazin", bazin, ups(bazin)), ("Lynch", lynch, ups(lynch)), ("AGF Medio", agf, ups(agf))]
-    cps = st.columns(4)
+    pj = [("Graham", graham, ups(graham)), ("Graham BR", graham_br, ups(graham_br)), ("Bazin", bazin, ups(bazin)), ("Lynch", lynch, ups(lynch)), ("AGF Médio", agf, ups(agf))]
+    cps = st.columns(5)
     for i, (t, p, u) in enumerate(pj):
         c, b = ("#10b981", "#065f46") if u > 0 else (("#ef4444", "#991b1b") if u < 0 else ("#94a3b8", "#475569"))
         price_str = f"R$ {p:.2f}" if p > 0 else "N/A"
-        cps[i].markdown(f"""<div class="pc" style="border-left: 4px solid {c};"><div class="pt">{t}</div><div class="pv">{price_str}</div><div class="pu" style="background: {b}40; color: {c};">{u:+.1f}%</div></div>""", unsafe_allow_html=True)
+        cps[i].markdown(f"""<div class="pc" style="border-left: 4px solid {c};"><div class="pt">{t}{tooltip(t)}</div><div class="pv">{price_str}</div><div class="pu" style="background: {b}40; color: {c};">{u:+.1f}%</div></div>""", unsafe_allow_html=True)
 
     st.markdown('<div class="st">SCORE CS</div>', unsafe_allow_html=True)
     items = [
-        ("ROE > 10%", 1 if safe(ativo.get('ROE')) > 10 else 0, "Rentabilidade do patrimonio"),
-        ("DY > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),
-        ("Div.Liq/EBITDA < 2.5", 1 if 0 < safe(ativo.get('Div_Liq_EBITDA')) < 2.5 else 0, "Endividamento controlado"),
-        ("P_L < 15", 1 if 0 < safe(ativo.get('P_L')) < 15 else 0, "Preco nao esta caro"),
-        ("P_VP < 2", 1 if 0 < safe(ativo.get('P_VP')) < 2 else 0, "Proximo do valor patrimonial"),
-        ("Margem > 10%", 1 if safe(ativo.get('Margem_Liquida')) > 10 else 0, "Lucratividade saudavel"),
+        ("ROE > 10%", 1 if safe(ativo.get('ROE')) > 10 else 0, "Rentabilidade do patrimônio"),
+        ("💸 DY 12m > 6%", 1 if safe(ativo.get('DY_Atual')) > 6 else 0, "Dividend Yield atrativo"),
+        ("Dív.Líq/EBITDA < 2.5", 1 if 0 < safe(ativo.get('Div_Liq_EBITDA')) < 2.5 else 0, "Endividamento controlado"),
+        ("P/L < 15", 1 if 0 < safe(ativo.get('P_L')) < 15 else 0, "Preço não está caro"),
+        ("P/VP < 2", 1 if 0 < safe(ativo.get('P_VP')) < 2 else 0, "Próximo do valor patrimonial"),
+        ("Margem > 10%", 1 if safe(ativo.get('Margem_Liquida')) > 10 else 0, "Lucratividade saudável"),
         ("Liq.Corrente > 1", 1 if safe(ativo.get('Liquidez_Corrente')) > 1 else 0, "Capacidade de pagamento"),
         ("CAGR > 5%", 1 if safe(ativo.get('CAGR_Lucros_5a')) > 5 else 0, "Crescimento consistente"),
         ("ROIC > 10%", 1 if safe(ativo.get('ROIC')) > 10 else 0, "Retorno sobre capital"),
-        ("Volume > 1M", 1 if safe(ativo.get('Volume')) > 1000000 else 0, "Liquidez diaria"),
-        ("Consistência 5A", 1 if cons >= 3 else 0, "Pagou em pelo menos 3 dos ultimos 5 anos completos"),
+        ("Volume > 1M", 1 if safe(ativo.get('Volume')) > 1000000 else 0, "Liquidez diária"),
+        ("Consistência 5A", 1 if cons >= 3 else 0, "Pagou em pelo menos 3 dos últimos 5 anos completos"),
     ]
     score = sum(x[1] for x in items)
-    col, bg, lbl = ("#10b981", "#065f46", "Excelente") if score >= 9 else (("#84cc16", "#3f6212", "Bom") if score >= 7 else (("#f59e0b", "#92400e", "Regular") if score >= 5 else (("#f97316", "#7c2d12", "Fraco") if score >= 3 else ("#dc2626", "#7f1d1d", "Pessimo"))))
+    col, bg, lbl = ("#10b981", "#065f46", "Excelente") if score >= 9 else (("#84cc16", "#3f6212", "Bom") if score >= 7 else (("#f59e0b", "#92400e", "Regular") if score >= 5 else (("#f97316", "#7c2d12", "Fraco") if score >= 3 else ("#dc2626", "#7f1d1d", "Péssimo"))))
     
     st.markdown(f"""<div class="sc" style="background: linear-gradient(135deg, {bg} 0%, {col}20 100%); border: 2px solid {col}; max-width: 300px; margin: 0 auto 24px auto;"><div class="sn" style="color: {col};">{score}</div><div class="sl" style="color: {col};">{lbl}</div><div class="sd">de 11 pontos</div></div>""", unsafe_allow_html=True)
     
