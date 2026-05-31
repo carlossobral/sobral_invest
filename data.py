@@ -4,7 +4,7 @@ import streamlit as st
 def load_data():
     """Carrega dados do data/ativos.xlsx com conversão correta."""
     try:
-        df = pd.read_excel("data/ativos.xlsx", sheet_name="DADOS!")
+        df = pd.read_excel("data/ativos.xlsx", sheet_name="DADOS")
     except:
         try:
             df = pd.read_csv("data/ativos.csv", encoding="utf-8-sig")
