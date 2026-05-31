@@ -115,25 +115,25 @@ def pagina_rankings():
                         """, unsafe_allow_html=True)
 
     if ranking_sel == "Maior Valor de Mercado":
-        render_ranking(df_filt, 'Market_Cap', 'Maior Valor de Mercado', lambda x: f"R$ {x/1e9:.2f}B" if x >= 1e9 else f"R$ {x/1e6:.2f}M", cor_valor="#fbbf24")
+        render_ranking(df_filt, 'Valor_Mercado', 'Maior Valor de Mercado', lambda x: f"R$ {x/1e9:.2f}B" if x >= 1e9 else f"R$ {x/1e6:.2f}M", cor_valor="#fbbf24")
     elif ranking_sel == "Maiores Lucros":
         render_ranking(df_filt, 'Lucro_Liquido', 'Maiores Lucros', lambda x: f"R$ {x/1e9:.2f}B" if abs(x) >= 1e9 else f"R$ {x/1e6:.2f}M", cor_valor="#10b981")
     elif ranking_sel == "Maiores Receitas":
         render_ranking(df_filt, 'Receita_Liquida', 'Maiores Receitas', lambda x: f"R$ {x/1e9:.2f}B" if x >= 1e9 else f"R$ {x/1e6:.2f}M", cor_valor="#38bdf8")
     elif ranking_sel == "Maiores Dividend Yield":
-        render_ranking(df_filt, 'DY', 'Maiores Dividend Yield', lambda x: f"{x:.2f}%", cor_valor="#f59e0b")
+        render_ranking(df_filt, 'DY_Atual', 'Maiores Dividend Yield', lambda x: f"{x:.2f}%", cor_valor="#f59e0b")
     elif ranking_sel == "Menores P/L":
-        render_ranking(df_filt, 'PL', 'Menores P/L', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#38bdf8")
+        render_ranking(df_filt, 'P_L', 'Menores P/L', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#38bdf8")
     elif ranking_sel == "Maiores ROE":
         render_ranking(df_filt, 'ROE', 'Maiores ROE', lambda x: f"{x:.2f}%", cor_valor="#10b981")
     elif ranking_sel == "Maior Upside AGF Medio":
-        render_ranking(df_filt, 'Upside_AGF_Medio', 'Maior Upside AGF Medio', lambda x: f"{x:+.1f}%", cor_valor="#a78bfa")
+        render_ranking(df_filt, 'Agf_dif', 'Maior Upside AGF Medio', lambda x: f"{x:+.1f}%", cor_valor="#a78bfa")
     elif ranking_sel == "Mais Baratas - Graham":
-        render_ranking(df_filt, 'Upside_Graham', 'Mais Baratas - Graham', lambda x: f"{x:+.1f}%", cor_valor="#34d399")
+        render_ranking(df_filt, 'Graham_dif', 'Mais Baratas - Graham', lambda x: f"{x:+.1f}%", cor_valor="#34d399")
     elif ranking_sel == "Mais Baratas - Bazin":
-        render_ranking(df_filt, 'Upside_Bazin', 'Mais Baratas - Bazin', lambda x: f"{x:+.1f}%", cor_valor="#fbbf24")
+        render_ranking(df_filt, 'Bazin_dif', 'Mais Baratas - Bazin', lambda x: f"{x:+.1f}%", cor_valor="#fbbf24")
     elif ranking_sel == "Menores P/VP":
-        render_ranking(df_filt, 'PVP', 'Menores P/VP', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#38bdf8")
+        render_ranking(df_filt, 'P_VP', 'Menores P/VP', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#38bdf8")
     elif ranking_sel == "Menor EV/EBITDA":
         render_ranking(df_filt, 'EV_EBITDA', 'Menor EV/EBITDA', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#60a5fa")
     elif ranking_sel == "Maior CAGR Lucros 5a":
@@ -141,6 +141,6 @@ def pagina_rankings():
     elif ranking_sel == "Maior CAGR Receitas 5a":
         render_ranking(df_filt, 'CAGR_Receitas_5a', 'Maior CAGR Receitas 5a', lambda x: f"{x:.2f}%", cor_valor="#34d399")
     elif ranking_sel == "Maior Margem Liquida":
-        render_ranking(df_filt, 'MargemLiquida', 'Maior Margem Liquida', lambda x: f"{x:.2f}%", cor_valor="#a78bfa")
+        render_ranking(df_filt, 'Margem_Liquida', 'Maior Margem Liquida', lambda x: f"{x:.2f}%", cor_valor="#a78bfa")
     elif ranking_sel == "Menor Divida Liq/EBITDA":
-        render_ranking(df_filt, 'DivLiquida_EBITDA', 'Menor Divida Liq/EBITDA', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#f87171")
+        render_ranking(df_filt, 'Div_Liq_EBITDA', 'Menor Divida Liq/EBITDA', lambda x: f"{x:.2f}x", is_ascending=True, cor_valor="#f87171")
