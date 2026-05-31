@@ -405,7 +405,7 @@ def etapa_6_exportacao(df):
             
     try:
         ATIVOS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer: df.to_excel(writer, sheet_name='DADOS!', index=False)
+        with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer: df.to_excel(writer, sheet_name='DADOS', index=False)
         df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
         logger.info(f"✓ Arquivos salvos: {len(df)} ativos, {len(df.columns)} colunas")
     except Exception as e:
@@ -494,7 +494,7 @@ def main():
     df = etapa_7_listagem_yf(df)
     
     try:
-        with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer: df.to_excel(writer, sheet_name='DADOS!', index=False)
+        with pd.ExcelWriter(ATIVOS_FILE, engine='openpyxl') as writer: df.to_excel(writer, sheet_name='DADOS', index=False)
         df.to_csv(ATIVOS_CSV, index=False, encoding='utf-8-sig')
         logger.info("✓ Arquivos finais atualizados com Anos_Listagem")
     except Exception as e: logger.error(f"✗ Erro na exportação final: {e}")
