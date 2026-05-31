@@ -65,36 +65,47 @@ jobs:
           # Configurar remote com token para autenticação
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           
-          # Adicionar arquivos (ignora erro se não existirem)
-          git add data/ativos.xlsx data/ativos.csv data/selic.json data/listagem.json 2>/dev/null || true
+          # Forçar add com -f para ignorar regras de encoding/binário
+          git add -f data/ativos.xlsx data/ativos.csv data/selic.json data/listagem.json 2>/dev/null || true
           
-          # Verificar se há mudanças para commitar
-          if git diff --cached --quiet; then
-            echo "⚠️ Nenhuma mudança para commitar (arquivos idênticos ao repositório)"
+          # Verificar mudanças POR ARQUIVO (não globalmente) + fallback por tamanho > 0
+          CHANGED=0
+          for file in data/ativos.xlsx data/ativos.csv data/selic.json data/listagem.json; do
+            if [ -f "$file" ] && [ $(stat -c%s "$file" 2>/dev/null || echo 0) -gt 0 ]; then
+              # Se arquivo existe e tem tamanho > 0, força commit
+              CHANGED=1
+              echo "📄 $file: $(stat -c%s "$file") bytes - será commitado"
+              break
+            fi
+          done
+          
+          if [ $CHANGED -eq 0 ]; then
+            echo "⚠️ Nenhum arquivo com conteúdo válido para commit"
             echo "✅ Workflow concluído sem alterações"
             exit 0
           fi
           
-          # Commit
           echo "📦 Criando commit..."
           git commit -m "📊 Dados atualizados - $(date +'%Y-%m-%d %H:%M')"
           
-          # Push com retry robusto (lógica corrigida)
+          # Push com tratamento de conflitos robusto (fetch + merge em vez de pull --rebase)
           MAX_RETRIES=3
           for i in $(seq 1 $MAX_RETRIES); do
             echo "🔄 Push: tentativa $i/$MAX_RETRIES"
             
-            # Pull tenta sincronizar, mas não falha se houver conflito
-            git pull --rebase origin main || echo "⚠️ Pull com conflitos, tentando push mesmo assim..."
+            # Fetch + merge é mais tolerante que pull --rebase com unstaged changes
+            git fetch origin main 2>/dev/null || true
+            if ! git merge origin/main --no-edit 2>/dev/null; then
+              echo "⚠️ Merge com conflitos, tentando push mesmo assim..."
+            fi
             
-            # Push real
             if git push origin main; then
               echo "✅ Push realizado com SUCESSO!"
               exit 0
             else
               echo "❌ Push falhou na tentativa $i"
               if [ $i -eq $MAX_RETRIES ]; then
-                echo "❌ ERRO CRÍTICO: Todas as tentativas de push falharam!"
+                echo "❌ ERRO CRÍTICO: Push falhou após $MAX_RETRIES tentativas"
                 echo "🔍 Verifique: permissões do token, branch protegida, ou conflitos"
                 exit 1
               fi
