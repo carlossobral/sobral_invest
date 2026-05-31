@@ -156,9 +156,22 @@ def ensure_column(df, col_name, default=0.0):
 def etapa_0_selic():
     logger.info("🟦 ETAPA 0: Coletando SELIC...")
     hoje = datetime.now()
-    data_inicial = hoje.replace(year=hoje.year - 10)
+    
+    # Lógica: dia=01, mês+1, ano-10
+    ano_link = hoje.year - 10
+    mes_link = hoje.month + 1
+    dia_link = 1
+    
+    # Ajuste caso o mês ultrapasse 12 (ex: dezembro + 1 = janeiro do próximo ano)
+    if mes_link > 12:
+        mes_link = 1
+        ano_link += 1
+    
+    data_inicial = datetime(ano_link, mes_link, dia_link)
     data_inicial_str = data_inicial.strftime("%d/%m/%Y")
+    
     url = f"{BCB_BASE}?formato=json&dataInicial={data_inicial_str}"
+    
     for attempt in range(3):
         try:
             logger.info(f"SELIC: tentativa {attempt+1}/3...")
