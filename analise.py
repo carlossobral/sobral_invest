@@ -225,31 +225,39 @@ def pagina_analise():
         ("CAGR Lucros 5a", f"{safe(ativo.get('CAGR_Lucros_5a')):.2f}%")
     ], 2)
 
-    # ✅ Seção Dividendos agora contém APENAS os 6 anos (Div 1A a Div 6A)
-    st.markdown('<div class="st">Dividendos</div>', unsafe_allow_html=True)
-    cy = datetime.now().year
-    cards = [(f"Div {i}A", f"R$ {safe(ativo.get(f'Div_{i}A')):.4f}", str(safe(ativo.get(f'Div_{i}A')) > 0), cy-i) for i in range(1,7)]
-    cs = st.columns(6)
-    for i, (l, v, p, y) in enumerate(cards):
-        cl = "#10b981" if p=="True" else "#475569"
-        yt = f"<div style='font-size: 0.65rem; color: #64748b; margin-top: 4px;'>Ano: {y}</div>" if y else ""
-        cs[i].markdown(f"""<div class="mc" style="border-left: 4px solid {cl};"><div class="ml">{l}{tooltip(l)}</div><div class="mv" style="color: {cl};">{v}</div>{yt}</div>""", unsafe_allow_html=True)
-
-    st.markdown('<div class="st">Preço Justo</div>', unsafe_allow_html=True)
-    vpa, lpa, dy, pr = safe(ativo.get('VPA')), safe(ativo.get('LPA')), safe(ativo.get('DY_Atual'))/100, safe(ativo.get('Preco_Atual'))
-    graham = (22.5 * vpa * lpa)**0.5 if vpa > 0 and lpa > 0 else 0
-    graham_br = (15 * vpa * lpa)**0.5 if vpa > 0 and lpa > 0 else 0
-    bazin = (dy / 0.06) * pr if dy > 0 else 0
-    lynch = lpa * (1 + safe(ativo.get('CAGR_Lucros_5a'))/100) if lpa > 0 else 0
-    agf = (graham + graham_br + bazin + lynch + pr*0.8) / 5
-    ups = lambda j: ((j/pr)-1)*100 if pr > 0 else 0
-    pj = [("Graham", graham, ups(graham)), ("Graham BR", graham_br, ups(graham_br)), ("Bazin", bazin, ups(bazin)), ("Lynch", lynch, ups(lynch)), ("AGF Medio", agf, ups(agf))]
+    st.markdown('<div class="st">Preco Teto | Preco Justo</div>', unsafe_allow_html=True)
+    
+    # ✅ Importar valores pré-calculados da planilha ativos.xls
+    pr = safe(ativo.get('Preco_Atual'))
+    
+    # Preços justos (já calculados na planilha)
+    graham = safe(ativo.get('Graham'))
+    graham_br = safe(ativo.get('GrahamBR'))
+    bazin = safe(ativo.get('Bazin'))
+    lynch = safe(ativo.get('Lynch'))
+    agf = safe(ativo.get('Agf'))
+    
+    # Upside/Downside (já calculados na planilha como *_dif)
+    graham_ups = safe(ativo.get('Graham_dif'))
+    graham_br_ups = safe(ativo.get('GrahamBR_dif'))
+    bazin_ups = safe(ativo.get('Bazin_dif'))
+    lynch_ups = safe(ativo.get('Lynch_dif'))
+    agf_ups = safe(ativo.get('Agf_dif'))
+    
+    pj = [
+        ("Graham", graham, graham_ups), 
+        ("Graham BR", graham_br, graham_br_ups), 
+        ("Bazin", bazin, bazin_ups), 
+        ("Lynch", lynch, lynch_ups), 
+        ("AGF Medio", agf, agf_ups)
+    ]
+    
     cps = st.columns(5)
     for i, (t, p, u) in enumerate(pj):
         c, b = ("#10b981", "#065f46") if u > 0 else (("#ef4444", "#991b1b") if u < 0 else ("#94a3b8", "#475569"))
         price_str = f"R$ {p:.2f}" if p > 0 else "N/A"
         cps[i].markdown(f"""<div class="pc" style="border-left: 4px solid {c};"><div class="pt">{t}{tooltip(t)}</div><div class="pv">{price_str}</div><div class="pu" style="background: {b}40; color: {c};">{u:+.1f}%</div></div>""", unsafe_allow_html=True)
-
+        
     st.markdown('<div class="st">SCORE CS</div>', unsafe_allow_html=True)
     items = [
         ("ROE > 10%", 1 if safe(ativo.get('ROE')) > 10 else 0, "Rentabilidade do patrimônio"),
